@@ -1,0 +1,34 @@
+2026-07-19 10:33:46,166 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:35:25,240 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\c7495778_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 10:35:26,059 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:35:33,477 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:35:37,227 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:35:43,125 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 10:35:43,978 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 10:35:44,017 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 10:35:45,802 [INFO] httpx - HTTP Request: GET https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz "HTTP/1.1 200 OK"
+2026-07-19 10:36:17,440 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event CollectionAddEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 10:36:28,890 [INFO] local_knowledge - ChromaDB 向量索引构建完成，共 350 个文档块
+2026-07-19 10:36:28,893 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 10:36:29,036 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event CollectionQueryEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 10:36:29,065 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 财务舞弊'，返回 8 条结果
+2026-07-19 10:36:29,067 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 资金占用 关联方风险'，返回 8 条结果
+2026-07-19 10:36:29,074 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 放宽信用政策 财务造假风险'，返回 8 条结果
+2026-07-19 10:36:29,071 [INFO] tools.knowledge_search - 知识库检索完成，query='持续经营 扣非净利润 经营现金流 连续亏损 审计风险'，返回 8 条结果
+2026-07-19 10:36:29,067 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产减值 商誉减值 资产减值测试 会计准则'，返回 8 条结果
+2026-07-19 10:36:29,937 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:36:33,561 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:36:42,609 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\src\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 10:36:42,678 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\src\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_财务雷达图.png
+2026-07-19 10:36:42,802 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\src\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_风险热力图.png
+2026-07-19 10:36:43,596 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:37:34,721 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\src\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计风险报告.pdf
+2026-07-19 10:37:34,721 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\src\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计底稿.xlsx
+2026-07-19 10:37:35,450 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:48:20,755 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 11:01:52,575 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 11:02:06,348 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 11:09:54,139 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 11:09:57,810 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 11:22:47,251 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 11:22:50,955 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）

@@ -1,0 +1,178 @@
+{
+  "_comment": "行业风险基准值表 - 用于年报审计风险识别中的行业对比分析。本文件被 visualizer.py（雷达图行业基准对比）和 agent 系统提示词中的行业基准阈值引用。结构说明：industries 下每个行业包含 benchmarks（8项财务指标的低/中/高基准值）和 risk_thresholds（5项风险预警阈值）。general_thresholds 为行业未知时的通用兜底阈值。",
+  "description": "行业风险基准值表 - 用于年报审计风险识别中的行业对比分析",
+  "version": "1.0",
+  "_benchmarks_field_description": {
+    "gross_margin": "毛利率(%) = (营收-营业成本)/营收 × 100，衡量核心盈利能力",
+    "debt_to_asset_ratio": "资产负债率(%) = 总负债/总资产 × 100，衡量财务杠杆水平",
+    "ar_to_revenue_ratio": "应收账款占营收比(%) = 应收账款/营收 × 100，衡量回款效率",
+    "inventory_turnover": "存货周转率(次) = 营业成本/平均存货，衡量存货管理效率",
+    "current_ratio": "流动比率(倍) = 流动资产/流动负债，衡量短期偿债能力",
+    "quick_ratio": "速动比率(倍) = (流动资产-存货)/流动负债，更严格的流动性指标",
+    "cashflow_to_profit_ratio": "经营现金流/净利润比(倍)，衡量利润含金量",
+    "goodwill_to_net_assets": "商誉占净资产比(%)，衡量商誉减值风险敞口"
+  },
+  "_thresholds_field_description": {
+    "revenue_yoy_alert": "营收同比变动预警阈值(%)，超过此值触发营收异常告警",
+    "gross_margin_deviation": "毛利率偏离行业基准阈值(百分点)，偏离超过此值触发盈利能力告警",
+    "ar_growth_alert_ratio": "应收增速/营收增速的预警倍数，超过此值触发回款风险告警",
+    "inventory_growth_alert_ratio": "存货增速的预警倍数（相对前期），超过此值触发存货积压告警",
+    "cashflow_negative_years": "经营现金流连续为负的预警年数，达到此年数触发持续经营告警"
+  },
+  "industries": {
+    "制造业": {
+      "_description": "制造业(C)：重资产行业，存货和应收账款占比高，毛利率中等，资产负债率中等",
+      "code": "C",
+      "benchmarks": {
+        "gross_margin": {"low": 15, "average": 25, "high": 35, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 30, "average": 50, "high": 65, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 10, "average": 20, "high": 30, "unit": "%"},
+        "inventory_turnover": {"low": 4, "average": 6, "high": 10, "unit": "次"},
+        "current_ratio": {"low": 1.0, "average": 1.5, "high": 2.5, "unit": "倍"},
+        "quick_ratio": {"low": 0.6, "average": 1.0, "high": 1.8, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.7, "average": 1.0, "high": 1.3, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 0, "average": 10, "high": 25, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 30,
+        "gross_margin_deviation": 10,
+        "ar_growth_alert_ratio": 1.5,
+        "inventory_growth_alert_ratio": 1.5,
+        "cashflow_negative_years": 2
+      }
+    },
+    "房地产": {
+      "_description": "房地产(K)：高杠杆行业，资产负债率普遍高(70%+)，存货周转极慢(预售制)，现金流波动大",
+      "code": "K",
+      "benchmarks": {
+        "gross_margin": {"low": 20, "average": 30, "high": 45, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 50, "average": 70, "high": 80, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 2, "average": 5, "high": 10, "unit": "%"},
+        "inventory_turnover": {"low": 0.2, "average": 0.4, "high": 0.6, "unit": "次"},
+        "current_ratio": {"low": 1.0, "average": 1.3, "high": 1.8, "unit": "倍"},
+        "quick_ratio": {"low": 0.3, "average": 0.5, "high": 0.8, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.5, "average": 0.8, "high": 1.5, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 0, "average": 5, "high": 15, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 20,
+        "gross_margin_deviation": 8,
+        "ar_growth_alert_ratio": 1.3,
+        "inventory_growth_alert_ratio": 1.3,
+        "cashflow_negative_years": 1
+      }
+    },
+    "互联网科技": {
+      "_description": "互联网科技(I)：轻资产高毛利行业，研发投入大，商誉占比高，应收账款周期较长",
+      "code": "I",
+      "benchmarks": {
+        "gross_margin": {"low": 40, "average": 60, "high": 80, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 15, "average": 30, "high": 50, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 15, "average": 25, "high": 40, "unit": "%"},
+        "inventory_turnover": {"low": 8, "average": 15, "high": 30, "unit": "次"},
+        "current_ratio": {"low": 1.5, "average": 2.5, "high": 4.0, "unit": "倍"},
+        "quick_ratio": {"low": 1.4, "average": 2.3, "high": 3.8, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.8, "average": 1.2, "high": 1.5, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 5, "average": 20, "high": 40, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 40,
+        "gross_margin_deviation": 12,
+        "ar_growth_alert_ratio": 1.8,
+        "inventory_growth_alert_ratio": 2.0,
+        "cashflow_negative_years": 3
+      }
+    },
+    "医药生物": {
+      "_description": "医药生物(C27)：高毛利高研发投入行业，应收账款因医院账期长而偏高，商誉因并购较多",
+      "code": "C27",
+      "benchmarks": {
+        "gross_margin": {"low": 50, "average": 70, "high": 90, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 20, "average": 35, "high": 55, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 15, "average": 25, "high": 40, "unit": "%"},
+        "inventory_turnover": {"low": 2, "average": 4, "high": 6, "unit": "次"},
+        "current_ratio": {"low": 1.5, "average": 2.5, "high": 4.0, "unit": "倍"},
+        "quick_ratio": {"low": 1.0, "average": 1.8, "high": 3.0, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.7, "average": 1.0, "high": 1.3, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 5, "average": 15, "high": 30, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 25,
+        "gross_margin_deviation": 10,
+        "ar_growth_alert_ratio": 1.5,
+        "inventory_growth_alert_ratio": 1.5,
+        "cashflow_negative_years": 2
+      }
+    },
+    "金融": {
+      "_description": "金融(J)：极高杠杆行业(92%+)，无存货概念(inventory_turnover=0)，应收占比极低，现金流波动受市场影响大",
+      "code": "J",
+      "benchmarks": {
+        "gross_margin": {"low": 30, "average": 45, "high": 60, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 85, "average": 92, "high": 96, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 1, "average": 3, "high": 8, "unit": "%"},
+        "inventory_turnover": {"low": 0, "average": 0, "high": 0, "unit": "次"},
+        "current_ratio": {"low": 0.8, "average": 1.2, "high": 1.8, "unit": "倍"},
+        "quick_ratio": {"low": 0.7, "average": 1.1, "high": 1.7, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.5, "average": 1.0, "high": 2.0, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 0, "average": 3, "high": 10, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 15,
+        "gross_margin_deviation": 8,
+        "ar_growth_alert_ratio": 1.3,
+        "inventory_growth_alert_ratio": 999,
+        "_inventory_note": "金融行业无存货，设为999表示永不触发存货告警",
+        "cashflow_negative_years": 1
+      }
+    },
+    "零售贸易": {
+      "_description": "零售贸易(F)：低毛利高周转行业，存货占比高但周转快，现金流通常较好，应收账款少",
+      "code": "F",
+      "benchmarks": {
+        "gross_margin": {"low": 10, "average": 20, "high": 35, "unit": "%"},
+        "debt_to_asset_ratio": {"low": 35, "average": 55, "high": 70, "unit": "%"},
+        "ar_to_revenue_ratio": {"low": 5, "average": 10, "high": 20, "unit": "%"},
+        "inventory_turnover": {"low": 5, "average": 8, "high": 15, "unit": "次"},
+        "current_ratio": {"low": 0.8, "average": 1.2, "high": 1.8, "unit": "倍"},
+        "quick_ratio": {"low": 0.3, "average": 0.6, "high": 1.2, "unit": "倍"},
+        "cashflow_to_profit_ratio": {"low": 0.8, "average": 1.2, "high": 1.5, "unit": "倍"},
+        "goodwill_to_net_assets": {"low": 0, "average": 10, "high": 25, "unit": "%"}
+      },
+      "risk_thresholds": {
+        "revenue_yoy_alert": 20,
+        "gross_margin_deviation": 8,
+        "ar_growth_alert_ratio": 1.5,
+        "inventory_growth_alert_ratio": 1.3,
+        "cashflow_negative_years": 2
+      }
+    }
+  },
+  "general_thresholds": {
+    "description": "通用风险阈值（当行业未知时使用），适用于所有行业的兜底校验",
+    "gross_margin_deviation_pct": 10,
+    "_gross_margin_note": "毛利率偏离行业基准超过此百分比时触发告警",
+    "ar_to_revenue_warning_pct": 30,
+    "_ar_note": "应收账款占营收比超过此值触发回款风险告警",
+    "ar_growth_vs_revenue_ratio": 1.5,
+    "_ar_growth_note": "应收增速/营收增速超过此倍数触发提前确认收入嫌疑告警",
+    "inventory_growth_alert_ratio": 1.5,
+    "_inventory_note": "存货增速超过此倍数触发存货积压/跌价风险告警",
+    "goodwill_to_net_assets_warning_pct": 30,
+    "_goodwill_note": "商誉占净资产比超过此值触发减值风险告警",
+    "current_ratio_warning": 1.0,
+    "_current_ratio_note": "流动比率低于此值触发短期偿债能力不足告警",
+    "quick_ratio_warning": 0.5,
+    "_quick_ratio_note": "速动比率低于此值触发流动性风险告警",
+    "debt_to_asset_warning_pct": 70,
+    "_debt_note": "资产负债率超过此值触发高杠杆风险告警",
+    "cashflow_to_profit_warning": 0.5,
+    "_cashflow_note": "经营现金流/净利润比低于此值触发利润质量告警",
+    "other_receivables_to_total_assets_warning_pct": 5,
+    "_other_receivables_note": "其他应收款占总资产比超过此值触发资金占用嫌疑告警",
+    "equity_pledge_warning_pct": 70,
+    "_pledge_note": "大股东股权质押比例超过此值触发控制权风险告警",
+    "related_party_transaction_warning_pct": 30,
+    "_related_party_note": "关联采购占营业成本比超过此值触发关联交易风险告警"
+  }
+}

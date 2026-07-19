@@ -1,0 +1,1089 @@
+2026-07-16 20:21:17,473 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 20:21:27,875 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:21:27,890 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:25:45,511 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:25:45,522 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:25:48,587 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:26:40,432 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:27:25,303 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 20:27:28,046 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:35:23,342 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:35:26,564 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:43:26,794 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:43:29,833 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:44:17,739 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:44:20,692 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:46:21,373 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:46:24,430 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:47:37,979 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:47:41,077 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:48:00,891 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:48:04,001 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:49:29,721 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:49:32,783 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:49:43,802 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:49:46,763 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:50:13,986 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:50:17,197 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:50:32,230 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:50:35,266 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:50:39,858 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:50:43,238 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 20:50:52,840 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 20:50:56,041 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:01:51,210 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:01:55,418 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:01,960 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:05,380 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:05,509 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:08,936 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:09,068 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:12,059 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:27,737 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:30,777 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:34,594 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:37,656 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:41,051 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:45,604 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:47,030 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:50,700 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:02:50,823 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:02:54,016 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:03:29,353 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:35:38,135 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 21:35:41,526 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 21:36:03,636 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 401 Authorization Required"
+2026-07-16 21:36:16,809 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 401 Authorization Required"
+2026-07-16 21:42:59,559 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 21:43:01,759 [ERROR] fastapi - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2026-07-16 21:44:36,507 [ERROR] fastapi - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2026-07-16 21:44:43,129 [ERROR] fastapi - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2026-07-16 22:17:03,647 [ERROR] fastapi - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2026-07-16 22:18:17,894 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 22:18:21,188 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:18:23,475 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 401 Authorization Required"
+2026-07-16 22:29:49,624 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:29:54,088 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 22:29:57,029 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:29:59,712 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:01,741 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:05,859 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:09,312 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:11,252 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 22:30:11,255 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业资不抵债 持续经营风险 审计准则'，返回 1 条结果
+2026-07-16 22:30:11,257 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业 其他应收款 资金占用 关联交易 大股东'，返回 7 条结果
+2026-07-16 22:30:11,260 [INFO] tools.knowledge_search - 知识库检索完成，query='恒大 碧桂园 财务造假 处罚案例 房地产'，返回 4 条结果
+2026-07-16 22:30:11,263 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 房地产企业 审计风险'，返回 6 条结果
+2026-07-16 22:30:11,428 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:15,360 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:30:23,178 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/radar_chart.png
+2026-07-16 22:30:23,187 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/risk_heatmap.png
+2026-07-16 22:30:23,244 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/trend_chart.png
+2026-07-16 22:30:23,484 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:36:27,011 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:36:59,794 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 22:37:02,957 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:37:05,943 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:07,401 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:08,585 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:11,528 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:14,895 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:17,045 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 22:37:17,048 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业资不抵债 资产负债率超100% 持续经营风险 审计'，返回 1 条结果
+2026-07-16 22:37:17,051 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业 其他应收款 资金占用 关联交易 大股东'，返回 7 条结果
+2026-07-16 22:37:17,053 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业 现金流为负 连续亏损 持续经营 审计准则'，返回 2 条结果
+2026-07-16 22:37:17,056 [INFO] tools.knowledge_search - 知识库检索完成，query='恒大集团 财务造假 处罚案例 证监会'，返回 4 条结果
+2026-07-16 22:37:17,060 [INFO] tools.knowledge_search - 知识库检索完成，query='碧桂园 财务风险 审计 监管处罚'，返回 1 条结果
+2026-07-16 22:37:17,248 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:21,593 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:37:28,185 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/risk_heatmap.png
+2026-07-16 22:37:28,233 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/radar_chart.png
+2026-07-16 22:37:28,281 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/trend_chart.png
+2026-07-16 22:37:28,490 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:38:16,474 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/audit_risk_report_5829aeca.xlsx
+2026-07-16 22:43:02,899 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:43:06,123 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:43:06,251 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:43:38,952 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 22:43:41,737 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:43:44,044 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:45,125 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:46,007 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:46,925 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:48,079 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:51,500 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:53,678 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:55,540 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 22:43:55,544 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 贵州茅台 审计风险 财务造假 虚增收入'，返回 8 条结果
+2026-07-16 22:43:55,547 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 资金占用 大股东质押 白酒上市公司'，返回 2 条结果
+2026-07-16 22:43:55,551 [INFO] tools.knowledge_search - 知识库检索完成，query='存货跌价准备 白酒行业 商誉减值 审计'，返回 1 条结果
+2026-07-16 22:43:55,754 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:57,268 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 贵州茅台 预收账款 经销商 收入确认 审计'，返回 1 条结果
+2026-07-16 22:43:57,271 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 信披合规 监管问询 处罚 2024'，返回 1 条结果
+2026-07-16 22:43:57,274 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 大股东 茅台集团 关联交易 同业竞争'，返回 1 条结果
+2026-07-16 22:43:57,463 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:43:59,031 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 分红 大额现金 货币资金 存贷双高 审计'，返回 6 条结果
+2026-07-16 22:43:59,034 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 存货 陈酿 跌价准备 审计准则 收入确认 经销商'，返回 8 条结果
+2026-07-16 22:43:59,264 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:44:02,515 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:44:04,385 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/trend_chart.png
+2026-07-16 22:44:04,666 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:44:33,995 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/risk_heatmap.png
+2026-07-16 22:44:34,072 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/radar_chart.png
+2026-07-16 22:44:34,346 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:45:03,080 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/audit_risk_report_edb05d47.pdf
+2026-07-16 22:45:03,080 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/audit_risk_report_4efb4c02.xlsx
+2026-07-16 22:45:03,303 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:26,909 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:28,575 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:31,718 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:34,199 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:36,166 [INFO] tools.knowledge_search - 知识库检索完成，query='商誉减值 存货跌价 白酒行业 审计准则'，返回 1 条结果
+2026-07-16 22:50:36,169 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 审计风险 证监会处罚案例'，返回 6 条结果
+2026-07-16 22:50:36,175 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 贵州茅台 审计风险 关联交易 信披合规'，返回 1 条结果
+2026-07-16 22:50:36,333 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:39,792 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:50:58,541 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/radar_chart.png
+2026-07-16 22:50:58,613 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/risk_heatmap.png
+2026-07-16 22:50:58,677 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/trend_chart.png
+2026-07-16 22:50:58,831 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:51:15,632 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/audit_risk_report_38d82828.pdf
+2026-07-16 22:51:15,634 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/audit_risk_report_bf3a91be.xlsx
+2026-07-16 22:51:15,835 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:57:29,393 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:57:33,990 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:57:37,162 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:57:40,960 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:57:47,195 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:57:50,887 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:57:56,131 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:57:59,861 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:58:58,205 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 22:59:08,771 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 22:59:12,322 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 22:59:21,394 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:22,626 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:23,863 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:24,994 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:28,473 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:30,772 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:32,811 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 22:59:32,814 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 白酒行业 审计风险 财务造假'，返回 4 条结果
+2026-07-16 22:59:32,817 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 存货跌价 审计风险 收入确认'，返回 2 条结果
+2026-07-16 22:59:32,820 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 资金占用 大股东质押 上市公司'，返回 2 条结果
+2026-07-16 22:59:33,014 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:34,988 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 存货 白酒 陈酿 跌价测试 审计'，返回 8 条结果
+2026-07-16 22:59:34,993 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 经销商 预收款 收入确认 审计风险'，返回 1 条结果
+2026-07-16 22:59:34,996 [INFO] tools.knowledge_search - 知识库检索完成，query='国有企业 茅台集团 关联交易 同业竞争 信披'，返回 1 条结果
+2026-07-16 22:59:35,203 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:36,581 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 大股东 茅台集团 质押 资金占用'，返回 1 条结果
+2026-07-16 22:59:36,911 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 22:59:39,435 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:00:12,688 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台酒股份有限公司_2024年_财务雷达图.png
+2026-07-16 23:00:12,739 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台_趋势图.png
+2026-07-16 23:00:13,074 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:00:47,188 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_贵州茅台酒股份有限公司_2024年_审计风险报告.pdf
+2026-07-16 23:00:47,190 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_贵州茅台酒股份有限公司_2024年_审计底稿.xlsx
+2026-07-16 23:00:47,345 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台酒股份有限公司_2024年_风险热力图.png
+2026-07-16 23:00:47,626 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:04:39,098 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:04:43,875 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:05:41,340 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:05:51,930 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 23:05:55,001 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:05:58,326 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:02,585 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:06,455 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:08,779 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 23:06:08,782 [INFO] tools.knowledge_search - 知识库检索完成，query='经营现金流为负 净利润为正 利润质量 虚增收入 证监会处罚'，返回 6 条结果
+2026-07-16 23:06:08,785 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 虚增收入 财务造假'，返回 8 条结果
+2026-07-16 23:06:08,788 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 短债高企 财务异常 审计风险'，返回 6 条结果
+2026-07-16 23:06:09,182 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:12,505 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:14,928 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_示例公司_趋势图.png
+2026-07-16 23:06:15,336 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:37,391 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_示例公司_2023年_财务雷达图.png
+2026-07-16 23:06:37,453 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_示例公司_2023年_风险热力图.png
+2026-07-16 23:06:37,708 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:06:59,695 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_示例公司_2023年_审计底稿.xlsx
+2026-07-16 23:06:59,696 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_示例公司_2023年_审计风险报告.pdf
+2026-07-16 23:06:59,943 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:12:42,529 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:12:46,862 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:13:48,782 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:14:02,058 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 23:14:04,994 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:14:13,365 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:14,636 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:17,541 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:20,327 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:21,603 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:25,614 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:30,381 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:32,460 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 23:14:32,462 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 贵州茅台 审计风险 财务造假 关联交易'，返回 5 条结果
+2026-07-16 23:14:32,465 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 虚增收入 应收账款 审计'，返回 8 条结果
+2026-07-16 23:14:32,468 [INFO] tools.knowledge_search - 知识库检索完成，query='商誉减值 关联方资金占用 大股东质押 信披违规'，返回 1 条结果
+2026-07-16 23:14:32,827 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:35,824 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:14:37,378 [INFO] tools.knowledge_search - 知识库检索完成，query='白酒行业 贵州茅台 经销商 预收款 收入确认 消费税'，返回 1 条结果
+2026-07-16 23:14:37,382 [INFO] tools.knowledge_search - 知识库检索完成，query='贵州茅台 大股东 贵州省国资委 关联交易 资金占用'，返回 2 条结果
+2026-07-16 23:14:37,762 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:15:03,160 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台酒股份有限公司_2024年_财务雷达图.png
+2026-07-16 23:15:03,237 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台酒股份有限公司_2024年_风险热力图.png
+2026-07-16 23:15:03,303 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_贵州茅台_趋势图.png
+2026-07-16 23:15:03,626 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:15:28,353 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_贵州茅台酒股份有限公司_2024年_审计风险报告.pdf
+2026-07-16 23:15:28,355 [ERROR] local_storage - 本地存储失败: [WinError 32] 另一个程序正在使用此文件，进程无法访问。
+2026-07-16 23:15:28,646 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:29,710 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:33,082 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:36,777 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:38,859 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业存贷双高 货币资金 财务造假 恒大'，返回 8 条结果
+2026-07-16 23:16:38,863 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业高负债率 持续经营风险 审计'，返回 1 条结果
+2026-07-16 23:16:38,867 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业应收账款虚增收入 提前确认收入 处罚案例'，返回 1 条结果
+2026-07-16 23:16:38,870 [INFO] tools.knowledge_search - 知识库检索完成，query='房地产企业关联方资金占用 其他应收款 大股东质押'，返回 6 条结果
+2026-07-16 23:16:39,080 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:43,459 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:16:45,839 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_恒大地产vs碧桂园_趋势图.png
+2026-07-16 23:16:46,105 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:17:09,035 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_财务雷达图.png
+2026-07-16 23:17:09,103 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_风险热力图.png
+2026-07-16 23:17:09,404 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:17:48,671 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_未知公司_审计风险报告.pdf
+2026-07-16 23:17:48,671 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_未知公司_审计底稿.xlsx
+2026-07-16 23:17:48,910 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:18,893 [INFO] main - 文件上传成功: 富特科技：2025年年度报告摘要（更正后）(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\68a9726c_富特科技：2025年年度报告摘要（更正后）(1).pdf (467284 bytes)
+2026-07-16 23:19:19,161 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:21,663 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:24,112 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:26,274 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款激增 营收增长 现金流背离 审计准则 收入确认'，返回 1 条结果
+2026-07-16 23:19:26,278 [INFO] tools.knowledge_search - 知识库检索完成，query='营收暴增 现金流为负 财务造假 收入确认 新能源汽车零部件'，返回 5 条结果
+2026-07-16 23:19:26,281 [INFO] tools.knowledge_search - 知识库检索完成，query='经营现金流为负 净利润为正 利润质量 虚增收入 审计风险'，返回 6 条结果
+2026-07-16 23:19:26,571 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:28,868 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 短期借款 利息收入 利息支出 财务造假'，返回 8 条结果
+2026-07-16 23:19:29,158 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:32,110 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:33,945 [INFO] tools.knowledge_search - 知识库检索完成，query='寄售模式 收入确认 时点 会计准则 风险'，返回 1 条结果
+2026-07-16 23:19:33,952 [INFO] tools.knowledge_search - 知识库检索完成，query='向特定对象发行股票 募集资金 偿债能力 持续经营 审计风险'，返回 1 条结果
+2026-07-16 23:19:34,219 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:19:36,571 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_富特科技_趋势图.png
+2026-07-16 23:19:36,847 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:20:02,209 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_浙江富特科技股份有限公司_2025年_风险热力图.png
+2026-07-16 23:20:02,304 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_浙江富特科技股份有限公司_2025年_财务雷达图.png
+2026-07-16 23:20:02,621 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:20:32,685 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_浙江富特科技股份有限公司_2025年_审计底稿.xlsx
+2026-07-16 23:20:32,687 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_浙江富特科技股份有限公司_2025年_审计风险报告.pdf
+2026-07-16 23:20:33,047 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:47,555 [INFO] main - 文件上传成功: 华盛锂电：江苏华盛锂电材料股份有限公司2025年年度报告摘要（更正后）(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\9a865d7f_华盛锂电：江苏华盛锂电材料股份有限公司2025年年度报告摘要（更正后）(1).pdf (582523 bytes)
+2026-07-16 23:21:47,820 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:50,557 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:52,322 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:55,398 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:57,793 [INFO] tools.knowledge_search - 知识库检索完成，query='营收增长72% 经营现金流连续三年为负 盈利质量 财务造假'，返回 4 条结果
+2026-07-16 23:21:57,796 [INFO] tools.knowledge_search - 知识库检索完成，query='未分配利润变动与净利润不一致 财务数据可靠性 信息披露违规'，返回 6 条结果
+2026-07-16 23:21:57,799 [INFO] tools.knowledge_search - 知识库检索完成，query='经营现金流为负 净利润为正 利润质量 虚增收入 审计风险'，返回 6 条结果
+2026-07-16 23:21:58,038 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:21:59,595 [INFO] tools.knowledge_search - 知识库检索完成，query='连续两年扣非亏损 持续经营风险 科创板 退市风险警示'，返回 1 条结果
+2026-07-16 23:21:59,598 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 短期借款 财务造假 审计风险'，返回 8 条结果
+2026-07-16 23:21:59,848 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:22:02,664 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:22:04,818 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:22:06,504 [INFO] tools.knowledge_search - 知识库检索完成，query='扣非净利润连续三年为负 持续经营 审计准则 退市风险'，返回 1 条结果
+2026-07-16 23:22:06,508 [INFO] tools.knowledge_search - 知识库检索完成，query='营业收入增长72% 经营现金流负 盈利质量 审计程序 收入确认'，返回 1 条结果
+2026-07-16 23:22:06,765 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:22:08,208 [INFO] tools.knowledge_search - 知识库检索完成，query='科创板 退市 扣非净利润为负 营业收入低于1亿 退市风险警示规则'，返回 8 条结果
+2026-07-16 23:22:08,211 [INFO] tools.knowledge_search - 知识库检索完成，query='企业会计准则第14号 收入确认 五步法 控制权转移 销售退回'，返回 6 条结果
+2026-07-16 23:22:08,523 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:22:40,127 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_2025年_财务雷达图.png
+2026-07-16 23:22:40,204 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_2025年_风险热力图.png
+2026-07-16 23:22:40,292 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_华盛锂电_趋势图.png
+2026-07-16 23:22:40,685 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:23:13,665 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_未知公司_2025年_审计底稿.xlsx
+2026-07-16 23:23:13,670 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_未知公司_2025年_审计风险报告.pdf
+2026-07-16 23:23:14,004 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:28:06,317 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:28:24,003 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:29:05,756 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:29:15,295 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 23:29:18,736 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:29:40,872 [INFO] main - 文件上传成功: 互太纺织：2025_2026年年报 (1)(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\1c8c91e7_互太纺织：2025_2026年年报 (1)(1).pdf (10174627 bytes)
+2026-07-16 23:29:41,539 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:29:47,975 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:29:50,838 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:29:52,573 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 23:29:52,576 [INFO] tools.knowledge_search - 知识库检索完成，query='净利润大幅下降50% 利润波动 审计风险 持续经营能力'，返回 6 条结果
+2026-07-16 23:29:52,579 [INFO] tools.knowledge_search - 知识库检索完成，query='毛利率偏低 制造业 纺织行业 毛利率7% 盈利能力风险'，返回 2 条结果
+2026-07-16 23:29:52,583 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 大客户集中度 前五大客户占比77% 客户依赖风险'，返回 1 条结果
+2026-07-16 23:29:53,287 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:29:55,505 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 大股东 Toray 东丽 互太纺织 持续关联交易'，返回 1 条结果
+2026-07-16 23:29:56,118 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:29:57,584 [INFO] tools.knowledge_search - 知识库检索完成，query='毛利率7% 纺织制造业 盈利能力下降 持续经营能力 审计关注'，返回 2 条结果
+2026-07-16 23:29:58,315 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:30:02,777 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:30:07,300 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_互太纺织_趋势图.png
+2026-07-16 23:30:07,934 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:30:28,764 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:30:34,773 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:30:39,029 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:31:06,107 [ERROR] main - stream_sse error: [Errno 2] No such file or directory: 'C:\\Users\\ASUS\\AppData\\Local\\Temp\\20260716_互太纺织控股有限公司(PacificTextilesHoldingsLimited)_2025/2026（截至2026年3月31日）年_审计风险报告.pdf'
+Traceback (most recent call last):
+  File "E:\Pycharm documents\zhinengti\projects\src\main.py", line 114, in stream_sse
+    async for chunk in agent.astream(payload, config=run_config):
+    ...<18 lines>...
+                    yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3000, in astream
+    async for _ in runner.atick(
+    ...<13 lines>...
+            yield o
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 304, in atick
+    await arun_with_retry(
+    ...<15 lines>...
+    )
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 137, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 705, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        step.ainvoke(input, config, **kwargs), context=context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 473, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 749, in _afunc
+    outputs = await asyncio.gather(*coros)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 1088, in _arun_one
+    return await self._execute_tool_async(tool_request, input_type, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 1037, in _execute_tool_async
+    content = _handle_tool_error(e, flag=self._handle_tool_errors)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 401, in _handle_tool_error
+    content = flag(e)  # type: ignore [assignment, call-arg]
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 358, in _default_handle_tool_errors
+    raise e
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 990, in _execute_tool_async
+    response = await tool.ainvoke(call_args, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\structured.py", line 68, in ainvoke
+    return await run_in_executor(config, self.invoke, input, config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\runnables\config.py", line 636, in run_in_executor
+    return await asyncio.get_running_loop().run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "C:\Users\ASUS\AppData\Local\Programs\Python\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\runnables\config.py", line 627, in wrapper
+    return func(*args, **kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 642, in invoke
+    return self.run(tool_input, **kwargs)
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 1001, in run
+    raise error_to_raise
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 967, in run
+    response = context.run(self._run, *tool_args, **tool_kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\structured.py", line 97, in _run
+    return self.func(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\src\tools\pdf_export.py", line 250, in export_pdf_report
+    return _export_pdf_impl(risk_report_json)
+  File "E:\Pycharm documents\zhinengti\projects\src\tools\pdf_export.py", line 237, in _export_pdf_impl
+    doc.build(elements)
+    ~~~~~~~~~^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\reportlab\platypus\doctemplate.py", line 1322, in build
+    BaseDocTemplate.build(self,flowables, canvasmaker=canvasmaker)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\reportlab\platypus\doctemplate.py", line 1109, in build
+    self._endBuild()
+    ~~~~~~~~~~~~~~^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\reportlab\platypus\doctemplate.py", line 1044, in _endBuild
+    if getattr(self,'_doSave',1): self.canv.save()
+                                  ~~~~~~~~~~~~~~^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\reportlab\pdfgen\canvas.py", line 1302, in save
+    self._doc.SaveToFile(self._filename, self)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\reportlab\pdfbase\pdfdoc.py", line 208, in SaveToFile
+    f = open(filename, "wb")
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\ASUS\\AppData\\Local\\Temp\\20260716_互太纺织控股有限公司(PacificTextilesHoldingsLimited)_2025/2026（截至2026年3月31日）年_审计风险报告.pdf'
+During task with name 'tools' and id '736a4d9d-5f1d-affd-2a43-a005e1f528c3'
+
+2026-07-16 23:38:03,187 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:39:04,977 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:39:05,101 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:39:15,614 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-16 23:39:20,161 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:39:35,130 [INFO] main - 文件上传成功: 互太纺织：2025_2026年年报 (1)(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\2b138299_互太纺织：2025_2026年年报 (1)(1).pdf (10174627 bytes)
+2026-07-16 23:39:35,678 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:39:46,266 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:39:49,965 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:39:52,305 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-16 23:39:52,309 [INFO] tools.knowledge_search - 知识库检索完成，query='净利润大幅下降50% 持续经营能力 审计风险 纺织行业'，返回 6 条结果
+2026-07-16 23:39:52,316 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 大客户集中度 77% 持续关联交易 信披合规'，返回 1 条结果
+2026-07-16 23:39:52,977 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:39:55,508 [INFO] tools.knowledge_search - 知识库检索完成，query='毛利率异常低 纺织行业 持续经营 审计风险 香港上市规则'，返回 1 条结果
+2026-07-16 23:39:55,511 [INFO] tools.knowledge_search - 知识库检索完成，query='客户集中度 单一客户依赖 关联交易 信息披露 香港联交所'，返回 2 条结果
+2026-07-16 23:39:56,065 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:40:00,137 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:40:06,253 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_2025_2026_财务雷达图.png
+2026-07-16 23:40:06,315 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_未知公司_2025_2026_风险热力图.png
+2026-07-16 23:40:06,373 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260716_互太纺织_趋势图.png
+2026-07-16 23:40:07,083 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-16 23:40:59,347 [ERROR] main - stream_sse error: name 'sanitize_filename' is not defined
+Traceback (most recent call last):
+  File "E:\Pycharm documents\zhinengti\projects\src\main.py", line 114, in stream_sse
+    async for chunk in agent.astream(payload, config=run_config):
+    ...<18 lines>...
+                    yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3000, in astream
+    async for _ in runner.atick(
+    ...<13 lines>...
+            yield o
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 410, in atick
+    _panic_or_proceed(
+    ~~~~~~~~~~~~~~~~~^
+        futures.done.union(f for f, t in futures.items() if t is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        timeout_exc_cls=asyncio.TimeoutError,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        panic=reraise,
+        ^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 520, in _panic_or_proceed
+    raise exc
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 137, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 705, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        step.ainvoke(input, config, **kwargs), context=context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 473, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 749, in _afunc
+    outputs = await asyncio.gather(*coros)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 1088, in _arun_one
+    return await self._execute_tool_async(tool_request, input_type, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 1037, in _execute_tool_async
+    content = _handle_tool_error(e, flag=self._handle_tool_errors)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 401, in _handle_tool_error
+    content = flag(e)  # type: ignore [assignment, call-arg]
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 358, in _default_handle_tool_errors
+    raise e
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langgraph\prebuilt\tool_node.py", line 990, in _execute_tool_async
+    response = await tool.ainvoke(call_args, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\structured.py", line 68, in ainvoke
+    return await run_in_executor(config, self.invoke, input, config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\runnables\config.py", line 636, in run_in_executor
+    return await asyncio.get_running_loop().run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "C:\Users\ASUS\AppData\Local\Programs\Python\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\runnables\config.py", line 627, in wrapper
+    return func(*args, **kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 642, in invoke
+    return self.run(tool_input, **kwargs)
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 1001, in run
+    raise error_to_raise
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\base.py", line 967, in run
+    response = context.run(self._run, *tool_args, **tool_kwargs)
+  File "E:\Pycharm documents\zhinengti\projects\.venv\Lib\site-packages\langchain_core\tools\structured.py", line 97, in _run
+    return self.func(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "E:\Pycharm documents\zhinengti\projects\src\tools\excel_export.py", line 218, in export_excel_report
+    return _export_excel_impl(risk_report_json)
+  File "E:\Pycharm documents\zhinengti\projects\src\tools\excel_export.py", line 187, in _export_excel_impl
+    prefix = _build_file_prefix(report)
+  File "E:\Pycharm documents\zhinengti\projects\src\tools\excel_export.py", line 21, in _build_file_prefix
+    company = sanitize_filename(ci.get("company_name", "未知公司"))
+              ^^^^^^^^^^^^^^^^^
+NameError: name 'sanitize_filename' is not defined
+During task with name 'tools' and id '96348660-d45f-82de-60b1-df2482a27966'
+
+2026-07-16 23:40:59,360 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260716_未知公司_2025_2026（截至2026年3月31日）_审计风险报告.pdf
+2026-07-16 23:45:50,889 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:45:54,212 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:53:07,094 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:53:10,880 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-16 23:53:11,011 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-16 23:53:14,425 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 00:01:23,516 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 00:01:30,556 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 00:01:33,511 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 00:02:18,242 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 09:02:20,193 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 09:02:29,210 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 09:02:33,051 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 09:02:41,830 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 09:02:44,629 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 09:14:34,203 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 09:14:38,394 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 09:14:55,430 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-17 09:15:30,312 [INFO] main - 文件上传成功: 互太纺织：2025_2026年年报 (1)(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\d4b0efab_互太纺织：2025_2026年年报 (1)(1).pdf (10174627 bytes)
+2026-07-17 09:15:31,020 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:35,742 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:37,206 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:38,792 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:40,264 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:45,406 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:48,202 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:51,086 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:53,244 [INFO] tools.knowledge_search - 知识库检索完成，query='净利润大幅下降50% 纺织制造业 审计风险 持续经营'，返回 6 条结果
+2026-07-17 09:15:53,249 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 大股东 香港上市规则 第14A章 持续关连交易'，返回 1 条结果
+2026-07-17 09:15:53,774 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:15:55,932 [INFO] tools.knowledge_search - 知识库检索完成，query='香港上市规则 第14A章 关联交易 持续关连交易 披露要求'，返回 1 条结果
+2026-07-17 09:15:55,939 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 银行借款 纺织企业 财务造假'，返回 8 条结果
+2026-07-17 09:15:56,481 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:16:18,503 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_未知公司_2025_2026_风险热力图.png
+2026-07-17 09:16:18,994 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:16:24,462 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_未知公司_2025_2026_财务雷达图.png
+2026-07-17 09:16:24,999 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:16:27,084 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_互太纺织控股有限公司_趋势图.png
+2026-07-17 09:16:27,632 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:16:51,212 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260717_未知公司_2025_2026_审计风险报告.pdf
+2026-07-17 09:16:51,678 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:17:02,005 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260717_未知公司_2025_2026_审计底稿.xlsx
+2026-07-17 09:17:02,954 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 09:51:50,283 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 10:57:11,026 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 10:57:15,321 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 11:01:30,910 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 13:32:52,511 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 13:33:01,098 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 13:33:09,489 [INFO] local_knowledge - 本地知识库加载完成，共 266 个文档块
+2026-07-17 13:33:44,977 [INFO] main - 文件上传成功: 优刻得：优刻得2025年年度报告摘要（更正后）(1).pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\7c0c2cf0_优刻得：优刻得2025年年度报告摘要（更正后）(1).pdf (372496 bytes)
+2026-07-17 13:33:45,343 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:47,820 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:50,883 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:52,995 [INFO] tools.knowledge_search - 知识库检索完成，query='连续亏损 持续经营风险 科创板 审计'，返回 2 条结果
+2026-07-17 13:33:53,203 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:54,596 [INFO] tools.knowledge_search - 知识库检索完成，query='科创板 退市风险警示 净利润为负 扣非净利润为负 营业收入'，返回 8 条结果
+2026-07-17 13:33:54,602 [INFO] tools.knowledge_search - 知识库检索完成，query='研发投入资本化 互联网企业 会计准则 收入确认'，返回 1 条结果
+2026-07-17 13:33:54,876 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:56,194 [INFO] tools.knowledge_search - 知识库检索完成，query='未弥补亏损 不分配利润 上市公司 信息披露'，返回 1 条结果
+2026-07-17 13:33:56,198 [INFO] tools.knowledge_search - 知识库检索完成，query='科创板上市规则 退市标准 营业收入低于1亿元 净利润为负 扣非前后'，返回 8 条结果
+2026-07-17 13:33:56,460 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:33:58,921 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:34:03,149 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_优刻得科技股份有限公司_趋势图.png
+2026-07-17 13:34:03,410 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:34:20,818 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_优刻得科技股份有限公司_2025_财务雷达图.png
+2026-07-17 13:34:20,886 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260717_优刻得科技股份有限公司_2025_风险热力图.png
+2026-07-17 13:34:21,315 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:34:43,383 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260717_优刻得科技股份有限公司_2025_审计风险报告.pdf
+2026-07-17 13:34:43,386 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260717_优刻得科技股份有限公司_2025_审计底稿.xlsx
+2026-07-17 13:34:43,652 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-17 13:38:53,377 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-17 23:23:52,127 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-17 23:23:55,552 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-17 23:27:42,645 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 13:17:39,299 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 13:17:48,082 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 13:17:51,791 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 13:17:57,949 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 13:18:00,839 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 13:27:41,400 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 13:27:45,424 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 13:30:02,111 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 13:32:40,426 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 13:32:43,393 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 13:33:56,760 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 13:42:21,559 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 13:42:25,246 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 13:43:02,008 [ERROR] main - 知识库文件上传失败: 二、《上市公司信息披露管理办法（2025 证监会 226 号令）》｜披露、舆情智能体依据(1).docx: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\ASUS\\AppData\\Local\\Temp\\kb_261eb6ab.docx'
+2026-07-18 13:43:05,573 [INFO] main - 知识库文件已添加: 附件1：公开发行证券的公司信息披露内容与格式准则第2号——年度报告的内容与格式(1).pdf → 附件1：公开发行证券的公司信息披露内容与格式准则第2号——年度报告的内容与格式(1).txt (28405 字符, 59 块)
+2026-07-18 13:43:07,502 [INFO] main - 知识库文件已添加: 附件1：上市公司信息披露管理办法(1).pdf → 附件1：上市公司信息披露管理办法(1).txt (11406 字符, 21 块)
+2026-07-18 13:43:07,837 [INFO] main - 知识库文件已添加: 附件2：《上市公司信息披露管理办法》修订说明(1).pdf → 附件2：《上市公司信息披露管理办法》修订说明(1).txt (2278 字符, 4 块)
+2026-07-18 13:43:07,869 [ERROR] main - 知识库文件上传失败: 共功能.docx: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\ASUS\\AppData\\Local\\Temp\\kb_67742f4e.docx'
+2026-07-18 13:43:07,892 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-18 13:43:21,904 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-18 13:43:31,807 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:43:33,812 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:43:35,987 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:43:37,510 [INFO] tools.knowledge_search - 知识库检索完成，query='经营现金流为负 净利润为正 利润质量 财务造假'，返回 4 条结果
+2026-07-18 13:43:37,516 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 虚增收入 提前确认收入'，返回 8 条结果
+2026-07-18 13:43:37,724 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:43:57,783 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_未知公司_未知_风险热力图.png
+2026-07-18 13:43:57,849 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_未知公司_未知_财务雷达图.png
+2026-07-18 13:43:58,096 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:44:16,217 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_未知公司_本期_审计风险报告.pdf
+2026-07-18 13:44:16,222 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_未知公司_本期_审计底稿.xlsx
+2026-07-18 13:44:16,464 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:53:41,487 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:53:43,341 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:53:45,720 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:53:47,442 [INFO] tools.knowledge_search - 知识库检索完成，query='经营现金流为负 净利润为正 利润质量 盈利质量 财务造假'，返回 4 条结果
+2026-07-18 13:53:47,446 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 虚增收入 提前确认收入 证监会处罚'，返回 8 条结果
+2026-07-18 13:53:47,451 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款占营收比例过高 回款风险 坏账准备 审计'，返回 1 条结果
+2026-07-18 13:53:47,659 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:54:01,740 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_示例公司_未知_财务雷达图.png
+2026-07-18 13:54:01,812 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_示例公司_未知_风险热力图.png
+2026-07-18 13:54:01,886 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_示例公司_趋势图.png
+2026-07-18 13:54:02,171 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 13:54:15,151 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_示例公司_本期_审计风险报告.pdf
+2026-07-18 13:54:15,155 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_示例公司_本期_审计底稿.xlsx
+2026-07-18 13:54:15,363 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 14:05:36,124 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 14:22:27,976 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 14:22:31,159 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 14:23:26,627 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 18:58:03,022 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 18:58:12,810 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 18:58:18,843 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-18 18:58:59,506 [INFO] main - 文件上传成功: 招商银行_近10年财务报表.xlsx → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\f9dc577f_招商银行_近10年财务报表.xlsx (19463 bytes)
+2026-07-18 18:59:06,957 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\425b5a05_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-18 18:59:09,467 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:18,386 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:20,886 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:27,116 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:30,452 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:32,192 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速异常 提前确认收入 放宽信用政策 审计风险'，返回 1 条结果
+2026-07-18 18:59:32,198 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 财务造假 审计'，返回 8 条结果
+2026-07-18 18:59:32,205 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用'，返回 3 条结果
+2026-07-18 18:59:33,167 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:34,596 [INFO] tools.knowledge_search - 知识库检索完成，query='中国石油 关联交易 中油财务 存款 利率 资金占用 监管'，返回 6 条结果
+2026-07-18 18:59:34,602 [INFO] tools.knowledge_search - 知识库检索完成，query='油气行业 毛利率 资产负债率 行业基准 石油公司 财务指标'，返回 2 条结果
+2026-07-18 18:59:35,524 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 18:59:39,137 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:00:04,401 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_未知公司_未知_风险热力图.png
+2026-07-18 19:00:04,469 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_未知公司_未知_财务雷达图.png
+2026-07-18 19:00:04,532 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_中国石油天然气股份有限公司_趋势图.png
+2026-07-18 19:00:05,385 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:00:29,789 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_未知公司_未知_审计风险报告.pdf
+2026-07-18 19:00:29,792 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_未知公司_未知_审计底稿.xlsx
+2026-07-18 19:00:30,787 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:01:30,201 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-18 19:01:52,210 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-18 19:01:55,337 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-18 19:02:45,545 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\cdbf0632_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-18 19:02:46,410 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:02:50,165 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:02:53,544 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:02:57,508 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:02:59,895 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-18 19:02:59,902 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 放宽信用政策 财务造假'，返回 6 条结果
+2026-07-18 19:02:59,907 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 财务舞弊'，返回 6 条结果
+2026-07-18 19:02:59,912 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用 信息披露'，返回 5 条结果
+2026-07-18 19:02:59,917 [INFO] tools.knowledge_search - 知识库检索完成，query='同一控制下企业合并 追溯调整 中油电能 大庆油田 关联交易'，返回 2 条结果
+2026-07-18 19:03:00,782 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:03:03,099 [INFO] tools.knowledge_search - 知识库检索完成，query='连续亏损 扣非净利润 持续经营能力 审计风险 石油行业'，返回 1 条结果
+2026-07-18 19:03:03,102 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产减值 储量估计 产量法折耗 会计估计 审计关注'，返回 1 条结果
+2026-07-18 19:03:03,908 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:03:35,224 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_中国石油天然气股份有限公司_未知_财务雷达图.png
+2026-07-18 19:03:35,306 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_中国石油天然气股份有限公司_未知_风险热力图.png
+2026-07-18 19:03:35,356 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260718_中国石油天然气股份有限公司_趋势图.png
+2026-07-18 19:03:36,045 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:04:05,213 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_中国石油天然气股份有限公司_未知_审计底稿.xlsx
+2026-07-18 19:04:05,216 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260718_中国石油天然气股份有限公司_未知_审计风险报告.pdf
+2026-07-18 19:04:06,637 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-07-18 19:15:20,830 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 06:51:10,609 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 06:51:14,662 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 06:52:27,727 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 06:54:47,176 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 06:54:50,071 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 06:59:45,884 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 06:59:49,031 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:05:12,544 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:05:15,774 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:05:17,639 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:05:20,672 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:07:13,545 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:07:16,721 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:10:53,891 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:11:31,828 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 07:11:34,743 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:11:56,045 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\eafaefa1_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 07:11:56,771 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:12:04,315 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:12:07,850 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:12:10,833 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:12:13,842 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 07:12:13,861 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 财务造假'，返回 8 条结果
+2026-07-19 07:12:13,864 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 虚增收入 审计风险'，返回 8 条结果
+2026-07-19 07:12:13,873 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用 上市公司'，返回 6 条结果
+2026-07-19 07:12:13,884 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产 减值测试 弃置义务 预计负债 会计估计'，返回 6 条结果
+2026-07-19 07:12:13,894 [INFO] tools.knowledge_search - 知识库检索完成，query='持续经营能力 连续亏损 扣非净利润 经营现金流 审计'，返回 1 条结果
+2026-07-19 07:12:14,531 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:12:22,659 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_财务雷达图.png
+2026-07-19 07:12:22,768 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_风险热力图.png
+2026-07-19 07:12:22,869 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 07:12:23,487 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:13:06,391 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计风险报告.pdf
+2026-07-19 07:13:06,398 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计底稿.xlsx
+2026-07-19 07:13:07,046 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:16:40,541 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:16:51,677 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 07:16:54,607 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:17:34,572 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\d6b7d827_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 07:17:35,316 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:17:39,441 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:17:42,446 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:17:45,769 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 07:17:45,775 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速异常 提前确认收入 放宽信用政策 审计风险'，返回 1 条结果
+2026-07-19 07:17:45,780 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 审计'，返回 6 条结果
+2026-07-19 07:17:46,523 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:17:48,066 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 其他应收款 大股东资金占用 审计风险'，返回 8 条结果
+2026-07-19 07:17:48,073 [INFO] tools.knowledge_search - 知识库检索完成，query='持续经营能力 连续亏损 流动比率 偿债能力 审计'，返回 1 条结果
+2026-07-19 07:17:48,079 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产减值 商誉减值 资产减值测试 审计准则'，返回 1 条结果
+2026-07-19 07:17:48,723 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:17:50,257 [INFO] tools.knowledge_search - 知识库检索完成，query='中油财务 关联存款 关联贷款 金融服务 上市公司 监管'，返回 3 条结果
+2026-07-19 07:17:50,819 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:18:16,381 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_财务雷达图.png
+2026-07-19 07:18:16,444 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_风险热力图.png
+2026-07-19 07:18:16,496 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 07:18:17,070 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:18:47,239 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计风险报告.pdf
+2026-07-19 07:18:47,239 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计底稿.xlsx
+2026-07-19 07:18:48,218 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:25:16,216 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:25:26,036 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 07:25:28,851 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:25:56,944 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\d945c6ee_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 07:25:57,580 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:26:01,518 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:26:04,253 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:26:07,396 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 07:26:07,403 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 虚增收入 审计风险'，返回 8 条结果
+2026-07-19 07:26:07,410 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入不匹配 财务造假 审计'，返回 8 条结果
+2026-07-19 07:26:07,416 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用 审计'，返回 3 条结果
+2026-07-19 07:26:07,422 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产减值 商誉减值 资产减值测试 审计准则'，返回 1 条结果
+2026-07-19 07:26:07,939 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:26:09,922 [INFO] tools.knowledge_search - 知识库检索完成，query='持续经营 连续亏损 扣非净利润 经营现金流 审计风险'，返回 2 条结果
+2026-07-19 07:26:09,928 [INFO] tools.knowledge_search - 知识库检索完成，query='油气资产 弃置义务 预计负债 会计估计 审计'，返回 6 条结果
+2026-07-19 07:26:10,450 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:26:40,778 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_财务雷达图.png
+2026-07-19 07:26:40,879 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_风险热力图.png
+2026-07-19 07:26:40,968 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 07:26:41,498 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:27:14,983 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计底稿.xlsx
+2026-07-19 07:27:14,983 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计风险报告.pdf
+2026-07-19 07:27:15,492 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:28:37,615 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:28:40,943 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:28:59,101 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:29:02,191 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:29:38,507 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:29:41,604 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:29:47,372 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:29:50,506 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:30:24,117 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:30:34,106 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 07:30:36,892 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:30:56,222 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\b405b9d0_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 07:30:56,969 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:02,771 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:06,676 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:09,898 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:12,051 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 07:31:12,059 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 放宽信用政策 审计风险'，返回 2 条结果
+2026-07-19 07:31:12,069 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 审计'，返回 6 条结果
+2026-07-19 07:31:12,074 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用 审计'，返回 3 条结果
+2026-07-19 07:31:12,607 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:14,523 [INFO] tools.knowledge_search - 知识库检索完成，query='油气行业 毛利率下降 营收下降 持续经营风险 审计'，返回 1 条结果
+2026-07-19 07:31:14,531 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款余额 贷款余额 信息披露 审计'，返回 4 条结果
+2026-07-19 07:31:15,093 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:31:44,556 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_风险热力图.png
+2026-07-19 07:31:44,668 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_财务雷达图.png
+2026-07-19 07:31:44,746 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 07:31:45,278 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:32:18,849 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计风险报告.pdf
+2026-07-19 07:32:18,852 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计底稿.xlsx
+2026-07-19 07:32:19,412 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:35:37,344 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:35:41,138 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:36:18,367 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:36:22,014 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:36:37,369 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 07:36:47,862 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 07:36:50,796 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 07:37:31,527 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\0123f4a0_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 07:37:32,178 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:37:36,320 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:37:39,122 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:37:41,768 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:37:43,643 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 07:37:43,657 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入 利息支出 异常 审计'，返回 6 条结果
+2026-07-19 07:37:43,657 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 放宽信用政策 审计风险'，返回 2 条结果
+2026-07-19 07:37:43,662 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 其他应收款 大股东资金占用 审计准则'，返回 8 条结果
+2026-07-19 07:37:43,668 [INFO] tools.knowledge_search - 知识库检索完成，query='未分配利润 净利润 分红 不一致 财务数据可靠性'，返回 8 条结果
+2026-07-19 07:37:44,177 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:38:11,026 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_财务雷达图.png
+2026-07-19 07:38:11,134 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_未知公司_未知_风险热力图.png
+2026-07-19 07:38:11,228 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 07:38:11,761 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:38:40,098 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计底稿.xlsx
+2026-07-19 07:38:40,105 [INFO] local_storage - 文件已保存到本地存储: E:\Pycharm documents\zhinengti\projects\local_storage\reports/20260719_未知公司_未知_审计风险报告.pdf
+2026-07-19 07:38:40,604 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 07:40:47,717 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:00:40,603 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 10:00:46,215 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:01:14,745 [WARNING] local_knowledge - ChromaDB 初始化失败，回退到 TF-IDF 模式: No module named 'chromadb'
+2026-07-19 10:01:14,757 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 10:01:31,358 [INFO] main - 文件上传成功: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf → C:\Users\ASUS\AppData\Local\Temp\zhinengti_uploads\b9327e33_中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf (8918115 bytes)
+2026-07-19 10:01:32,260 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:01:40,462 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:01:43,280 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:01:46,248 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:01:47,720 [INFO] tools.knowledge_search - 知识库检索完成，query='应收账款增速远超营收增速 提前确认收入 财务造假 审计准则'，返回 6 条结果
+2026-07-19 10:01:47,726 [INFO] tools.knowledge_search - 知识库检索完成，query='存贷双高 货币资金 利息收入不匹配 资金占用 审计风险'，返回 7 条结果
+2026-07-19 10:01:47,733 [INFO] tools.knowledge_search - 知识库检索完成，query='关联交易 中油财务 存款 贷款 关联方资金占用 信息披露'，返回 5 条结果
+2026-07-19 10:01:48,540 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:01:50,055 [INFO] tools.knowledge_search - 知识库检索完成，query='持续经营能力 连续亏损 扣非净利润 审计准则 风险评估'，返回 1 条结果
+2026-07-19 10:01:50,061 [INFO] tools.knowledge_search - 知识库检索完成，query='油气行业 毛利率下降 国际油价下跌 石油公司 财务风险'，返回 2 条结果
+2026-07-19 10:01:50,840 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:02:11,820 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_风险热力图.png
+2026-07-19 10:02:11,936 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_未知_财务雷达图.png
+2026-07-19 10:02:12,848 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:02:14,605 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\local_storage\charts/20260719_中国石油天然气股份有限公司_趋势图.png
+2026-07-19 10:02:15,291 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:02:44,682 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计风险报告.pdf
+2026-07-19 10:02:44,686 [INFO] local_storage - 文件已保存到本地存储: C:\Users\ASUS\Desktop\qoder cn\projects\local_storage\reports/20260719_中国石油天然气股份有限公司_未知_审计底稿.xlsx
+2026-07-19 10:02:45,448 [INFO] httpx - HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-07-19 10:03:16,415 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:13:03,611 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 10:13:07,986 [INFO] watchfiles.main - 200 changes detected
+2026-07-19 10:13:27,370 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:13:27,533 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:13:28,447 [INFO] watchfiles.main - 5218 changes detected
+2026-07-19 10:13:29,519 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:13:29,878 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:13:38,357 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:14:42,522 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:50,389 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:50,556 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:14:51,168 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:51,625 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:52,379 [INFO] watchfiles.main - 2 changes detected
+2026-07-19 10:14:53,442 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:54,131 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:14:54,409 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:14:55,419 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:14:56,427 [INFO] watchfiles.main - 2 changes detected
+2026-07-19 10:15:09,591 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:09,787 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:10,415 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:10,820 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:13,287 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:13,414 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:14,029 [INFO] watchfiles.main - 9 changes detected
+2026-07-19 10:15:14,637 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:15,507 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:15,863 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:18,113 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:18,248 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:18,893 [INFO] watchfiles.main - 2 changes detected
+2026-07-19 10:15:19,648 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:20,558 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:23,342 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:29,901 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:30,122 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:30,934 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:31,861 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:33,999 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:34,718 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:34,882 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:35,810 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:15:36,825 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:37,196 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:38,107 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 10:15:39,833 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:39,984 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:40,824 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:15:41,258 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:15:41,671 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:42,187 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:15:44,423 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:44,589 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:45,480 [INFO] watchfiles.main - 17 changes detected
+2026-07-19 10:15:46,310 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:49,136 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:15:58,520 [INFO] watchfiles.main - 2 changes detected
+2026-07-19 10:15:58,641 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:15:59,501 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:15:59,907 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:00,570 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 10:16:02,513 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:02,656 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:03,470 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:03,875 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:16:06,416 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:06,562 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:07,519 [INFO] watchfiles.main - 9 changes detected
+2026-07-19 10:16:07,952 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:16:08,780 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:10,860 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:11,514 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:11,876 [INFO] watchfiles.main - 3 changes detected
+2026-07-19 10:16:12,085 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:12,963 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:13,416 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:15,954 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:15,956 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:16,077 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:16,781 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:17,186 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:18,998 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:19,612 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:19,736 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:20,378 [INFO] watchfiles.main - 4 changes detected
+2026-07-19 10:16:20,783 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:21,137 [INFO] watchfiles.main - 9 changes detected
+2026-07-19 10:16:21,998 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:23,226 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:26,026 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:26,161 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 10:16:26,792 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:27,197 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:29,059 [INFO] watchfiles.main - 1 change detected
+2026-07-19 10:16:29,870 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 10:16:30,115 [INFO] watchfiles.main - 12 changes detected
+2026-07-19 10:16:31,124 [INFO] watchfiles.main - 17 changes detected
+2026-07-19 10:16:32,133 [INFO] watchfiles.main - 9 changes detected
+2026-07-19 16:50:17,624 [INFO] __main__ - Start HTTP Server, Port: 5000, Reload: True
+2026-07-19 16:50:22,409 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:50:22,428 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:50:24,110 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:50:24,364 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:50:24,380 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:50:24,380 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:51:56,028 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:51:56,391 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:52:17,360 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:52:41,856 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:00,170 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:00,336 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:53:01,277 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:01,988 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:05,799 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:53:05,837 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:53:06,445 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:53:06,613 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:53:06,626 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:53:06,627 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:53:07,694 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:17,873 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:18,048 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:53:18,982 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:19,590 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:21,403 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 16:53:23,020 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:53:23,052 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:53:23,654 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:53:23,801 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:53:23,817 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:53:23,817 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:53:28,618 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:28,803 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:53:29,721 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:30,279 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:32,044 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 16:53:33,563 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:53:33,590 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:53:34,178 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:53:34,316 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:53:34,334 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:53:34,334 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:53:46,853 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:47,000 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:53:47,863 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:48,373 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:49,642 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 16:53:51,402 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:53:51,429 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:53:51,976 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:53:52,117 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:53:52,132 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:53:52,132 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:53:57,209 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:57,345 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:53:58,210 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:53:58,716 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:00,134 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 16:54:02,262 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:54:02,292 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:54:02,889 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:54:03,036 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:54:03,049 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:54:03,049 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:54:07,340 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:07,483 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:54:08,314 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:08,869 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:10,186 [INFO] watchfiles.main - 5 changes detected
+2026-07-19 16:54:12,020 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:54:12,045 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:54:12,597 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:54:12,727 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:54:12,741 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:54:12,742 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:54:34,575 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:34,781 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:54:35,654 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:36,259 [INFO] watchfiles.main - 6 changes detected
+2026-07-19 16:54:39,595 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:54:39,622 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:54:40,231 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:54:40,388 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:54:40,403 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:54:40,403 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:54:41,914 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:42,076 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:54:42,983 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:43,591 [INFO] watchfiles.main - 6 changes detected
+2026-07-19 16:54:46,923 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:54:46,950 [INFO] main - 知识库后台预热已启动
+2026-07-19 16:54:47,498 [INFO] chromadb.telemetry.product.posthog - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2026-07-19 16:54:47,652 [ERROR] chromadb.telemetry.product.posthog - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2026-07-19 16:54:47,664 [INFO] local_knowledge - ChromaDB 缓存命中，共 350 个文档块
+2026-07-19 16:54:47,664 [INFO] local_knowledge - 本地知识库加载完成，共 350 个文档块
+2026-07-19 16:54:54,026 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:54,150 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:54:55,059 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:54:55,667 [INFO] watchfiles.main - 6 changes detected
+2026-07-19 16:54:58,996 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:54:59,026 [WARNING] main - 知识库预热失败（不影响服务）: name 'threading' is not defined
+2026-07-19 16:55:04,187 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:55:04,336 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:55:05,119 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:55:05,731 [INFO] watchfiles.main - 6 changes detected
+2026-07-19 16:55:09,337 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:55:13,400 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:55:13,513 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)
+2026-07-19 16:55:14,299 [INFO] watchfiles.main - 1 change detected
+2026-07-19 16:55:14,958 [INFO] watchfiles.main - 6 changes detected
+2026-07-19 16:55:18,040 [INFO] storage.memory.memory_saver - 使用 MemorySaver 作为 checkpointer（本地模式）
+2026-07-19 16:55:20,770 [INFO] storage.memory.memory_saver - Memory manager shutdown (no-op in local mode)

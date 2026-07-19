@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 审计系统 - 小白专属部署指南 (护眼版)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            line-height: 1.6;
+            color: #c9d1d9;
+            background-color: #1e2228;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #2d333b;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            border: 1px solid #444c56;
+        }
+        h1 { text-align: center; color: #58a6ff; border-bottom: 1px solid #444c56; padding-bottom: 15px; margin-bottom: 30px; }
+        h2 { color: #e6edf3; border-bottom: 1px solid #444c56; padding-bottom: 0.3em; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+        h3 { margin-top: 24px; color: #e6edf3; }
+        p, li { margin-bottom: 12px; font-size: 15px; color: #c9d1d9; }
+        code { background-color: rgba(110,118,129,0.4); padding: 0.2em 0.4em; border-radius: 4px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 85%; color: #ff7b72; }
+        pre { background-color: #161b22; color: #c9d1d9; padding: 20px; border-radius: 8px; overflow-x: auto; line-height: 1.6; position: relative; margin: 20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #30363d; }
+        pre code { background: none; padding: 0; color: inherit; font-size: 14px; display: block; }
+        .comment { color: #8b949e; font-style: italic; }
+        .cmd { color: #79c0ff; font-weight: bold; }
+        .string { color: #a5d6ff; }
+        .box { padding: 15px 20px; margin: 20px 0; border-radius: 6px; border-left: 5px solid; font-size: 14px; }
+        .tip { background-color: rgba(56,139,253,0.1); border-color: #388bfd; color: #a5d6ff; }
+        .warn { background-color: rgba(187,128,9,0.1); border-color: #bb8009; color: #e3b341; }
+        .danger { background-color: rgba(248,81,73,0.1); border-color: #f85149; color: #ff7b72; font-weight: bold; }
+        .success { background-color: rgba(46,160,67,0.1); border-color: #2ea043; color: #56d364; }
+        .copy-btn { position: absolute; top: 10px; right: 10px; background: #30363d; color: #c9d1d9; border: 1px solid #444c56; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; opacity: 0.9; }
+        .copy-btn:hover { background: #388bfd; color: #fff; border-color: #388bfd; opacity: 1; }
+        hr { border: none; border-top: 1px solid #444c56; margin: 30px 0; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        li::marker { color: #58a6ff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🚀 小白专属：复制粘贴即用指南</h1>
+    <p style="text-align: center; color: #8b949e;">不要管任何复杂的原理，只需要按照以下步骤，点击代码块右上角的 <strong>“复制代码”</strong> 按钮，粘贴到终端回车即可。</p>
+
+    <h2>🛠️ 准备工作（必须手动做）</h2>
+    <ol>
+        <li>去 <a href="https://www.python.org/downloads/" target="_blank">Python 官网</a> 下载安装 Python 3.12 或以上版本。
+            <div class="danger">⚠️ 致命坑预警：安装时务必勾选底部的 <code>Add Python to PATH</code>（添加到环境变量），否则后续全报错！</div>
+        </li>
+        <li>下载安装 <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank">Visual C++ 运行库</a>（一路下一步即可，装过可跳过）。<em>（注：不装这个，后续画图会直接崩溃）</em></li>
+        <li>去 <a href="https://platform.deepseek.com/" target="_blank">DeepSeek 开放平台</a> 注册账号，获取你的 API Key（以 <code>sk-</code> 开头）。</li>
+    </ol>
+
+    <hr>
+
+    <h2>🟢 第一步：用“秘籍”打开项目终端</h2>
+    <ol>
+        <li>打开你下载的项目文件夹（就是包含 <code>start.ps1</code> 和 <code>src</code> 文件夹的那个目录）。</li>
+        <li>在文件夹顶部的 <strong>路径地址栏</strong> 里，清空里面的内容，输入 <code>powershell</code> 然后按 <strong>回车</strong>。</li>
+    </ol>
+    <div class="tip">💡 <strong>技巧</strong>：这会直接在这个文件夹里打开命令行窗口，完美避开小白最头疼的“找不到路径”问题！</div>
+
+    <hr>
+
+    <h2>🟡 第二步：复制粘贴以下命令（请逐段运行）</h2>
+    
+    <h3>1. 打通 Windows 系统的“任督二脉”</h3>
+    <pre><code><span class="comment"># 允许 PowerShell 运行本地脚本</span>
+<span class="comment"># （如果弹出红字提示，请输入 Y 并回车）</span>
+<span class="cmd">Set-ExecutionPolicy</span> -ExecutionPolicy RemoteSigned -Scope CurrentUser</code></pre>
+
+    <h3>2. 安装极速包管理器 uv</h3>
+    <pre><code><span class="comment"># 使用国内清华镜像安装 uv（防止官方网络被墙，几秒钟就能装完）</span>
+<span class="cmd">pip</span> install uv -i https://pypi.tuna.tsinghua.edu.cn/simple</code></pre>
+
+    <div class="danger">
+        🚨 <strong>高能预警（新手必看）</strong>：<br>
+        运行完上面这行后，<strong>请务必关闭当前的 PowerShell 窗口！</strong><br>
+        然后重复“第一步”的操作，<strong>重新打开一个新的 PowerShell 窗口</strong>，再继续往下复制！（这是为了让系统认识刚装好的 uv 命令，不重启会报错找不到 uv）。
+    </div>
+
+    <p><em>（在新的 PowerShell 窗口中继续复制）</em></p>
+
+    <h3>3. 修复启动脚本 & 配置 AI 门禁卡</h3>
+    <pre><code><span class="comment"># ==========================================</span>
+<span class="comment"># 3. 修复启动脚本的“隐形乱码坑”</span>
+<span class="comment"># ==========================================</span>
+
+<span class="comment"># 【防坑魔法】修复 Windows PowerShell 5.1 读中文乱码的问题</span>
+<span class="comment"># （必须使用 $true 强制带 BOM 签名，直接复制运行即可）</span>
+$f = <span class="string">'.\start.ps1'</span>; $c = [<span class="cmd">System.IO.File</span>]::ReadAllText((<span class="cmd">Resolve-Path</span> $f).Path, [<span class="cmd">System.Text.Encoding</span>]::UTF8); [<span class="cmd">System.IO.File</span>]::WriteAllText((<span class="cmd">Resolve-Path</span> $f).Path, $c, [<span class="cmd">System.Text.UTF8Encoding</span>]::new($true))
+
+
+<span class="comment"># ==========================================</span>
+<span class="comment"># 4. 配置 AI 的“门禁卡” (API Key)</span>
+<span class="comment"># ==========================================</span>
+
+<span class="comment"># 复制一份环境变量模板，生成你自己的配置文件</span>
+<span class="cmd">copy</span> .env.example .env
+
+<span class="comment"># 用记事本打开配置文件</span>
+<span class="cmd">notepad</span> .env</code></pre>
+
+    <div class="warn">
+        🚨 <strong>注意</strong>：运行 <code>notepad .env</code> 后，会弹出一个记事本窗口。<br>
+        1. 找到 <code>OPENAI_API_KEY=sk-your-deepseek-api-key-here</code> 这一行。<br>
+        2. 把等号后面换成<strong>你自己的真实 API Key</strong>。<br>
+        3. ⚠️ <strong>致命坑预警</strong>：文件里<strong>只能保留一个</strong> <code>OPENAI_API_KEY</code>！请把其他带 <code>#</code> 注释掉的备用假 Key 删掉。<br>
+        4. 按 <code>Ctrl + S</code> 保存，然后<strong>关闭记事本</strong>。
+    </div>
+
+    <h3>5. 一键安装依赖并起飞！</h3>
+    <pre><code><span class="comment"># ==========================================</span>
+<span class="comment"># 5. 自动创建环境、安装依赖并启动</span>
+<span class="comment"># ==========================================</span>
+
+<span class="comment"># 自动下载并安装项目需要的所有 AI 依赖包</span>
+<span class="comment"># （首次运行需要 1~3 分钟，请耐心等待）</span>
+<span class="cmd">uv</span> sync
+
+<span class="comment"># 启动系统！（运行后会自动弹出浏览器，开始享受 AI 审计吧！）</span>
+.\start.ps1</code></pre>
+
+    <hr>
+
+    <h2>☕ 日常使用（第二次及以后怎么打开？）</h2>
+    <div class="box success">
+        <strong>🎉 以后每次使用</strong>：<br>
+        不需要再安装任何东西！只需要在项目文件夹地址栏输入 <code>powershell</code> 回车，然后运行下面这行命令即可 <strong>3秒极速启动</strong>：
+        <pre style="margin-top: 10px; margin-bottom: 0;"><code>.\start.ps1 -SkipSync</code></pre>
+    </div>
+
+    <hr>
+
+    <h2>📚 如何投喂自己的法规/案例？</h2>
+    <div class="box tip">
+        把 <strong>UTF-8 编码的 .txt 文件</strong>（比如最新的审计准则、处罚案例）直接丢进项目里的 <code>knowledge_base/</code> 文件夹。<br>
+        然后在网页左侧状态栏点击 <strong>🔄 重载知识库</strong>（或重启服务），AI 就能立刻学会你投喂的新知识，回答更有理有据！
+    </div>
+
+    <hr>
+
+    <h2>❓ 遇到报错怎么办？（对号入座）</h2>
+    
+    <div class="box warn">
+        <strong>报错：<code>uv 不是内部或外部命令</code></strong><br>
+        <strong>原因</strong>：说明你第二步装完 uv 后，没有<strong>重启 PowerShell 窗口</strong>。<br>
+        <strong>解决</strong>：关掉黑框，重新在文件夹地址栏输入 <code>powershell</code> 进终端，从第 3 步开始继续。
+    </div>
+
+    <div class="box warn">
+        <strong>网页提示 <code>Network Error</code> 或后端突然中断</strong><br>
+        <strong>原因</strong>：你的 API Key 填错了、没余额了，或者 <code>.env</code> 里留了多个 Key 导致冲突。<br>
+        <strong>解决</strong>：在终端重新运行 <code>notepad .env</code>，仔细检查 Key 是否正确，保存后按 <code>Ctrl+C</code> 停掉服务，再重新运行 <code>.\start.ps1</code>。
+    </div>
+
+    <div class="box tip">
+        <strong>报错：<code>DLL load failed</code> 或画图崩溃</strong><br>
+        <strong>原因</strong>：你的 Windows 缺少 C++ 运行库。<br>
+        <strong>解决</strong>：去准备工作里下载并安装 <strong>Visual C++ 运行库</strong>，重启电脑。
+    </div>
+
+    <div class="box tip">
+        <strong>报错：<code>端口 5000 被占用</code></strong><br>
+        <strong>解决</strong>：把启动命令换成 <code>.\start.ps1 -Port 8080</code>，然后浏览器手动访问 <code>http://localhost:8080</code>。
+    </div>
+
+</div>
+
+<script>
+    document.querySelectorAll('pre').forEach(pre => {
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = '📋 复制代码';
+        pre.appendChild(btn);
+        
+        btn.onclick = () => {
+            const code = pre.querySelector('code').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = '✅ 已复制!';
+                btn.style.background = '#2ea043';
+                btn.style.borderColor = '#2ea043';
+                setTimeout(() => {
+                    btn.textContent = '📋 复制代码';
+                    btn.style.background = '#30363d';
+                    btn.style.borderColor = '#444c56';
+                }, 2000);
+            }).catch(err => {
+                alert('复制失败，请手动选中代码复制');
+            });
+        };
+    });
+</script>
+
+</body>
+</html>
