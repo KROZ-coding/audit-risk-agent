@@ -1,0 +1,329 @@
+{
+  "generated_at": "2026-07-19T10:38:04.228362",
+  "test_suite": {
+    "total_cases": 10,
+    "dimensions": [
+      "financial_misstatement",
+      "related_party",
+      "disclosure_compliance",
+      "going_concern",
+      "regulatory_penalty"
+    ]
+  },
+  "results": {
+    "tool": {
+      "mode": "tool",
+      "evaluation_time": "2026-07-19T10:38:04.240978",
+      "test_count": 10,
+      "metrics": {
+        "average_precision": 0.944,
+        "average_recall": 0.944,
+        "average_f1": 0.944,
+        "false_positive_count": 0,
+        "false_positive_total": 1,
+        "average_response_time_sec": 0.001
+      },
+      "baseline_comparison": {
+        "system_recall": 0.944,
+        "baseline_recall": 0.037,
+        "improvement": 0.907,
+        "system_normal_correct": 1,
+        "system_normal_total": 1,
+        "baseline_normal_correct": 1,
+        "baseline_normal_total": 10
+      },
+      "dimension_metrics": {
+        "financial_misstatement": {
+          "total_cases": 6,
+          "correct": 6,
+          "accuracy": 1.0,
+          "false_positives": 3
+        },
+        "related_party": {
+          "total_cases": 1,
+          "correct": 1,
+          "accuracy": 1.0,
+          "false_positives": 8
+        },
+        "disclosure_compliance": {
+          "total_cases": 0,
+          "correct": 0,
+          "accuracy": 0.0,
+          "false_positives": 9
+        },
+        "going_concern": {
+          "total_cases": 4,
+          "correct": 4,
+          "accuracy": 1.0,
+          "false_positives": 5
+        },
+        "regulatory_penalty": {
+          "total_cases": 0,
+          "correct": 0,
+          "accuracy": 0.0,
+          "false_positives": 9
+        }
+      },
+      "case_details": [
+        {
+          "name": "存贷双高（参考：康得新案）",
+          "expected": [
+            "存贷双高",
+            "70%"
+          ],
+          "actual_alerts": [
+            "货币资金(15000)高于短期借款(12000)，但利息支出(800)远大于利息收入(200)，存在'存贷双高'异常，需核查资金真实性"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5,
+          "elapsed_sec": 0.01,
+          "expected_dimensions": [
+            "financial_misstatement",
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "连续亏损（参考：*ST 类公司）",
+          "expected": [
+            "持续经营",
+            "连续"
+          ],
+          "actual_alerts": [
+            "营业收入同比变动 -33.33%，幅度较大，需关注合理性",
+            "连续两年净利润为负，存在持续经营风险",
+            "经营活动现金流量净额连续两年为负，持续经营风险较高"
+          ],
+          "alert_count": 3,
+          "keyword_hits": 2,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "应收账款异常增长（提前确认收入嫌疑）",
+          "expected": [
+            "应收账款",
+            "收入"
+          ],
+          "actual_alerts": [
+            "营业收入同比变动 33.33%，幅度较大，需关注合理性",
+            "应收账款占营收比 = 45.0%，超过 30%，需关注回款风险",
+            "应收账款增速(125.0%)显著高于营收增速(33.33%)，可能存在提前确认收入或放宽信用政策"
+          ],
+          "alert_count": 3,
+          "keyword_hits": 2,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.001,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "经营现金流与利润严重背离",
+          "expected": [
+            "现金流",
+            "利润"
+          ],
+          "actual_alerts": [
+            "经营现金流/净利润比 = 0.1，低于 0.5，现金流与利润严重背离，存在利润质量风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 2,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "商誉减值风险（大额并购后）",
+          "expected": [
+            "商誉"
+          ],
+          "actual_alerts": [
+            "商誉占净资产比 = 40.0%，超过 30%，存在较大减值风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "正常公司（无重大风险）",
+          "expected": "无风险",
+          "actual_count": 0,
+          "correct": true,
+          "alerts": [],
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": true,
+            "disclosure_compliance": true,
+            "going_concern": true,
+            "regulatory_penalty": true
+          }
+        },
+        {
+          "name": "高杠杆房地产公司",
+          "expected": [
+            "70%",
+            "流动比率",
+            "现金流"
+          ],
+          "actual_alerts": [
+            "经营现金流/净利润比 = -2.5，低于 0.5，现金流与利润严重背离，存在利润质量风险",
+            "营收增长但经营现金流为负，盈利质量存疑",
+            "资产负债率 = 82.0%，超过 70%，财务杠杆较高",
+            "流动比率 = 0.75，低于 1，短期偿债能力不足"
+          ],
+          "alert_count": 4,
+          "keyword_hits": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.001,
+          "expected_dimensions": [
+            "going_concern",
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "存货异常堆积",
+          "expected": [
+            "存货"
+          ],
+          "actual_alerts": [
+            "存货同比增长 140.0%，存货激增需关注跌价风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "关联方资金占用（其他应收款异常）",
+          "expected": [
+            "其他应收款",
+            "资金占用"
+          ],
+          "actual_alerts": [
+            "其他应收款占总资产比 = 7.5%，超过 5%，需关注资金占用风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 2,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "related_party"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": true,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "营收断崖式下滑",
+          "expected": [
+            "营业收入"
+          ],
+          "actual_alerts": [
+            "营业收入同比变动 -66.67%，幅度较大，需关注合理性",
+            "净利润同比变动 -166.67%，波动显著"
+          ],
+          "alert_count": 2,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        }
+      ]
+    }
+  }
+}

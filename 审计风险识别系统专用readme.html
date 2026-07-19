@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 审计风险识别系统 · 部署指南 v3.0</title>
+    <style>
+        :root {
+            --bg-deep: #0f172a;
+            --bg-dark: #1e293b;
+            --bg-mid: #334155;
+            --accent: #3b82f6;
+            --accent-light: #60a5fa;
+            --accent-glow: rgba(59, 130, 246, 0.4);
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --card-border: rgba(59, 130, 246, 0.15);
+            --card-bg: rgba(30, 41, 59, 0.55);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(180deg, var(--bg-deep) 0%, #0b1121 50%, var(--bg-dark) 100%);
+            color: var(--text-main); line-height: 1.7; overflow-x: hidden; min-height: 100vh;
+        }
+        .container { max-width: 920px; margin: 0 auto; padding: 50px 20px 80px; position: relative; z-index: 1; }
+
+        /* ── 装饰背景网格 ── */
+        #bg-grid {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; pointer-events: none; opacity: 0.06;
+            background-image:
+                linear-gradient(rgba(59,130,246,0.3) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,130,246,0.3) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .glass-card {
+            background: var(--card-bg); backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px; padding: 36px 38px; margin-bottom: 32px;
+            box-shadow: 0 4px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+            opacity: 0; transform: translateY(40px);
+            transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .glass-card.visible { opacity: 1; transform: translateY(0); }
+
+        /* ── Hero ── */
+        .hero { text-align: center; padding: 50px 0 20px; }
+        .hero .logo-icon {
+            font-size: 64px; display: block; margin-bottom: 8px;
+            filter: drop-shadow(0 0 20px var(--accent-glow));
+        }
+        .hero h1 {
+            font-size: 2.4rem; font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #818cf8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 12px; letter-spacing: 2px;
+        }
+        .hero .version-tag {
+            display: inline-block; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3);
+            padding: 6px 22px; border-radius: 50px; font-size: 0.95rem;
+            color: var(--accent-light); letter-spacing: 2px; margin-bottom: 20px;
+        }
+
+        h2 { font-size: 1.7rem; margin-bottom: 24px; display: flex; align-items: center; gap: 14px; color: #fff; }
+        h2 .icon {
+            width: 42px; height: 42px; min-width: 42px;
+            background: linear-gradient(135deg, var(--accent), #6366f1);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; box-shadow: 0 0 18px var(--accent-glow);
+        }
+        h3 {
+            font-size: 1.2rem; color: var(--accent-light); margin: 28px 0 12px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        h3 .step-badge {
+            background: rgba(59,130,246,0.1); border: 1px solid var(--accent);
+            color: var(--accent-light); padding: 3px 12px; border-radius: 6px;
+            font-size: 0.85rem; font-family: 'Consolas', monospace;
+        }
+        p, li { margin-bottom: 13px; color: var(--text-main); font-size: 1.02rem; }
+        a { color: var(--accent-light); text-decoration: none; border-bottom: 1px dashed var(--accent); transition: all 0.3s; }
+        a:hover { color: #fff; text-shadow: 0 0 12px var(--accent-light); border-bottom-style: solid; }
+
+        pre {
+            background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(59,130,246,0.18);
+            border-radius: 12px; padding: 22px 24px; margin: 18px 0; position: relative;
+            overflow-x: auto; font-family: 'Fira Code', 'Consolas', 'Courier New', monospace; font-size: 0.92rem;
+            box-shadow: 0 0 20px rgba(0,0,0,0.4), inset 0 0 40px rgba(0,0,0,0.6);
+        }
+        code { color: #e2e8f0; }
+        .comment { color: #64748b; font-style: italic; }
+        .cmd { color: #4ade80; font-weight: bold; }
+        .string { color: #f9a8d4; }
+
+        .copy-btn {
+            position: absolute; top: 14px; right: 14px;
+            background: rgba(59,130,246,0.08); border: 1px solid var(--accent);
+            color: var(--accent-light); padding: 7px 14px; border-radius: 8px;
+            cursor: pointer; font-size: 0.82rem; font-weight: bold;
+            transition: all 0.3s; backdrop-filter: blur(5px); z-index: 10;
+        }
+        .copy-btn:hover { background: var(--accent); color: #fff; box-shadow: 0 0 16px var(--accent-glow); }
+
+        .alert { padding: 18px 20px; border-radius: 12px; margin: 22px 0; border-left: 4px solid; position: relative; }
+        .alert-danger  { border-color: #ef4444; background: rgba(239,68,68,0.08); color: #fca5a5; }
+        .alert-warning { border-color: #f59e0b; background: rgba(245,158,11,0.08); color: #fde68a; }
+        .alert-info    { border-color: var(--accent); background: rgba(59,130,246,0.07); color: #bae6fd; }
+        .alert-success { border-color: #22c55e; background: rgba(34,197,94,0.08); color: #bbf7d0; }
+        .alert-tip     { border-color: #a78bfa; background: rgba(167,139,250,0.07); color: #c4b5fd; }
+
+        .highlight { background: rgba(239,68,68,0.18); color: #fff; padding: 2px 8px; border-radius: 4px; font-weight: bold; border: 1px solid #ef4444; }
+        .key { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); padding: 2px 8px; border-radius: 6px; font-family: monospace; font-size: 0.88em; }
+        .accent-text { color: var(--accent-light); font-weight: bold; }
+
+        ol, ul { padding-left: 22px; }
+        li::marker { color: var(--accent-light); font-weight: bold; }
+
+        /* ── 新特性卡片 ── */
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 16px; }
+        .feature-chip {
+            background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18); border-radius: 14px;
+            padding: 16px; text-align: center; font-size: 0.92rem; color: var(--text-main);
+        }
+        .feature-chip .feat-icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; } .glass-card { padding: 24px; }
+            pre { font-size: 0.82rem; padding: 18px 14px; }
+            .feature-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="bg-grid"></div>
+
+<div class="container">
+
+    <!-- ═══ HERO ═══ -->
+    <div class="hero glass-card visible">
+        <span class="logo-icon">🔍</span>
+        <h1>AI 审计风险识别系统 · 部署指南</h1>
+        <div class="version-tag">▼ v3.0</div>
+        <p style="color: var(--text-muted); margin-top: 10px;">
+            本指南将引导您完成系统的完整部署流程：<br>
+            <strong style="color: var(--accent-light);">安装基础环境 → 运行部署脚本 → 配置 API Key → 启动服务</strong>
+        </p>
+    </div>
+
+    <!-- ═══ v3.0 新特性 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">✨</span> v3.0 核心能力</h2>
+        <div class="feature-grid">
+            <div class="feature-chip">
+                <span class="feat-icon">🗣️</span>
+                <strong>多智能体辩论</strong><br>
+                <small style="color:var(--text-muted)">风险关注方 → 否定方 → 裁判<br>三方制衡，提升判定可靠性</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">🧬</span>
+                <strong>ChromaDB 向量检索</strong><br>
+                <small style="color:var(--text-muted)">语义级法规匹配<br>精准定位合规依据</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">🔗</span>
+                <strong>五步推理链</strong><br>
+                <small style="color:var(--text-muted)">数据→异常→法规→案例→判定<br>全链路可追溯</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">📊</span>
+                <strong>效果量化评估</strong><br>
+                <small style="color:var(--text-muted)">Precision/Recall/F1<br>10 样本基准测试</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 阶段一 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">📦</span> 阶段一：基础环境安装（仅首次）</h2>
+        <p style="color: var(--text-muted);">以下组件仅需安装一次，后续启动直接进入阶段二。</p>
+        <ol>
+            <li>
+                <strong>安装 Visual C++ 运行时</strong>：双击 <code>VC_redist.x64.exe</code>，按向导完成安装。
+                <span style="color: var(--text-muted);">（已安装可跳过）</span>
+            </li>
+            <li>
+                <strong>安装 Python 3.12</strong>：双击 <code>python-3.12.10-amd64.exe</code>。
+                <div class="alert alert-danger">
+                    ⚠️ <strong>重要提醒</strong>：安装界面第一页，<span class="highlight">必须勾选底部的 "Add python.exe to PATH"</span>！<br>
+                    如遗漏此步骤，后续所有命令将无法识别 Python，需重新安装。
+                </div>
+                勾选后点击 "Install Now" 完成安装。
+            </li>
+        </ol>
+    </div>
+
+    <!-- ═══ 阶段二 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">⚙️</span> 阶段二：一键部署（核心步骤）</h2>
+
+        <h3><span class="step-badge">STEP ①</span> 获取 API Key</h3>
+        <p>前往 <a href="https://platform.deepseek.com/" target="_blank">DeepSeek 开放平台</a> 注册并获取 API Key（以 <code>sk-</code> 开头），复制备用。</p>
+        <div class="alert alert-info">💡 API Key 是调用 AI 模型的核心凭证，没有它系统将无法运行。</div>
+
+        <h3><span class="step-badge">STEP ②</span> 运行前置安装脚本</h3>
+        <p>找到项目根目录下的 <code>前置库安装.bat</code>，<strong>双击运行</strong>。脚本将自动完成：</p>
+        <ol>
+            <li>✅ 检测 Python 3.12 环境</li>
+            <li>✅ 自动安装 uv 包管理器（比 pip 快约 10 倍）</li>
+            <li>✅ 创建虚拟环境并下载全部依赖（首次约 1~3 分钟）</li>
+            <li>✅ 检查知识库文件就绪状态</li>
+        </ol>
+
+        <div class="alert alert-warning">
+            📝 <strong>首次运行 · API Key 配置</strong>：<br>
+            首次启动时会自动弹出记事本编辑 <code>.env</code> 配置文件：<br>
+            1. 找到 <code>OPENAI_API_KEY=...</code> 这一行。<br>
+            2. 将等号右侧替换为您的<span class="highlight">真实 API Key</span>。<br>
+            3. <span class="key">Ctrl+S</span> 保存并关闭。<br>
+            4. 回到命令行窗口，按任意键继续。
+        </div>
+
+        <div class="alert alert-success">
+            🎉 <strong>部署完成！</strong> 浏览器将自动打开 <code>http://localhost:5000</code>。<br>
+            系统控制台包含：多智能体辩论、向量检索、思维链推理、效果评估面板等全部功能。
+        </div>
+    </div>
+
+    <!-- ═══ 阶段三 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🚀</span> 阶段三：日常启动</h2>
+        <p>首次部署完成后，每次使用只需：</p>
+        <div class="alert alert-success" style="text-align: center; font-size: 1.2rem;">
+            <strong>双击 <code>启动.bat</code></strong>，等待浏览器自动弹出即可。
+        </div>
+        <div class="alert alert-tip">
+            <strong>💡 进阶用法（命令行）</strong>：在项目目录空白处右键 → "在终端中打开"，执行：
+<pre><code><span class="comment"># 快速启动（跳过依赖同步检查）</span>
+<span class="cmd">.\start.ps1 -SkipSync</span>
+
+<span class="comment"># 指定自定义端口</span>
+<span class="cmd">.\start.ps1 -SkipSync -Port 8080</span>
+
+<span class="comment"># 完整启动（含依赖检查）</span>
+<span class="cmd">.\start.ps1</span></code></pre>
+        </div>
+    </div>
+
+    <!-- ═══ 效果评估 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">📊</span> 效果评估面板（v3.0 新增）</h2>
+        <p>启动后，在控制台顶栏点击 <strong style="color:var(--accent-light);">「📊 效果评估」</strong> 按钮即可查看：</p>
+        <ul>
+            <li><strong>核心指标</strong>：Precision / Recall / F1 / 基线提升 / 平均耗时</li>
+            <li><strong>基线对比</strong>：本系统 vs 简单规则引擎</li>
+            <li><strong>分维度识别</strong>：财务错报 · 关联交易 · 信披合规 · 持续经营 · 监管处罚</li>
+            <li><strong>逐用例明细</strong>：10 个标注样本的独立评分</li>
+        </ul>
+        <div class="alert alert-info">
+            💡 点击「▶ 运行工具评估」按钮可重新跑分（约 1 秒）。<br>
+            命令行模式：<code>uv run python tests/evaluation_report.py --mode tool</code>
+        </div>
+    </div>
+
+    <!-- ═══ 常见问题 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🛠️</span> 常见问题排查</h2>
+
+        <div class="alert alert-danger">
+            <strong>❓ 未检测到 Python 3.12+</strong><br>
+            <strong>解决方案</strong>：返回阶段一，重新安装 Python，<span class="highlight">务必勾选 Add to PATH</span>。完成后重新双击 <code>前置库安装.bat</code>。
+        </div>
+        <div class="alert alert-warning">
+            <strong>❓ uv 安装后无法识别</strong><br>
+            <strong>解决方案</strong>：关闭当前命令行窗口，重新双击 <code>前置库安装.bat</code>。
+        </div>
+        <div class="alert alert-warning">
+            <strong>❓ Network Error / API 调用失败</strong><br>
+            <strong>解决方案</strong>：用记事本打开 <code>.env</code>，检查 <code>OPENAI_API_KEY</code> 是否为真实密钥（模板值 <code>sk-your-xxx</code> 无效）。同时确认账户余额充足。
+        </div>
+        <div class="alert alert-info">
+            <strong>❓ DLL load failed / 可视化模块异常</strong><br>
+            <strong>解决方案</strong>：返回阶段一重新安装 <code>VC_redist.x64.exe</code>，安装后重启计算机。
+        </div>
+        <div class="alert alert-info">
+            <strong>❓ 端口 5000 已被占用</strong><br>
+            <strong>解决方案</strong>：终端执行 <code>.\start.ps1 -SkipSync -Port 8080</code>，通过 <code>http://localhost:8080</code> 访问。
+        </div>
+        <div class="alert alert-info">
+            <strong>❓ 知识库检索无结果</strong><br>
+            <strong>解决方案</strong>：确认 <code>knowledge_base/</code> 目录下存在法规 txt 文件。首次检索时会自动构建 ChromaDB 向量索引（约 5~10 秒）。
+        </div>
+    </div>
+
+    <!-- ═══ Footer ═══ -->
+    <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.86rem;">
+        <p>上市公司年报审计风险识别系统 v3.0 · 基于多智能体协作与向量检索</p>
+        <p style="margin-top:4px; font-size:0.76rem;">
+            本系统仅供学习研究使用，不构成任何审计意见或投资建议。
+        </p>
+    </div>
+
+</div>
+
+<script>
+    // 滚动渐入动画
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.glass-card').forEach(c => observer.observe(c));
+
+    // 代码块复制按钮
+    document.querySelectorAll('pre').forEach(pre => {
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn'; btn.textContent = '📋 复制';
+        pre.appendChild(btn);
+        btn.onclick = () => {
+            const code = pre.querySelector('code').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = '✅ 已复制';
+                btn.style.background = '#22c55e'; btn.style.color = '#fff'; btn.style.borderColor = '#22c55e';
+                setTimeout(() => {
+                    btn.textContent = '📋 复制';
+                    btn.style.background = 'rgba(59,130,246,0.08)';
+                    btn.style.color = 'var(--accent-light)'; btn.style.borderColor = 'var(--accent)';
+                }, 2000);
+            }).catch(() => alert('复制失败，请手动 Ctrl+C'));
+        };
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026年北京市大学生数智会计创新应用竞赛手册</title>
+<style>
+  :root {
+    --primary: #1e40af;
+    --primary-light: #3b82f6;
+    --accent: #f59e0b;
+    --bg: #f1f5f9;
+    --surface: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --radius: 12px;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text-main);
+    line-height: 1.7;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar Navigation ─────────────────────────────── */
+  .sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    z-index: 100;
+    transition: transform 0.3s ease;
+    padding: 24px 0;
+  }
+  
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .sidebar-header {
+    padding: 0 24px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700; color: var(--primary);
+  }
+  
+  .sidebar-logo .icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 16px;
+  }
+
+  .nav-group { margin-bottom: 12px; }
+  .nav-title {
+    padding: 8px 24px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    color: var(--text-muted); letter-spacing: 1px;
+  }
+  
+  .nav-link {
+    display: block;
+    padding: 8px 24px;
+    color: var(--text-main);
+    text-decoration: none;
+    font-size: 14px;
+    border-left: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  
+  .nav-link:hover {
+    background: #f8fafc;
+    color: var(--primary);
+    border-left-color: var(--primary-light);
+  }
+
+  /* ── Main Content ───────────────────────────────────── */
+  .main-wrapper {
+    flex: 1;
+    margin-left: 280px;
+    min-width: 0;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
+    color: white;
+    padding: 80px 48px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%; right: -10%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .hero-content { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(8px);
+    padding: 6px 16px; border-radius: 20px;
+    font-size: 13px; font-weight: 500;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  
+  .hero h1 {
+    font-size: 42px; font-weight: 800;
+    line-height: 1.2; margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+  
+  .hero .subtitle {
+    font-size: 20px; opacity: 0.9; margin-bottom: 40px; font-weight: 300;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  
+  .meta-card {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: transform 0.2s;
+  }
+  
+  .meta-card:hover { transform: translateY(-2px); }
+  .meta-label { font-size: 12px; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+  .meta-value { font-size: 16px; font-weight: 600; }
+
+  .content-area {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 48px;
+  }
+
+  /* ── Typography ─────────────────────────────────────── */
+  .chapter {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 40px;
+    margin-bottom: 32px;
+    border: 1px solid var(--border);
+  }
+
+  h2 {
+    font-size: 26px; font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  
+  h2 .chapter-num {
+    background: var(--primary);
+    color: white;
+    font-size: 14px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: 18px; font-weight: 600;
+    color: var(--text-main);
+    margin: 28px 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  
+  h3::before {
+    content: '';
+    width: 4px; height: 18px;
+    background: var(--primary-light);
+    border-radius: 2px;
+  }
+
+  p { margin-bottom: 16px; color: #334155; }
+  
+  ul, ol { margin: 12px 0 16px 24px; }
+  li { margin-bottom: 8px; }
+
+  strong { color: var(--primary); font-weight: 600; }
+
+  /* ── Tables ─────────────────────────────────────────── */
+  .table-wrapper {
+    overflow-x: auto;
+    margin: 20px 0;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  
+  th {
+    background: #f8fafc;
+    color: var(--primary);
+    font-weight: 600;
+    text-align: left;
+    padding: 14px 16px;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  
+  td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+
+  /* ── Highlight Boxes ────────────────────────────────── */
+  .highlight-box {
+    background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
+    border-left: 4px solid var(--primary-light);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+  
+  .highlight-box.warning {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border-left-color: var(--accent);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+  
+  .card {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: all 0.2s;
+  }
+  
+  .card:hover {
+    border-color: var(--primary-light);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+  
+  .card-title {
+    font-size: 16px; font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ── Mobile Menu Toggle ─────────────────────────────── */
+  .menu-toggle {
+    display: none;
+    position: fixed;
+    top: 16px; left: 16px;
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    font-size: 20px;
+  }
+
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 90;
+  }
+
+  /* ── Footer ─────────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+
+  /* ── Responsive ─────────────────────────────────────── */
+  @media (max-width: 1024px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); box-shadow: 10px 0 30px rgba(0,0,0,0.1); }
+    .main-wrapper { margin-left: 0; }
+    .menu-toggle { display: block; }
+    .overlay.active { display: block; }
+    .hero { padding: 80px 24px 40px; }
+    .hero h1 { font-size: 28px; }
+    .content-area { padding: 24px 16px; }
+    .chapter { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- ── Sidebar Navigation ─────────────────────────────── -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">
+      <div class="icon">📊</div>
+      <span>数智会计竞赛</span>
+    </div>
+  </div>
+  
+  <div class="nav-group">
+    <div class="nav-title">竞赛手册</div>
+    <a href="#chapter1" class="nav-link">第一章 竞赛背景与意义</a>
+    <a href="#chapter2" class="nav-link">第二章 竞赛定位与主题</a>
+    <a href="#chapter3" class="nav-link">第三章 参赛对象与组队规则</a>
+    <a href="#chapter4" class="nav-link">第四章 赛题方向与命题设计</a>
+    <a href="#chapter5" class="nav-link">第五章 赛事流程与时间节点</a>
+    <a href="#chapter6" class="nav-link">第六章 提交物规范与技术要求</a>
+    <a href="#chapter7" class="nav-link">第七章 评审办法与评分标准</a>
+    <a href="#chapter8" class="nav-link">第八章 奖项设置与激励机制</a>
+    <a href="#chapter9" class="nav-link">第九章 组织架构与师资保障</a>
+    <a href="#chapter10" class="nav-link">第十章 技术支持与资源平台</a>
+    <a href="#chapter11" class="nav-link">第十一章 知识产权与赛事纪律</a>
+    <a href="#appendix" class="nav-link">附录A 推荐技术栈</a>
+  </div>
+</nav>
+
+<!-- ── Main Content ───────────────────────────────────── -->
+<div class="main-wrapper">
+  
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">🏆 2026年官方赛事</div>
+      <h1>北京市大学生数智会计<br>创新应用竞赛</h1>
+      <p class="subtitle">「Multi-Agent」—— 让智能体走进财会专业领域</p>
+      
+      <div class="meta-grid">
+        <div class="meta-card">
+          <div class="meta-label">主办单位</div>
+          <div class="meta-value">北京市教育委员会</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">承办单位</div>
+          <div class="meta-value">中央财经大学</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">报名时间</div>
+          <div class="meta-value">2026.07.06 — 08.15</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">决赛时间</div>
+          <div class="meta-value">2026年10月（暂定）</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="content-area">
+
+    <!-- Chapter 1 -->
+    <section class="chapter" id="chapter1">
+      <h2><span class="chapter-num">第一章</span> 竞赛背景与意义</h2>
+      
+      <h3>1.1 时代背景</h3>
+      <p>近年来，以大语言模型（Large Language Model, LLM）为代表的人工智能技术发展迅猛，正在深刻重塑会计、审计、金融等专业领域的工作范式。智能体（Agent）作为 LLM 应用的高阶形态，能够自主感知、推理、决策与执行，已在风险识别、合同审阅、财务核对、投资研究等场景展现出显著价值。国务院发布的《新一代人工智能发展规划》明确提出，要推动人工智能与实体经济深度融合，培养具备AI 素养的复合型专业人才。</p>
+      
+      <h3>1.2 学科使命</h3>
+      <p>中央财经大学会计学院作为国家会计、审计、财务管理人才培养的重要基地，肩负着引领会计学科数字化转型的历史使命。面对四大会计师事务所积极推进 AI 审计平台、大型企业部署财务智能体的产业趋势，学院亟需通过赛事载体，激励学生将所学的财会专业知识与前沿的智能体技术深度融合，培养「懂业务、会建模、能落地」的新一代财会复合型人才。</p>
+      
+      <h3>1.3 办赛目标</h3>
+      <div class="grid-2">
+        <div class="card"><div class="card-title">🤝 搭建产学研协作平台</div><p>连接高校学生、四大事务所、金融机构、AI 厂商，构建可持续生态。</p></div>
+        <div class="card"><div class="card-title">💡 挖掘高水平创新成果</div><p>以真实业务场景为命题，催生具有产业落地价值的智能体作品。</p></div>
+        <div class="card"><div class="card-title">🎓 培养复合型 AI 人才</div><p>让学生在赛程中完成从理论学习到工程实现的全流程历练。</p></div>
+        <div class="card"><div class="card-title">🚀 引领学科建设方向</div><p>以赛事推动会计学院专业课程改革，反哺培养方案。</p></div>
+      </div>
+    </section>
+
+    <!-- Chapter 2 -->
+    <section class="chapter" id="chapter2">
+      <h2><span class="chapter-num">第二章</span> 竞赛定位与主题</h2>
+      
+      <h3>2.1 竞赛全名</h3>
+      <p>中文全称：<strong>2026年北京市大学生数智会计创新应用竞赛</strong></p>
+      
+      <h3>2.2 竞赛主题</h3>
+      <div class="highlight-box">
+        <p style="font-size:18px;font-weight:700;margin:0">「Multi-Agent」—— 让智能体走进财会专业领域</p>
+      </div>
+      
+      <h3>2.3 三大原则</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th style="width:160px">原则</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><strong>专业为本</strong><br>Professional</td><td>所有作品必须立足真实的会计、审计、财务或金融业务场景，体现对专业知识的深刻理解，避免脱离业务的纯技术堆砌。</td></tr>
+            <tr><td><strong>创新为魂</strong><br>Innovation</td><td>鼓励多智能体协作、RAG 知识库、思维链、辩论机制、Agent-as-a-Judge 等前沿范式的创造性应用。</td></tr>
+            <tr><td><strong>落地为王</strong><br>Practical</td><td>作品必须有完整的可演示原型，能够在评审现场处理真实样例数据，输出可解释、可验证的结果。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>2.4 价值定位</h3>
+      <ul>
+        <li><strong>专业深度</strong>：评审委员会由会计审计专家、行业专家、大数据技术专家三方组成，确保作品的专业含量，同时确保AI-agent能完全落地真实业务场景。</li>
+        <li><strong>产业链接</strong>：四大会计师事务所、头部金融机构提供赛题素材与实习内推机会，以及赛事奖金。</li>
+      </ul>
+    </section>
+
+    <!-- Chapter 3 -->
+    <section class="chapter" id="chapter3">
+      <h2><span class="chapter-num">第三章</span> 参赛对象与组队规则</h2>
+      
+      <h3>3.1 参赛对象</h3>
+      <p>北京市高校在校本科生</p>
+      
+      <h3>3.2 组队规则</h3>
+      <div class="table-wrapper">
+        <table>
+          <tbody>
+            <tr><td style="width:140px;font-weight:600">每队人数</td><td>4 人（校内组队）</td></tr>
+            <tr><td style="font-weight:600">专业建议</td><td>至少 1 人具备会计/审计/财务/金融专业背景</td></tr>
+            <tr><td style="font-weight:600">指导教师</td><td>每队可邀请 1名指导教师（专业导师）</td></tr>
+            <tr><td style="font-weight:600">参赛限制</td><td>同一选手仅可参加 1 支队伍；同一指导教师可指导不超过 3 支队伍</td></tr>
+            <tr><td style="font-weight:600">赛队名称</td><td>应体现专业性与创新性，不得包含商业广告、政治敏感或不雅词汇</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>3.3 报名方式</h3>
+      <p>参赛队伍登录竞赛公众号填写报名表、上传参赛承诺书（PDF 签字版），即视为报名成功。报名表需详细填写：队伍名称、成员信息、指导教师信息、初步赛题方向意向。</p>
+      <p><strong>报名时间</strong>：7 月 6 日至 8 月 15 日，各参赛高校组织学生线上报名参赛。以每支参赛队伍为单位扫描下方二维码填写报名信息，并按照要求上传相关证明材料（校园卡或加盖学校公章的学生证照片；因转专业导致证件上专业不符的，需由所在学院出具盖章证明）。</p>
+    </section>
+
+    <!-- Chapter 4 -->
+    <section class="chapter" id="chapter4">
+      <h2><span class="chapter-num">第四章</span> 赛题方向与命题设计</h2>
+      
+      <h3>4.1 四大赛题方向</h3>
+      <p>竞赛设置四个并行赛题方向，参赛队伍报名时选定一个方向，决赛阶段分赛道评审。</p>
+      
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🔍 方向一：智能审计赛道</div>
+          <p>围绕注册会计师审计、内部审计、审计监管等场景。推荐题目：上市公司年报风险识别智能体、关联交易穿透审计智能体、合同条款异常审计智能体、工作底稿智能复核智能体等。</p>
+        </div>
+        <div class="card">
+          <div class="card-title">💰 方向二：智能财务赛道</div>
+          <p>围绕企业财务核算、报表编制、税务筹划、预算管理等场景。推荐题目：自动凭证生成与复核智能体、合并报表智能编制助手、增值税涉税合规智能体、预算执行偏差分析智能体等。</p>
+        </div>
+        <div class="card">
+          <div class="card-title">📈 方向三：智能投研赛道</div>
+          <p>围绕证券分析、估值建模、ESG 评级、并购尽调等场景。推荐题目：DCF 估值自动建模智能体、行业研究报告智能撰写工具、ESG 报告抓取与评级智能体、并购标的尽职调查智能体等。</p>
+        </div>
+        <div class="card">
+          <div class="card-title">📚 方向四：智能教育与研究赛道</div>
+          <p>围绕会计教学、学术研究、政策研读等场景。推荐题目：CPA 考试智能题库与答疑助手、会计准则差异对比智能体、学术论文文献综述生成助手、企业AI生成式披露检测智能体等。</p>
+        </div>
+      </div>
+      
+      <h3>4.2 命题原则</h3>
+      <div class="highlight-box warning">
+        <p style="font-weight:700;margin-bottom:8px">无论参赛队伍选择推荐题目还是自命题，作品需满足以下三项约束：</p>
+        <ol style="margin-left:20px">
+          <li>必须使用至少一个大语言模型作为核心推理引擎（建议使用国产模型）。</li>
+          <li>必须输出结构化结果（JSON / 表格 / pdf 报告），不接受纯自然语言对话作为最终成果。</li>
+          <li>必须提供可演示原型（Web 界面或命令行均可），评审现场需能实时处理样例数据。</li>
+        </ol>
+      </div>
+      
+      <h3>4.3 数据集与样例</h3>
+      <p>参赛队员可自行互联网查询以下数据资源：</p>
+      <ul>
+        <li>巨潮资讯网上市公司年报 PDF。</li>
+        <li>证监会近五年行政处罚决定书。</li>
+        <li>上交所、深交所近五年问询函。</li>
+        <li>中国会计准则、审计准则、税收法规电子版（截至比赛公告日）。</li>
+      </ul>
+      <p>鼓励参赛队伍在官方数据集基础上，自行补充行业数据、研报、新闻、宏观经济指标等，形成具有差异化优势的知识库。所有补充数据需在最终提交时附上来源说明，确保合规合法。</p>
+    </section>
+
+    <!-- Chapter 5 -->
+    <section class="chapter" id="chapter5">
+      <h2><span class="chapter-num">第五章</span> 赛事流程与时间节点</h2>
+      
+      <h3>5.1 四阶段流程</h3>
+      <p>竞赛历时约 4 个月，分为报名、初赛、决赛四个阶段。</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>阶段</th><th>时间</th><th>核心活动</th></tr></thead>
+          <tbody>
+            <tr><td><strong>报名启动</strong></td><td>2026.07.06 — 08.15</td><td>竞赛宣讲、官网发布赛题、参赛队伍组队报名、缴费</td></tr>
+            <tr><td><strong>初赛阶段</strong></td><td>2026.09.01 — 09.25</td><td>提交《项目方案书》(PDF) + 5 分钟介绍视频，评委盲审</td></tr>
+            <tr><td><strong>初赛评审</strong></td><td>2026.09.25 — 09.30</td><td>对初赛的队伍开发原型，提交代码 + 演示视频 + 技术报告进行评审</td></tr>
+            <tr><td><strong>决赛答辩</strong></td><td>2026.10.01 — 10.31</td><td>入选决赛的队伍自行备赛，线下决赛时间另行通知</td></tr>
+            <tr><td><strong>颁奖典礼</strong></td><td>决赛当晚</td><td>颁奖、获奖作品展示、产业对接洽谈会</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>5.2 淘汰与晋级机制</h3>
+      <ul>
+        <li><strong>初赛 → 决赛</strong>：每赛道按原型评分排名，取前 20 支队伍进入决赛答辩。</li>
+        <li><strong>决赛</strong>：共 20 支队伍现场答辩，决出特等奖1个、一等奖2个、二等奖5个，三等奖12个、优秀个人奖8名，优秀指导老师20名，优秀组织奖10个。</li>
+      </ul>
+    </section>
+
+    <!-- Chapter 6 -->
+    <section class="chapter" id="chapter6">
+      <h2><span class="chapter-num">第六章</span> 提交物规范与技术要求</h2>
+      
+      <h3>6.1 各阶段提交物清单</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>阶段</th><th>提交物</th><th>规格要求</th></tr></thead>
+          <tbody>
+            <tr><td>初赛</td><td>项目方案书</td><td>PDF 格式，10-15 页，含问题定义、智能体架构图、数据来源、技术方案、预期成果、团队分工</td></tr>
+            <tr><td>初赛</td><td>介绍视频</td><td>MP4 格式，5 分钟以内，1080P 以上，包含队员出镜介绍 + 方案陈述</td></tr>
+            <tr><td>决赛</td><td>答辩 PPT</td><td>PPTX 格式，20 张以内，建议保留 8-10 张用于核心演示截图</td></tr>
+            <tr><td>决赛</td><td>现场演示</td><td>本机或云端均可，需保证现场网络稳定下可顺畅运行，备用录屏视频</td></tr>
+            <tr><td>决赛</td><td>原型部署（如有）</td><td>建议提供公网可访问的演示链接（评委可在赛前自行体验）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>6.2 技术规范要求</h3>
+      <p><strong>6.2.1 代码规范</strong></p>
+      <ul>
+        <li>主编程语言为 Python（≥ 3.10），允许辅以 JavaScript / TypeScript 用于前端，允许 AI 辅助编程 (Claude code；Vibe coding等工具调用)。</li>
+        <li>代码必须包含完整的 requirements.txt 或 pyproject.toml，确保评委能一键复现环境。</li>
+        <li>禁止在代码中硬编码 API Key 等敏感信息，应使用 .env 加载并提供 .env.example 模板。</li>
+        <li>关键算法和非平凡逻辑必须包含中文注释（最低占代码量 10%）。</li>
+      </ul>
+      
+      <p><strong>6.2.2 模型与算力要求</strong></p>
+      <ul>
+        <li>建议使用国产大模型，包括但不限于：DeepSeek、通义千问、文心一言等。</li>
+        <li>组委会为每支晋级决赛的队伍提供一定额度的模型 API 额度（DeepSeek + Moonshot 选其一）。</li>
+        <li>禁止使用未经许可的爬取数据；外部数据需附来源声明及合规说明。</li>
+      </ul>
+      
+      <p><strong>6.2.3 伦理与合规</strong></p>
+      <ul>
+        <li>禁止使用涉密信息。</li>
+        <li>智能体输出中必须包含「AI 生成」声明，避免误导使用者认为是专业意见。</li>
+        <li>作品应避免对特定上市公司、个人作出未经核实的负面评价。</li>
+      </ul>
+    </section>
+
+    <!-- Chapter 7 -->
+    <section class="chapter" id="chapter7">
+      <h2><span class="chapter-num">第七章</span> 评审办法与评分标准</h2>
+      
+      <h3>7.1 评分维度（百分制）</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>维度</th><th>权重</th><th>评分细则</th></tr></thead>
+          <tbody>
+            <tr><td><strong>专业深度</strong></td><td>25 分</td><td>对会计/审计/财务专业概念的理解准确度、对真实业务流程的还原度、对监管法规的引用准确性</td></tr>
+            <tr><td><strong>技术创新</strong></td><td>25 分</td><td>智能体架构设计的新颖性、多智能体协作机制的精巧度、对前沿技术（RAG、辩论、思维链等）的运用</td></tr>
+            <tr><td><strong>落地可行</strong></td><td>20 分</td><td>原型完整度、能否处理真实数据、用户界面友好度、对接现有业务系统的潜在难度</td></tr>
+            <tr><td><strong>效果评估</strong></td><td>15 分</td><td>是否提供量化评估、回归测试集覆盖度、与基线方案的对比结果、性能指标的合理性</td></tr>
+            <tr><td><strong>文档与展示</strong></td><td>10 分</td><td>技术报告的清晰度、代码注释完整度、演示视频质量、答辩表达能力</td></tr>
+            <tr><td><strong>伦理与合规</strong></td><td>5 分</td><td>数据来源合规性、AI 输出的可解释性、风险提示与免责声明的完备程度</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>7.2 评分流程</h3>
+      <ul>
+        <li><strong>初赛与复赛</strong>：每件作品由 5 名评委独立打分。</li>
+        <li><strong>决赛</strong>：每支队伍由 7 名评委独立打分。</li>
+      </ul>
+    </section>
+
+    <!-- Chapter 8 -->
+    <section class="chapter" id="chapter8">
+      <h2><span class="chapter-num">第八章</span> 奖项设置与激励机制</h2>
+      
+      <h3>8.1 奖项设置</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>奖项</th><th>名额（每赛道）</th><th>奖金（人民币）</th><th>附加权益</th></tr></thead>
+          <tbody>
+            <tr><td><strong>🏆 特等奖</strong></td><td>1 队</td><td>￥10,000</td><td>证书 + 知名企业、事务所、金融机构实习</td></tr>
+            <tr><td><strong>🥇 一等奖</strong></td><td>2 队</td><td>￥5,000</td><td>证书 + 实习推荐</td></tr>
+            <tr><td><strong>🥈 二等奖</strong></td><td>5 队</td><td>￥3,000</td><td>证书 + 实习推荐</td></tr>
+            <tr><td><strong>🥉 三等奖</strong></td><td>12 队</td><td>￥1,000</td><td>证书 + 实习推荐</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>8.2 团队奖与个人奖</h3>
+      <ul>
+        <li>奖金由队长统一领取后由队员协商分配，组委会不干预内部分配。</li>
+        <li>每支获奖队伍的指导教师授予「优秀指导教师」称号。</li>
+      </ul>
+    </section>
+
+    <!-- Chapter 9 -->
+    <section class="chapter" id="chapter9">
+      <h2><span class="chapter-num">第九章</span> 组织架构与师资保障</h2>
+      
+      <h3>9.1 竞赛组织架构</h3>
+      <div class="table-wrapper">
+        <table>
+          <tbody>
+            <tr><td style="width:160px;font-weight:600">执行委员会</td><td>北京市教育委员会、中央财经大学会计学院院长（主席）、副院长（执行主席）、学院党委副书记、教务处副处长</td></tr>
+            <tr><td style="font-weight:600">专业评审委员会</td><td>20-30 位由学界、业界、监管层专家组成，分赛道工作</td></tr>
+            <tr><td style="font-weight:600">技术支持组</td><td>学院信息中心 + 合作 AI 厂商技术团队</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>9.2 指导规则</h3>
+      <p>指导教师可对赛队提供方向性指导、文献推荐、原型 review，但不得代替学生完成核心代码开发或撰写文档。组委会通过查重等方式监督学术诚信。</p>
+    </section>
+
+    <!-- Chapter 10 -->
+    <section class="chapter" id="chapter10">
+      <h2><span class="chapter-num">第十章</span> 技术支持与资源平台</h2>
+      
+      <h3>10.1 官方技术资源</h3>
+      <div class="table-wrapper">
+        <table>
+          <tbody>
+            <tr><td style="width:160px;font-weight:600">竞赛官方公众号</td><td>提供报名、规则查询、赛题公告、提交物上传、成绩查询等功能</td></tr>
+            <tr><td style="font-weight:600">技术文档中心</td><td>包含 Agent 框架对比、Prompt 工程指南、RAG 最佳实践、评估方法论</td></tr>
+            <tr><td style="font-weight:600">算力赞助平台</td><td>复赛队伍可申领 DeepSeek / Moonshot / 智谱 API Key</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <h3>10.2 合作伙伴</h3>
+      <p>本届竞赛邀请以下合作方提供赛题素材、奖金、实习机会：四大会计师事务所（普华永道、德勤、安永、毕马威）、国内知名会计师事务所、中信证券、华泰证券、招商银行、平安集团、华为、阿里云、腾讯云、智谱、DeepSeek、Anthropic（远程支持）等知名企业。</p>
+    </section>
+
+    <!-- Chapter 11 -->
+    <section class="chapter" id="chapter11">
+      <h2><span class="chapter-num">第十一章</span> 知识产权与赛事纪律</h2>
+      
+      <h3>11.1 知识产权归属</h3>
+      <p>作品原创性知识产权（含著作权、专利申请权）默认归属于参赛队伍全体成员。组委会享有：(1) 对获奖作品在学院刊物、官网、宣传材料中的非商业性使用权；(2) 优先与作品团队进行商业化合作洽谈的权利（不构成强制约束）。</p>
+      
+      <h3>11.2 开源与数据合规</h3>
+      <ul>
+        <li>参赛作品如使用开源代码或第三方组件，必须遵守相应开源协议（MIT / Apache / GPL 等）。</li>
+        <li>作品中使用的所有训练 / 检索数据，必须来源合法。组委会保留数据合规审查的权利。</li>
+        <li>禁止抄袭、剽窃他人作品。一经发现，立即取消参赛资格并通报参赛者所在学校。</li>
+      </ul>
+      
+      <h3>11.3 赛事纪律</h3>
+      <div class="table-wrapper">
+        <table>
+          <tbody>
+            <tr><td style="width:120px;font-weight:600">禁止行为</td><td>雇佣他人代写、伪造测试数据、贿赂评委、串通其他队伍、虚假身份报名</td></tr>
+            <tr><td style="font-weight:600">处罚措施</td><td>警告 / 取消单赛段成绩 / 取消参赛资格 / 通报所在学校 / 五年内禁赛</td></tr>
+            <tr><td style="font-weight:600">保密义务</td><td>评审期间评委不得向第三方泄露作品细节；获奖前作品技术细节保密</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Appendix -->
+    <section class="chapter" id="appendix">
+      <h2><span class="chapter-num">附录 A</span> 推荐技术栈与参考资料</h2>
+      
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>类别</th><th>推荐方案</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><strong>LLM</strong></td><td>DeepSeek-Chat / 通义千问</td><td>性价比高，中文能力强，符合数据本地化要求</td></tr>
+            <tr><td><strong>Agent 框架</strong></td><td>Anthropic Agent SDK / AutoGen</td><td>支持多智能体协作、辩论、状态机</td></tr>
+            <tr><td><strong>RAG 框架</strong></td><td>LangChain / LlamaIndex</td><td>成熟的检索增强生态</td></tr>
+            <tr><td><strong>向量数据库</strong></td><td>ChromaDB / Milvus</td><td>本地可部署，免费，支持中文</td></tr>
+            <tr><td><strong>Web 后端</strong></td><td>FastAPI</td><td>异步性能优秀，自动 API 文档</td></tr>
+            <tr><td><strong>前端</strong></td><td>原生 HTML / Vue / React</td><td>可视化展示与交互</td></tr>
+            <tr><td><strong>PDF 处理</strong></td><td>PyMuPDF / pdfplumber</td><td>财务报告解析必备</td></tr>
+            <tr><td><strong>数据分析</strong></td><td>pandas / numpy</td><td>财务数据处理标配</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 北京市大学生数智会计创新应用竞赛组委会 · 中央财经大学会计学院</p>
+    <p style="margin-top:8px;opacity:0.7">本手册最终解释权归竞赛组委会所有</p>
+  </footer>
+</div>
+
+<script>
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('overlay').classList.toggle('active');
+  }
+  
+  // Close sidebar on link click (mobile)
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 1024) {
+        toggleSidebar();
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
