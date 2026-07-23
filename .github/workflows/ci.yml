@@ -1,0 +1,30 @@
+name: CI
+
+# 在 push 与 Pull Request 时触发；任一步骤失败即阻断（非仅告警）。
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 安装 uv（与本地一致，统一由 uv 管理依赖与运行）
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # 与 scripts/setup.sh 保持一致：优先 --frozen，锁文件不匹配时回退
+      - name: Sync dependencies (uv sync)
+        run: uv sync --frozen || uv sync
+
+      # 快速 lint：仅检查语法错误与未定义名称等硬错误，通过 uvx 运行 ruff，
+      # 无需新增项目依赖或重复配置；发现问题即以非零码退出并阻断流水线。
+      - name: Quick lint (ruff, errors only)
+        run: uvx ruff check --select E9,F63,F7,F82 src tests
+
+      # 复用 pyproject.toml 中的 pytest 配置（pythonpath=src、dev 组依赖）
+      - name: Run tests (pytest)
+        run: uv run pytest
