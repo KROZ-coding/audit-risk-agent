@@ -1,0 +1,121 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险智能识别系统",
+    "locale": "zh",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "这是一个基于 Python 的多智能体年报审计风险识别系统,本地运行脚本齐全、人类可读文档充分;但缺少面向智能体的规范化指令入口、自动化交付校验闸门,生成产物被纳入版本控制导致变更信号被淹没,核心模块测试覆盖偏薄。本次分析在会话证据不可用(session-limited,可选会话根不存在或被默认禁用)的边界下进行,结论主要依据仓库静态证据与本地 git 事实。",
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 58,
+        "summary": "项目身份与 README/操作指南清晰,但没有面向智能体可消费的规范说明或规划文档,任务边界依赖隐性知识。"
+      },
+      {
+        "id": "controlled-execution",
+        "label": "受控执行",
+        "score": 64,
+        "summary": "pyproject.toml 与多份启动脚本(setup/local_run/http_run、Dockerfile、start.ps1)让运行路径可见,但权限与作用域约束仍是隐式的。"
+      },
+      {
+        "id": "change-validation",
+        "label": "变更校验",
+        "score": 50,
+        "summary": "存在 3-4 个测试文件,但相对 36 个源文件覆盖偏薄,且历史中未见源码与测试同步变更的证据。"
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 36,
+        "summary": "未见任何 CI/自动化闸门;生成产物入库使工作区变更被判定为 critical,叠加仅 2 次提交,交付与回滚可信度低。"
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 30,
+        "summary": "缺少可比的前后观察窗口与会话证据,无法验证任何可复用改进,暂不适用。"
+      }
+    ],
+    "aiAgentPractice": {
+      "inspectedSurfaces": ["Custom Agents", "Skills", "Planning Docs", "Plugins"],
+      "coverageRows": [
+        {
+          "surface": "Custom Agents",
+          "scopes": ["Project"],
+          "count": 0,
+          "paths": []
+        },
+        {
+          "surface": "Skills",
+          "scopes": ["Project"],
+          "count": 0,
+          "paths": []
+        },
+        {
+          "surface": "Planning Docs",
+          "scopes": ["Project"],
+          "count": 0,
+          "paths": []
+        },
+        {
+          "surface": "Plugins",
+          "scopes": ["User"],
+          "count": 2,
+          "paths": ["~/.qoder/plugins/cache/qoder-bundler/better-loop"]
+        }
+      ]
+    },
+    "suggestions": []
+  },
+  "findings": [
+    {
+      "id": "agent-guidance-surface-missing",
+      "title": "缺少面向智能体的规范化指令入口",
+      "severity": "Medium",
+      "reason": "仓库有丰富的 README 与 HTML 操作指南,但没有 AGENTS.md、规划/规格文档或项目级自定义智能体(经检为 0)。多智能体审计系统的任务边界、构建/运行/校验路径只能从分散的人类文档中推断,每次让编码智能体接手都需重新还原上下文,容易产生偏差。",
+      "dimensionRefs": ["task-understanding"],
+      "aiFixPrompt": "/better-loop fix this issue\n\n在仓库根目录新增一份 AGENTS.md,用最小篇幅记录:项目用途、主要目录结构、依赖安装(uv)、本地运行命令、测试与校验命令,以及编码智能体应遵守的边界。内容需与现有 README 和 scripts/ 中的脚本保持一致,不引入新的构建方式。\n\n## Validation\n\n- 确认 AGENTS.md 覆盖安装/运行/测试/校验四类命令且与现有脚本一致\n- 运行一次 agent-lint 校验指令文件可被解析",
+      "expectedArtifact": "AGENTS.md",
+      "expectedOutput": [
+        "在仓库根目录生成 AGENTS.md,包含项目用途、目录结构、安装、运行、测试与校验命令及智能体边界。"
+      ]
+    },
+    {
+      "id": "no-automated-delivery-gate",
+      "title": "没有自动化交付校验闸门(无 CI)",
+      "severity": "Medium",
+      "reason": "未发现任何 CI 配置(无 .github/workflows),静态证据将\"测试是否通过/CI 状态/运行时行为\"均标记为 UNVERIFIED。现有 pytest 测试没有任何自动触发方式,叠加仅 2 次提交与 53 个未提交改动,核心 agent/tools/storage 模块的回归无法在交付前被拦截。",
+      "dimensionRefs": ["reliable-delivery"],
+      "aiFixPrompt": "/better-loop fix this issue\n\n添加最小的持续集成配置,在推送/PR 时用 uv 安装依赖并运行 pytest,输出测试状态。不改动现有测试逻辑,仅提供自动触发的校验闸门。\n\n## Validation\n\n- CI 在提交时自动运行 pytest 并给出通过/失败状态\n- 本地按同一命令可复现测试结果",
+      "expectedArtifact": "CI workflow",
+      "expectedOutput": [
+        "新增一个在推送/PR 时运行 pytest 的 CI 工作流,并可报告测试通过/失败状态。"
+      ]
+    },
+    {
+      "id": "generated-outputs-version-controlled",
+      "title": "运行生成产物被纳入版本控制,淹没真实变更信号",
+      "severity": "Medium",
+      "reason": "app.log、local_storage/charts 下的 PNG、checkpoints.sqlite 等 15 个生成产物被 git 跟踪,而 .gitignore 未忽略 *.log/*.png/checkpoints.sqlite/local_storage。每次运行都会重写这些二进制与日志,使工作区出现 53 个改动、变更被判定为 critical(diffScore 100),真正的 11 个核心源码改动被埋没,变更审查与回滚难以归因。",
+      "dimensionRefs": ["reliable-delivery"],
+      "aiFixPrompt": "/better-loop fix this issue\n\n将运行生成产物加入 .gitignore(app.log、*.log、checkpoints.sqlite、local_storage/charts/、local_storage/reports/),并用 git rm --cached 将已跟踪的这些产物从索引中移除(保留本地文件)。不要改动源码与真实配置。\n\n## Validation\n\n- 运行一次系统后 git status 不再出现生成产物的改动\n- git ls-files 不再列出被忽略的日志/图表/sqlite 产物",
+      "expectedArtifact": ".gitignore update",
+      "expectedOutput": [
+        "更新 .gitignore 并取消跟踪已入库的生成产物,使运行后工作区对生成物保持干净。"
+      ]
+    },
+    {
+      "id": "core-modules-lack-paired-tests",
+      "title": "核心模块缺少配套测试",
+      "severity": "Medium",
+      "reason": "Python 侧 36 个源文件仅有 3-4 个测试文件,现有测试集中在 financial_calculator 与 data_validator;而正在改动的 11 个核心文件(agent.py、main.py、storage/memory、多个 tools)没有配套测试。历史中也未见源码与测试同步变更的证据,核心编排与工具链路的改动缺乏校验。",
+      "dimensionRefs": ["change-validation"],
+      "aiFixPrompt": "/better-loop fix this issue\n\n为最关键且正在改动的核心模块补充最小单元测试:优先覆盖 src/tools 下的纯函数型工具与 src/agents/agent.py 的可测逻辑。测试应可通过现有 pytest 运行,聚焦输入/输出契约而非引入新框架。\n\n## Validation\n\n- 新增测试可被 pytest 收集并通过\n- 被改动的核心工具模块至少有一条针对其输出契约的断言",
+      "expectedArtifact": "Test suite",
+      "expectedOutput": [
+        "为正在改动的核心工具/智能体模块补充可通过 pytest 运行的最小单元测试。"
+      ]
+    }
+  ]
+}

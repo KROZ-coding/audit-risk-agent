@@ -112,11 +112,18 @@ class GraphService:
         current_step = "初始化分析环境"
         current_pct = 2
         all_messages = []
+        final_messages = None  # 后处理（辩论/兜底导出/评分）后的完整消息，优先用于构建最终报告
 
         yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
 
         try:
             async for chunk in agent.astream(payload, config=run_config):
+                # _AgentWrapper.astream 在流末会额外推送一个 __post_processed__ 标记 chunk，
+                # 携带含辩论复核/兜底导出/综合评分的完整消息，不参与进度追踪。
+                if isinstance(chunk, dict) and chunk.get("__post_processed__"):
+                    final_messages = chunk.get("messages") or None
+                    continue
+
                 new_msgs = self._extract_new_messages(chunk, seen_ids)
                 all_messages.extend(new_msgs)
 
@@ -140,7 +147,13 @@ class GraphService:
             current_pct = 98
             yield self._sse({"type": "progress", "step": "汇总分析结论", "percent": current_pct})
 
-            report = self._build_final_report_from_messages(all_messages)
+            # 优先使用后处理后的完整消息构建报告（含辩论/导出链接/评分），
+            # 回退到流式累积的 all_messages（兼容未提供后处理的底层 agent）
+            if final_messages:
+                processed = [self._msg_to_dict(m) for m in final_messages]
+                report = self._build_final_report_from_messages(processed)
+            else:
+                report = self._build_final_report_from_messages(all_messages)
             yield self._sse({"type": "final_report", "percent": 100, **report})
 
         except Exception as e:
@@ -248,9 +261,14 @@ service = GraphService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 本地模式：预加载 agent
+    # 本地模式：先在事件循环内初始化持久化检查点（AsyncSqliteSaver），
+    # 再预加载 agent（确保 build_agent 拿到的是持久化 saver）
+    from storage.memory.memory_saver import init_memory_saver, close_memory_saver
+    await init_memory_saver()
     service._get_agent()
     yield
+    # 关闭时释放 checkpointer 连接
+    await close_memory_saver()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -271,23 +289,32 @@ app.add_middleware(
 
 UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "zhinengti_uploads")
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024
-ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv"}
+ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc", ".pptx", ".html", ".htm", ".txt", ".md"}
 
 openai_handler = OpenAIChatHandler(service)
 
 # ── Web UI 路由 ──
 WEB_DIR = Path(__file__).parent / "web"
 
+# 首页 HTML 强制不缓存：前端为单文件实时读取，禁用浏览器缓存可确保
+# 每次改动 index.html（如快捷上传自动发送逻辑）后刷新即生效，避免命中旧版页面。
+_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_web_ui():
-    """提供可视化 Web 界面"""
+    """提供可视化 Web 界面（禁用缓存，确保前端改动即时生效）"""
     index_path = WEB_DIR / "index.html"
     if not index_path.exists():
         return HTMLResponse(
             content="<h1>Web UI 未安装</h1><p>请确认 src/web/index.html 文件存在</p>",
             status_code=404,
         )
-    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content=index_path.read_text(encoding="utf-8"), headers=_NO_CACHE_HEADERS)
 
 
 @app.get("/baka", response_class=HTMLResponse)
@@ -506,7 +533,12 @@ async def health_check():
 
 @app.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
-    """接收上传文件，保存到临时目录并解析 PDF 文本内容"""
+    """接收上传文件，保存到临时目录并解析提取文本内容。
+
+    支持多种文件格式：PDF/Word/Excel/CSV/HTML/PPT/TXT/Markdown。
+    每种格式使用对应的解析器提取纯文本，供后续 AI 分析使用。
+    提取文本超过 20 万字符时自动截断，防止 LLM 上下文溢出。
+    """
     results = []
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -561,6 +593,80 @@ async def upload_files(files: List[UploadFile] = File(...)):
                     logger.warning(f"PDF 解析失败: {parse_err}")
                     extracted_text = f"[PDF 解析失败: {parse_err}]"
 
+            elif ext in (".docx", ".doc"):
+                # Word 文档解析：使用 docx2python 提取全文文本
+                try:
+                    from docx2python import docx2python
+                    doc = docx2python(save_path)
+                    extracted_text = doc.text
+                except Exception as parse_err:
+                    logger.warning(f"Word 解析失败: {parse_err}")
+                    extracted_text = f"[Word 解析失败: {parse_err}]"
+
+            elif ext in (".xlsx", ".xls", ".csv"):
+                # Excel/CSV 解析：使用 pandas 读取并转为文本
+                try:
+                    import io
+                    import pandas as pd
+                    if ext == ".csv":
+                        import chardet
+                        detected = chardet.detect(content)
+                        encoding = detected.get("encoding", "utf-8") or "utf-8"
+                        df = pd.read_csv(io.BytesIO(content), encoding=encoding)
+                    else:
+                        df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
+                    lines = []
+                    for _, row in df.iterrows():
+                        parts = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip()]
+                        if parts:
+                            lines.append(" ".join(parts))
+                    extracted_text = "\n".join(lines)
+                except Exception as parse_err:
+                    logger.warning(f"Excel 解析失败: {parse_err}")
+                    extracted_text = f"[Excel 解析失败: {parse_err}]"
+
+            elif ext in (".html", ".htm"):
+                # HTML 解析：去除标签后提取纯文本
+                try:
+                    import re as _re
+                    import chardet
+                    detected = chardet.detect(content)
+                    encoding = detected.get("encoding", "utf-8") or "utf-8"
+                    raw_text = content.decode(encoding, errors="replace")
+                    extracted_text = _re.sub(r'<[^>]+>', ' ', raw_text)
+                    extracted_text = _re.sub(r'\s+', ' ', extracted_text).strip()
+                except Exception as parse_err:
+                    logger.warning(f"HTML 解析失败: {parse_err}")
+                    extracted_text = f"[HTML 解析失败: {parse_err}]"
+
+            elif ext == ".pptx":
+                # PPT 解析：提取所有幻灯片的文本框内容
+                try:
+                    from pptx import Presentation
+                    prs = Presentation(save_path)
+                    slides_text = []
+                    for slide in prs.slides:
+                        parts = []
+                        for shape in slide.shapes:
+                            if shape.has_text_frame:
+                                parts.append(shape.text_frame.text)
+                        if parts:
+                            slides_text.append("\n".join(parts))
+                    extracted_text = "\n\n".join(slides_text)
+                except Exception as parse_err:
+                    logger.warning(f"PPT 解析失败: {parse_err}")
+                    extracted_text = f"[PPT 解析失败: {parse_err}]"
+
+            elif ext in (".txt", ".md"):
+                # 纯文本/Markdown：直接解码
+                try:
+                    import chardet
+                    detected = chardet.detect(content)
+                    encoding = detected.get("encoding", "utf-8") or "utf-8"
+                    extracted_text = content.decode(encoding, errors="replace")
+                except Exception as parse_err:
+                    extracted_text = content.decode("utf-8", errors="ignore")
+
             results.append({
                 "filename": f.filename,
                 "saved_path": save_path,
@@ -584,7 +690,12 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
 @app.get("/api/reload_kb")
 async def reload_knowledge_base():
-    """热重载知识库，无需重启服务"""
+    """热重载知识库，无需重启服务。
+
+    清空当前知识库缓存（文档列表 + ChromaDB collection），
+    然后重新扫描 knowledge_base/ 目录并重建向量索引。
+    适用于用户上传新法规文件后刷新知识库。
+    """
     try:
         from local_knowledge import get_knowledge_base
         kb = get_knowledge_base()
@@ -827,11 +938,14 @@ async def get_evaluation_status():
 async def run_evaluation(mode: str = "tool"):
     """运行效果评估（工具模式或全链路 Agent 模式）。
 
+    工具模式：直接调用 financial_calculator 计算 18 个测试用例，<1秒完成。
+    Agent 模式：调用完整 LLM + RAG + 辩论链路，每个用例约 30-60 秒。
+
     Args:
-        mode: 评估模式，可选 "tool"（工具级快速评估，<1秒）或 "all"（含 Agent 全链路）
+        mode: 评估模式，"tool"=工具级（快速）, "agent"/"all"=全链路
 
     Returns:
-        评估完成状态和结果摘要
+        评估完成状态和结果数据（含 Precision/Recall/F1/基线对比）
     """
     try:
         import subprocess
@@ -908,7 +1022,13 @@ def parse_input(input_str: str) -> Dict[str, Any]:
 def start_http_server(port):
     reload = os.getenv("ENV", "dev") == "dev"
     logger.info(f"Start HTTP Server, Port: {port}, Reload: {reload}")
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload, workers=1)
+    # 白名单模式：只监控 .py 文件变化，避免 app.log/数据库/向量库写入触发热重载死循环
+    # （HTML/CSS/JS 为每次请求实时读取，修改后无需重载即可生效）
+    uvicorn.run(
+        "main:app", host="0.0.0.0", port=port, reload=reload, workers=1,
+        reload_includes=["*.py"],
+        reload_excludes=["*.log", ".chroma_db/*", "local_storage/*", "*.pyc", "__pycache__/*", "*.db"],
+    )
 
 
 if __name__ == "__main__":

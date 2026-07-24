@@ -1,0 +1,144 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "本次为静态 + Git 证据审查（会话受限：0 个可用会话，Low 置信度，未执行运行时）。项目在导出配对兜底、AI 免责声明拦截等设计上有亮点，但存在一个系统性的「代码在磁盘上、却未提交到 Git」问题：仓库仅 2 次提交，运行时必需模块 domain_guard.py、CI 工作流、4/6 测试套件与唯一导航入口 AGENTS.md 均未纳入版本管理。这会让全新克隆在导出步骤直接崩溃、验证闭环形同虚设。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Workflows"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md (未提交)"
+          ]
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml (未提交)"
+          ]
+        }
+      ]
+    },
+    "suggestions": [],
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 58,
+        "summary": "AGENTS.md/README/系统提示词内容详实，但唯一的导航入口 AGENTS.md 未提交，追溯到已跟踪代码树时缺失。",
+        "findingRefs": [
+          "navigation-entrypoint-agents-md-untracked"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 50,
+        "summary": "依赖清单与锁文件齐备、脚本较多但分散且无统一入口；更关键的是执行链依赖一个未提交模块。",
+        "findingRefs": [
+          "untracked-runtime-dependency-domain-guard"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 38,
+        "summary": "测试与 CI 已编写但大多未提交：远端 CI 不会触发，干净检出仅能收集 6 套测试中的 2 套。",
+        "findingRefs": [
+          "validation-loop-not-committed"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 34,
+        "summary": "导出配对兜底是真实亮点，但整条流水线依赖未提交模块（全新克隆导出即崩溃），且工具顺序不变量仅为提示未强制。",
+        "findingRefs": [
+          "untracked-runtime-dependency-domain-guard",
+          "tool-order-invariant-advisory-only"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 30,
+        "summary": "未观测到任何会话样本，历史仅 2 次提交，缺少随实际工作更新的、已提交的路由/知识回路。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "untracked-runtime-dependency-domain-guard",
+      "title": "运行时必需模块 domain_guard.py 未提交，全新克隆导出即崩溃",
+      "severity": "High",
+      "reason": "src/tools/domain_guard.py 未纳入 Git，但三个已跟踪模块都依赖它：pdf_export.py:408 的 import 未做保护，全新克隆/CI 检出后 PDF 导出会抛 ImportError 而无法产出这一强制报告；仅定义于该文件的 AI 免责声明拦截 assert_disclaimer_present 随之消失；agent.py:445 的 try/except 又会静默吞掉同一异常，使工具顺序校验被无声关闭。git check-ignore 为空，确认是漏提交而非有意忽略。",
+      "expectedOutput": [
+        "提交 src/tools/domain_guard.py 并验证干净检出下导出链路可用（PDF+Excel 成对产出）。"
+      ],
+      "expectedArtifact": "Commit",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将运行时必需但未提交的 src/tools/domain_guard.py 纳入版本管理，使全新克隆能完成 PDF/Excel 导出并保留免责声明拦截。不要改动其对外接口。\n\n## Validation\n\n- git ls-files src/tools/domain_guard.py 能返回该路径\n- 从干净检出运行一次完整分析，确认 PDF 与 Excel 报告成对生成、免责声明拦截生效",
+      "dimensionRefs": [
+        "reliable-delivery",
+        "controlled-execution"
+      ]
+    },
+    {
+      "id": "validation-loop-not-committed",
+      "title": "校验闭环未提交：CI 工作流与 4/6 测试套件游离在版本管理之外",
+      "severity": "Medium",
+      "reason": ".github/workflows/ci.yml 未提交（git ls-files .github/ 为空），远端 push/PR 不会触发任何 CI；同时 tests/ 仅跟踪 test_data_validator.py 与 test_financial_calculator.py，test_domain_guard.py / test_disclosure_checker.py / test_risk_scorer.py / test_multi_year_comparison.py 均未提交。结果是：即便本地跑 pytest，覆盖的也只是 6 个工具模块中的 2 个，承载高风险不变量（顺序守卫、披露、评分）的逻辑没有任何自动化门禁。",
+      "expectedOutput": [
+        "提交 CI 工作流与 4 个测试套件，并确认 pytest 收集齐全、CI 可触发。"
+      ],
+      "expectedArtifact": "Commit",
+      "aiFixPrompt": "/better-loop fix this issue\n\n把校验闭环真正纳入版本管理：提交 .github/workflows/ci.yml 以及 tests/ 下未跟踪的 4 个测试套件，使 CI 能触发且覆盖全部工具模块。\n\n## Validation\n\n- git ls-files tests/ 显示 6 套测试均被跟踪，git ls-files .github/workflows/ci.yml 返回路径\n- uv run pytest --collect-only 收集到全部 6 套；下一次 push 触发 CI",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "navigation-entrypoint-agents-md-untracked",
+      "title": "唯一导航入口 AGENTS.md 未提交，克隆后拿不到任务与风险地图",
+      "severity": "Medium",
+      "reason": "AGENTS.md 描述了固定工具链、高风险区与校验命令，是本仓库唯一的导航/路由入口，但未纳入 Git（git ls-files 无该文件，证据包报告 agentInstructions.count=0）。全新克隆或以已跟踪代码树工作的 Agent 拿不到验收边界与命名风险的地图，只能依赖本地未提交文件。git check-ignore 为空，确认是漏提交。",
+      "expectedOutput": [
+        "提交 AGENTS.md 并确认其进入已跟踪代码树。"
+      ],
+      "expectedArtifact": "Commit",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将 AGENTS.md 纳入版本管理，使克隆后的仓库与 CI 环境都能获得导航入口。内容无需改动，仅需提交。\n\n## Validation\n\n- git ls-files 能返回 AGENTS.md\n- 干净检出后该文件存在且可作为任务/风险导航",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    },
+    {
+      "id": "tool-order-invariant-advisory-only",
+      "title": "固定工具顺序不变量仅为提示、未强制（命名风险 #1）",
+      "severity": "Medium",
+      "reason": "「工具执行顺序不可颠倒」在后置处理里只调用非抛异常的 check_tool_call_order，仅向报告追加一段文字警告（agent.py:432-446），且只覆盖 validate→calculate，未覆盖披露→检索→评分→导出的完整链路；会抛异常的 assert_tool_call_order 虽已定义却在任何已跟踪文件中零引用。因此 LLM 可能在未做数据勾稽校验的情况下计算指标（或跳步），报告仍会照常产出并导出，不变量并未被真正拦截。",
+      "expectedOutput": [
+        "将顺序校验改为覆盖完整链路的强制门禁，并以乱序用例验证会被拦截。"
+      ],
+      "expectedArtifact": "Code",
+      "aiFixPrompt": "/better-loop fix this issue\n\n把工具顺序不变量从「仅警告」升级为强制门禁：在导出/评分兜底路径前复用会抛异常的 assert_tool_call_order 覆盖完整声明链路，顺序违规时以清晰错误 fail-closed。\n\n## Validation\n\n- 新增/启用一个用例：输入乱序调用序列时期望抛出顺序违规（该测试文件也需一并提交，见 validation-loop-not-committed）\n- 正常顺序下完整链路仍能正常产出并导出",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    }
+  ]
+}

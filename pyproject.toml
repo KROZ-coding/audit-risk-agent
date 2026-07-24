@@ -46,6 +46,8 @@ dependencies = [
     "chardet>=5.0,<6",
     "rich>=13.0,<15",
     "python-multipart>=0.0.32",
+    "langgraph-checkpoint-sqlite>=3.0.3",
+    "aiosqlite>=0.22.1",
 ]
 
 [tool.uv]
@@ -66,7 +68,34 @@ explicit = true
 dev = [
     "pytest",
     "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=5,<8",
+    "ruff>=0.6,<1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+# ── 覆盖率门禁配置 ──
+# CI 以 `uv run pytest --cov=src/agents --cov=src/tools --cov-fail-under=55`
+# 对「Agent 运行时 + 审计工具核心」做覆盖率门禁（见 .github/workflows/ci.yml）。
+# 此处仅声明报告口径；阈值与统计范围由 CI 命令行显式给出，便于按需调整。
+[tool.coverage.run]
+branch = false
+omit = ["*/__init__.py", "tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+# ── 快速静态检查 ──
+# 运行命令： uv run ruff check src tests
+# 自动修复： uv run ruff check --fix src tests
+# ruff 会以 `文件:行:列 规则码 说明` 的形式给出每个问题的精确定位。
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W=pycodestyle, F=pyflakes(未使用导入/变量等), I=isort(导入排序)
+select = ["E", "W", "F", "I"]

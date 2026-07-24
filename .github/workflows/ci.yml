@@ -28,3 +28,20 @@ jobs:
       # 复用 pyproject.toml 中的 pytest 配置（pythonpath=src、dev 组依赖）
       - name: Run tests (pytest)
         run: uv run pytest
+
+      # 最小可行功能校验（fail-closed）：用 mock LLM/工具驱动真实的 _AgentWrapper 后处理，
+      # 校验完整声明链路顺序门禁（validate→calculate→disclosure→search→score→export_pdf+export_excel）
+      # 与成对导出兜底。故意破坏工具顺序或删除任一导出兜底时，本步骤应失败（阻断流水线）。
+      - name: Functional pipeline gate (integration)
+        run: uv run pytest tests/test_pipeline_integration.py -v
+
+      # 覆盖率门禁：对「Agent 运行时 + 审计工具核心」统计行覆盖率，低于阈值即阻断。
+      # 范围与阈值显式给出，便于随测试增补逐步上调（当前实测约 61%，门禁设为 55%）。
+      - name: Coverage gate (pytest-cov)
+        run: uv run pytest --cov=src/agents --cov=src/tools --cov-report=term-missing --cov-fail-under=55
+
+      # 可选质量信号（不阻断流水线）：以 tool 模式跑效果评估脚本，产出工具级评估指标。
+      # 该步骤仅作观测信号，失败不影响 CI 结论（continue-on-error）。
+      - name: Quality signal (evaluation, tool mode)
+        continue-on-error: true
+        run: uv run python tests/evaluation_report.py --mode tool

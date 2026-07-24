@@ -1,0 +1,168 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "项目具备清晰的 Agent 导航入口（AGENTS.md）与 fail-closed 的工具链顺序门禁，任务上下文与执行控制较强；但变更验证依赖不足——CI 仅做 lint 与单元测试，缺乏全链路/集成校验与覆盖率门禁，且知识库回退路径与消息滑窗耦合点缺乏测试保护。本次为静态仓库证据，未观察到任何可用会话（0 个），会话相关维度置于低置信度边界。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Workflows",
+        "Skills",
+        "Custom Agents"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml"
+          ]
+        },
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0,
+          "paths": []
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0,
+          "paths": []
+        }
+      ]
+    },
+    "suggestions": [],
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 78,
+        "summary": "AGENTS.md 提供导航式入口 + 目录职责表 + 高风险区，config 的 sp 明确固定工具链与审计措辞约束，任务边界清晰。",
+        "findingRefs": []
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 70,
+        "summary": "domain_guard 以 fail-closed 强制工具调用顺序，pyproject 与 scripts 提供可执行的安装/运行路径；但权限/审批边界仍偏隐式。",
+        "findingRefs": [
+          "message-window-couples-order-guard-and-score-fallback"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 54,
+        "summary": "8 个单测覆盖核心工具与顺序门禁，但 CI 无覆盖率门禁与集成/全链路校验，知识库回退与滑窗截断路径无测试保护。",
+        "findingRefs": [
+          "ci-missing-functional-gate",
+          "kb-chroma-tfidf-fallback-untested"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 58,
+        "summary": "PDF+Excel 成对导出兜底与顺序门禁较稳健；但滑窗截断可能在长会话中误触发门禁并阻断合法报告，且缺集成回归。",
+        "findingRefs": [
+          "ci-missing-functional-gate",
+          "message-window-couples-order-guard-and-score-fallback"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 32,
+        "summary": "仅有 AGENTS.md 入口，缺少 specs/exec-plans/项目 Skill/自定义 Agent 等可复用沉淀层；无会话证据可验证改进闭环。",
+        "findingRefs": [
+          "no-durable-learning-layer"
+        ]
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "ci-missing-functional-gate",
+      "title": "CI 只做 lint 与单测，缺全链路校验与覆盖率门禁",
+      "severity": "High",
+      "reason": "ci.yml 仅运行 ruff（E9/F63/F7/F82 硬错误）与 pytest 单测，没有覆盖率阈值，也没有针对工具链顺序、PDF+Excel 成对导出、知识库检索的集成/全链路测试；已有的 tests/evaluation_report.py 评估未纳入 CI。工具链或导出机制发生功能性回归时，单测通过即可放行，交付质量缺乏量化信号。",
+      "expectedOutput": [
+        "ci.yml 新增集成测试与覆盖率门禁步骤，并保留现有 lint/单测。",
+        "至少一个用 mock 驱动的全链路集成测试，覆盖工具顺序门禁与成对导出。"
+      ],
+      "expectedArtifact": "CI 工作流 + 集成测试",
+      "aiFixPrompt": "/better-loop fix this issue\n\n在 .github/workflows/ci.yml 增加最小可行的功能校验：新增一个用 mock LLM/工具的集成测试（校验 validate→calculate→disclosure→search→score→export_pdf+export_excel 顺序门禁与成对导出），并加入 pytest 覆盖率门禁；可选地以 tool 模式运行 tests/evaluation_report.py 作为质量信号。保持现有 lint 与单测步骤不变。\n\n## Validation\n\n- 本地运行 uv run pytest 与新增集成测试全部通过\n- CI 在故意破坏工具顺序或删除一个导出时应失败（fail-closed 验证）",
+      "dimensionRefs": [
+        "change-validation",
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "message-window-couples-order-guard-and-score-fallback",
+      "title": "消息滑窗截断与顺序门禁/评分兜底耦合，长会话可能误阻断报告",
+      "severity": "Medium",
+      "reason": "_windowed_messages 以 MAX_MESSAGES=40 裁剪状态消息，而 /run（ainvoke）路径的 _post_process 直接消费被裁剪后的 result['messages']：其一，_enforce_tool_call_order 依据裁剪后的 called_seq 判定，若早期的 validate_financial_data 被截断而 calculate 仍在窗口内，会被判为『未调用 validate』触发 fail-closed 异常，阻断本应合法的报告；其二，综合评分兜底按名字扫描 validate/calculate ToolMessage，一旦被截断则回退到 '{}' 默认值，静默降级评分。该风险经代码核验成立，但无会话证据证明其已实际触发。",
+      "expectedOutput": [
+        "工具链完成状态与结果在滑窗裁剪前独立累积，不受 MAX_MESSAGES 影响。",
+        "覆盖长会话(>40 消息)的回归单测，验证门禁与评分兜底不被误触发/误降级。"
+      ],
+      "expectedArtifact": "状态改造 + 单元测试",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将『工具链完成状态』与『各工具结果』的记账从受滑窗影响的 messages 中解耦：在 AgentState 增加独立状态字段（如已完成工具集合、各工具最近一次结果）在裁剪前累积，供 _enforce_tool_call_order 与综合评分兜底读取；或让 _windowed_messages 对链路记账消息豁免裁剪。保持窗口对 LLM 上下文的限长作用不变。\n\n## Validation\n\n- 新增单测：构造 >40 条消息且早期含 validate/calculate 的场景，断言不误触发 ToolCallOrderViolation 且综合评分读取到真实结果\n- 现有 tests/test_domain_guard.py 仍全部通过",
+      "dimensionRefs": [
+        "reliable-delivery",
+        "controlled-execution"
+      ]
+    },
+    {
+      "id": "kb-chroma-tfidf-fallback-untested",
+      "title": "ChromaDB→TF-IDF 检索回退缺乏一致性测试，可能静默降级",
+      "severity": "Medium",
+      "reason": "local_knowledge.py 在 ChromaDB 初始化或查询失败时回退到 TF-IDF，两条路径共享同一分块逻辑，设计合理；但没有任何测试验证回退能在 ChromaDB 不可用（如 Windows 缺 DLL/hnswlib）时正确激活并返回合理结果，也未比对两条路径对同一查询的检索质量。回退一旦生效，语义检索退化为词频匹配可能被用户无感知地静默降级。",
+      "expectedOutput": [
+        "覆盖 ChromaDB 失败触发 TF-IDF 回退的测试，断言回退激活与结果可用。",
+        "对代表性查询比对两路径命中，确认回退不产生空/无关结果。"
+      ],
+      "expectedArtifact": "单元测试",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为 src/local_knowledge.py 增加回退路径测试：mock chromadb 客户端在初始化或 query 时抛异常，断言 search() 走 TF-IDF 分支并对已知查询返回非空、相关的结果；对若干代表性法规/案例查询比对两路径的 top-k 命中，确保回退结果可用。\n\n## Validation\n\n- 新增 tests/test_local_knowledge.py 覆盖 ChromaDB 失败 → TF-IDF 激活场景并通过\n- 对代表性查询回退结果非空且命中预期来源文件",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "no-durable-learning-layer",
+      "title": "除 AGENTS.md 外缺少可复用沉淀层（specs/Skill/自定义 Agent）",
+      "severity": "Low",
+      "reason": "静态扫描显示项目仅有 AGENTS.md 作为入口，未发现 .qoder/specs、exec-plans、项目级 Skill、自定义 Agent 或结构化案例复盘等渐进式披露与经验沉淀载体；分析器对学习捕获维度返回 scanned-empty（0 episode、0 recurring 候选）。反复出现的调试/校验模式无法被固化为可复用、可验证的资产。本项属证据受限的低置信度观察（无会话数据佐证具体重复摩擦）。",
+      "expectedOutput": [
+        "为最高频任务沉淀一个可复用的 Skill/exec-plan，含触发条件与验收校验。",
+        "AGENTS.md 增加 when-to-load 路由指向该沉淀。"
+      ],
+      "expectedArtifact": "Skill 或 spec 文档",
+      "aiFixPrompt": "/better-loop fix this issue\n\n从当前最高频的一类任务出发，建立最小可复用沉淀：例如为『单份年报完整分析』沉淀一个项目级 Skill 或 exec-plan 文档，明确触发条件、固定工具链步骤与验收校验，并在 AGENTS.md 的『更深文档链接』中加入 when-to-load 指引，形成渐进式披露。避免一次性铺开多个模板。\n\n## Validation\n\n- 新增的 Skill/spec 能在一次真实分析中被引用并覆盖固定工具链\n- AGENTS.md 增加指向该沉淀的 when-to-load 路由",
+      "dimensionRefs": [
+        "learning-capture"
+      ]
+    }
+  ]
+}

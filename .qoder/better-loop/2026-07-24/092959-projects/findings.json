@@ -1,0 +1,170 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "项目把领域约束（工具链顺序、PDF+Excel 成对导出、免责声明标记）机制化到了代码门禁而非仅靠约定，本地 66 项测试可通过，任务入口（AGENTS.md）清晰。主要风险集中在交付闭环：兜底导出会吞掉真实导出异常，使「产出可访问报告」的验收目标可能静默失败；CI 结构完整但未观测到实际运行/绿灯，检索回退（TF-IDF）路径未被单独验证。证据边界：本次无可用会话（0 条），运行期与端到端导出、远程 CI 状态均未实测。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Workflows"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml"
+          ]
+        }
+      ]
+    },
+    "suggestions": [
+      {
+        "id": "exercise-configured-ci",
+        "kind": "try-existing",
+        "title": "在下一次有界改动上实际跑一次已配置的 CI 工作流",
+        "reason": "仓库已存在结构完整的 .github/workflows/ci.yml（lint→pytest→功能门禁→覆盖率），但本次评审未观测到它被实际运行或产生绿灯状态。",
+        "confidence": "Medium",
+        "owner": "仓库维护者",
+        "nextStep": "推送一次有界改动或手动触发工作流，确认 pytest 与 --cov-fail-under=55 门禁真实通过。",
+        "validation": "确认 CI 运行记录为通过状态，覆盖率门禁未被跳过或降级。"
+      }
+    ],
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 78,
+        "summary": "AGENTS.md 提供目录职责表、常见任务路径、高风险区与 when-to-load 路由，任务边界清晰；仅存在 README 与 AGENTS.md 项目名不一致的轻微漂移。",
+        "findingRefs": [
+          "project-identity-drift"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 68,
+        "summary": "工具链顺序由 domain_guard 以 fail-closed 门禁强制，约束机制化程度高；但缺少冷启动自检/重置命令，且文档只给出 bash 版 uv 命令，与 Windows 下的 start.ps1/stop.ps1 存在落差。",
+        "findingRefs": [
+          "cold-start-command-gap"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 66,
+        "summary": "核心工具行为有测试守护且本地全绿；但成对导出仅以 mock 验证（无真实文件 I/O），TF-IDF 回退路径未被单独执行/测试。",
+        "findingRefs": [
+          "silent-export-failure",
+          "tfidf-fallback-untested"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 46,
+        "summary": "CI 在纸面上结构良好（lint→pytest→功能门禁→覆盖率），但未观测到实际运行或绿灯；兜底导出吞掉真实异常，交付验收可能静默失败。",
+        "findingRefs": [
+          "silent-export-failure",
+          "ci-execution-unverified"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 35,
+        "summary": "无可比对的后续结果窗口，也无会话/复用技能证据，无法证明可复用改进的有效性。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "silent-export-failure",
+      "title": "兜底导出吞掉真实异常，验收目标可能静默失败",
+      "severity": "Medium",
+      "reason": "_post_process 中真实的 export_pdf_report/export_excel_report 调用异常被 except 捕获后仅 logger.warning，不向上暴露；而验收目标是「产出可访问的报告/图表」。当真实导出失败时，分析看似成功但报告缺失，操作者无法从结果得知交付已断裂。此问题与 fail-closed 的顺序门禁是相互独立的因果缺口。",
+      "expectedOutput": [
+        "兜底导出失败时在用户可见结果中surfacing明确错误提示，并有一条针对导出异常的回归测试守护该行为。"
+      ],
+      "expectedArtifact": "代码改动 + 回归测试",
+      "aiFixPrompt": "/better-loop fix this issue\n\n在 src/agents/agent.py 的 _post_process 兜底导出分支中，为真实导出失败提供最小可见的失败信号：当 export_pdf_report/export_excel_report 兜底调用抛异常时，除记录日志外，还需在返回给用户的报告文本中追加明确的失败提示（例如「⚠️ 报告导出失败，请重试」），保持既有的成对导出与顺序门禁行为不变。\n\n## Validation\n\n- 运行 uv run pytest tests/test_pipeline_integration.py -q 确认成对导出与顺序门禁用例仍通过\n- 新增/扩展一个用例：模拟导出 invoke 抛异常，断言返回文本包含可见失败提示而非静默成功",
+      "dimensionRefs": [
+        "reliable-delivery",
+        "change-validation"
+      ]
+    },
+    {
+      "id": "ci-execution-unverified",
+      "title": "CI 工作流存在但未观测到实际运行",
+      "severity": "Low",
+      "reason": ".github/workflows/ci.yml 结构完整且门禁明确，但本次评审仅确认其文件存在，未观测到任何运行记录、绿灯状态或分支保护。文件存在不等于 CI 真实运行，交付可靠性缺少已执行证据支撑。",
+      "expectedOutput": [
+        "一次通过状态的 CI 运行记录，且覆盖率与功能门禁均真实生效。"
+      ],
+      "expectedArtifact": "CI 运行证据",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将声明式 CI 转为可观测的已执行证据：手动触发或通过一次有界推送运行 .github/workflows/ci.yml，确认 lint、pytest、功能门禁与覆盖率门禁真实通过，并在 README 中补充 CI 状态徽章或运行入口链接。\n\n## Validation\n\n- 确认存在一条通过状态的 CI 运行记录\n- 确认 --cov-fail-under=55 覆盖率门禁未被跳过",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "tfidf-fallback-untested",
+      "title": "检索 TF-IDF 回退路径缺少单独验证",
+      "severity": "Low",
+      "reason": "AGENTS.md §3 明确要求「改动检索逻辑请两条路径都验证」，但本地测试仅执行了 ChromaDB 路径，lazy 构建的 TF-IDF 回退分支未被单独执行或测试。当 ChromaDB 不可用而回退触发时，缺少测试守护会让回退路径的回归无法被发现。",
+      "expectedOutput": [
+        "一条单独覆盖 TF-IDF 回退路径的测试，验证 ChromaDB 不可用时检索仍可用。"
+      ],
+      "expectedArtifact": "回归测试",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为 src/local_knowledge.py 的 TF-IDF 回退路径补充一条独立测试：在 ChromaDB 不可用/查询失败的条件下触发 _build_tfidf_fallback，断言检索仍返回合理结果。保持既有 ChromaDB 路径测试不变。\n\n## Validation\n\n- 运行 uv run pytest tests/test_local_knowledge.py -q 确认回退路径用例通过\n- 确认在无 ChromaDB 场景下检索不抛未处理异常",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "cold-start-command-gap",
+      "title": "缺少冷启动自检/重置命令，且文档与 Windows 执行入口不一致",
+      "severity": "Low",
+      "reason": "运行操作依赖 uv sync 加手动执行 scripts/init_knowledge_base.py，没有 doctor/reset/clean 之类的冷启动健康检查或状态重置入口；AGENTS.md 仅记录 bash 版 uv 命令，而仓库实际提供的是 Windows 的 start.ps1/stop.ps1，操作者在 Windows 上难以从文档直接复现启动路径。",
+      "expectedOutput": [
+        "文档中并列给出 Windows 与 bash 的启动命令，并提供一个可执行的冷启动自检步骤。"
+      ],
+      "expectedArtifact": "文档 + 启动/自检脚本说明",
+      "aiFixPrompt": "/better-loop fix this issue\n\n补齐可执行的启动与自检入口：在 AGENTS.md/README 中补充 Windows 下 start.ps1/stop.ps1 的用法说明，使其与 bash uv 命令并列；并提供一个最小的冷启动自检步骤（如检查依赖与知识库向量库是否就绪）。不改变现有工具链与门禁行为。\n\n## Validation\n\n- 在干净环境按文档执行 start.ps1，确认服务可在 :5000 启动\n- 确认自检步骤能提示知识库未初始化的情况",
+      "dimensionRefs": [
+        "controlled-execution"
+      ]
+    },
+    {
+      "id": "project-identity-drift",
+      "title": "README 与 AGENTS.md 项目名称不一致",
+      "severity": "Low",
+      "reason": "README 一级标题为「上市公司年报审计风险智能识别系统」，AGENTS.md 标题为「上市公司年报审计风险识别系统」。名称漂移虽小，但面向读者，可能在检索/引用时造成身份指代不一致。",
+      "expectedOutput": [
+        "README 与 AGENTS.md 使用完全一致的规范项目名称。"
+      ],
+      "expectedArtifact": "文档改动",
+      "aiFixPrompt": "/better-loop fix this issue\n\n统一项目名称：确定唯一的规范项目名，并同步 README 一级标题与 AGENTS.md 标题使其完全一致。仅做文案对齐，不改动结构。\n\n## Validation\n\n- 确认 README 与 AGENTS.md 的项目名称字符串完全一致",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>审计风险识别系统 · 技术答辩 QA 速查</title>
+<style>
+  :root{
+    --bg:#0a0e17; --bg2:#0f1522; --glass:rgba(255,255,255,.045);
+    --glass-border:rgba(255,255,255,.09); --txt:#e6ebf5; --muted:#8a97ad;
+    --accent:#4dd0e1; --accent2:#7c6cff; --q:#ffb454; --a:#5ee6a8;
+    --p0:#ff5470; --p1:#ff9f43; --p2:#54c7ff; --p3:#9b8cff;
+    --shadow:0 8px 32px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(1200px 800px at 15% -10%,#16203a 0,transparent 55%),
+               radial-gradient(1000px 700px at 100% 0,#1a1330 0,transparent 50%),
+               var(--bg);
+    color:var(--txt); line-height:1.75; min-height:100vh;
+  }
+  a{color:var(--accent);text-decoration:none}
+  code{
+    font-family:"Cascadia Code",Consolas,monospace; font-size:.88em;
+    background:rgba(124,108,255,.14); color:#c7bdff; padding:.1em .42em;
+    border-radius:5px; border:1px solid rgba(124,108,255,.22); word-break:break-word;
+  }
+  /* ── Layout ── */
+  .wrap{display:grid; grid-template-columns:270px 1fr; max-width:1440px; margin:0 auto; gap:0}
+  /* ── Sidebar ── */
+  aside{
+    position:sticky; top:0; height:100vh; overflow-y:auto; padding:26px 18px;
+    background:linear-gradient(180deg,rgba(15,21,34,.9),rgba(10,14,23,.7));
+    border-right:1px solid var(--glass-border); backdrop-filter:blur(12px);
+  }
+  aside h2{font-size:13px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:18px 6px 10px;font-weight:600}
+  aside h2:first-child{margin-top:0}
+  .nav a{
+    display:block; padding:8px 12px; border-radius:9px; color:var(--muted);
+    font-size:13.5px; transition:.18s; border:1px solid transparent; margin-bottom:2px;
+  }
+  .nav a:hover{background:var(--glass); color:var(--txt); border-color:var(--glass-border)}
+  .nav a.fix{color:#ffd3a6}
+  .badge{font-size:10px;padding:1px 7px;border-radius:20px;margin-left:6px;font-weight:700;vertical-align:middle}
+  .b0{background:rgba(255,84,112,.2);color:#ff8fa3}
+  .b1{background:rgba(255,159,67,.2);color:#ffbe7d}
+  .b2{background:rgba(84,199,255,.2);color:#8fd6ff}
+  .b3{background:rgba(155,140,255,.2);color:#bfb3ff}
+  /* ── Main ── */
+  main{padding:34px 44px 120px; max-width:1000px}
+  header.hero{margin-bottom:28px}
+  .hero .kicker{color:var(--accent);font-size:13px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
+  .hero h1{font-size:30px;margin:8px 0 6px;background:linear-gradient(90deg,#fff,#9fd8ff 60%,#b9adff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p.sub{color:var(--muted);font-size:14.5px}
+  .meta-chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:12px;padding:4px 12px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-border);color:var(--muted)}
+  /* ── Search ── */
+  .searchbar{position:sticky;top:0;z-index:20;padding:14px 0 16px;background:linear-gradient(180deg,var(--bg) 70%,transparent);margin-bottom:8px}
+  .searchbar input{
+    width:100%; padding:13px 46px; font-size:15px; color:var(--txt);
+    background:var(--glass); border:1px solid var(--glass-border); border-radius:14px;
+    outline:none; transition:.2s; backdrop-filter:blur(8px);
+  }
+  .searchbar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(77,208,225,.13)}
+  .searchbar{position:relative}
+  .searchbar::before{content:"🔍";position:absolute;left:15px;top:27px;font-size:16px;opacity:.6}
+  .search-hint{position:absolute;right:16px;top:26px;font-size:12px;color:var(--muted)}
+  /* ── Round card ── */
+  .round{
+    background:var(--glass); border:1px solid var(--glass-border); border-radius:18px;
+    padding:8px 26px 24px; margin-bottom:26px; box-shadow:var(--shadow); backdrop-filter:blur(10px);
+    scroll-margin-top:80px;
+  }
+  .round>h3{
+    font-size:19px; margin:20px 0 6px; padding-bottom:12px; border-bottom:1px solid var(--glass-border);
+    display:flex;align-items:center;gap:10px;
+  }
+  .round>h3 .num{
+    font-size:13px;width:30px;height:30px;flex:0 0 30px;display:grid;place-items:center;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#08101c;font-weight:800;
+  }
+  .qa{margin-top:16px}
+  .bubble{border-radius:14px;padding:14px 18px;margin-bottom:12px;position:relative;border:1px solid transparent}
+  .bubble .role{font-size:12px;font-weight:700;letter-spacing:.5px;margin-bottom:5px;display:flex;align-items:center;gap:6px;text-transform:uppercase;opacity:.9}
+  .q-bubble{background:rgba(255,180,84,.07);border-color:rgba(255,180,84,.22)}
+  .q-bubble .role{color:var(--q)}
+  .a-bubble{background:rgba(94,230,168,.055);border-color:rgba(94,230,168,.18)}
+  .a-bubble .role{color:var(--a)}
+  .bubble p{margin:8px 0}
+  .bubble p:first-of-type{margin-top:0}
+  .bubble ul,.bubble ol{margin:8px 0 8px 22px}
+  .bubble li{margin:5px 0}
+  strong{color:#fff;font-weight:650}
+  em{color:var(--q);font-style:normal;font-weight:600}
+  /* ── Fix list ── */
+  .fixsec{scroll-margin-top:80px}
+  .fixsec h3{font-size:22px;margin:10px 0 4px}
+  .fix{
+    background:var(--glass);border:1px solid var(--glass-border);border-left-width:4px;
+    border-radius:14px;padding:16px 20px;margin-bottom:14px;box-shadow:var(--shadow);
+  }
+  .fix.p0{border-left-color:var(--p0)} .fix.p1{border-left-color:var(--p1)}
+  .fix.p2{border-left-color:var(--p2)} .fix.p3{border-left-color:var(--p3)}
+  .fix .head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px}
+  .fix .tag{font-size:11px;font-weight:800;padding:3px 10px;border-radius:6px;letter-spacing:.5px}
+  .fix.p0 .tag{background:rgba(255,84,112,.18);color:#ff8fa3}
+  .fix.p1 .tag{background:rgba(255,159,67,.18);color:#ffbe7d}
+  .fix.p2 .tag{background:rgba(84,199,255,.18);color:#8fd6ff}
+  .fix.p3 .tag{background:rgba(155,140,255,.18);color:#bfb3ff}
+  .fix .title{font-size:16px;font-weight:650;color:#fff}
+  .fix .loc{font-size:12px;color:var(--muted)}
+  .fix .row{margin:6px 0;font-size:14px}
+  .fix .row b{color:var(--accent);font-weight:600;display:inline-block;min-width:66px}
+  .no-result{text-align:center;color:var(--muted);padding:60px 20px;font-size:15px;display:none}
+  footer{color:var(--muted);font-size:12.5px;text-align:center;padding:30px;border-top:1px solid var(--glass-border);margin-top:20px}
+  .hl{background:rgba(255,220,80,.28);color:#fff;border-radius:3px;padding:0 2px}
+  /* scrollbar */
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+  @media(max-width:900px){
+    .wrap{grid-template-columns:1fr} aside{display:none} main{padding:22px 18px 80px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ───────── Sidebar ───────── -->
+  <aside>
+    <h2>答辩轮次</h2>
+    <nav class="nav">
+      <a href="#r1">① 整体架构与技术选型</a>
+      <a href="#r2">② 滑动窗口致命隐患</a>
+      <a href="#r3">③ 流式/同步一致性缺陷</a>
+      <a href="#r4">④ RAG 分块与缓存失效</a>
+      <a href="#r5">⑤ 工具边界 bug 与算法</a>
+      <a href="#r6">⑥ 数据库与会话状态</a>
+      <a href="#r7">⑦ 安全审查</a>
+      <a href="#r8">⑧ 部署与运行环境</a>
+      <a href="#summary">✦ 总结陈词</a>
+    </nav>
+    <h2>修复清单</h2>
+    <nav class="nav">
+      <a class="fix" href="#fixlist">按优先级排列<span class="badge b0">P0×2</span></a>
+      <a class="fix" href="#f-p0">P0 致命<span class="badge b0">2</span></a>
+      <a class="fix" href="#f-p1">P1 架构债<span class="badge b1">1</span></a>
+      <a class="fix" href="#f-p2">P2 质量<span class="badge b2">4</span></a>
+      <a class="fix" href="#f-p3">P3 安全/部署<span class="badge b3">5</span></a>
+    </nav>
+  </aside>
+
+  <!-- ───────── Main ───────── -->
+  <main>
+    <header class="hero">
+      <div class="kicker">Technical Defense · Q&amp;A</div>
+      <h1>上市公司年报审计风险识别系统 · 技术答辩速查</h1>
+      <p class="sub">基于真实代码的师生答辩实录 + 可执行修复清单 &nbsp;|&nbsp; <code>audit-risk-agent v3.0</code></p>
+      <div class="meta-chips">
+        <span class="chip">FastAPI</span><span class="chip">LangGraph ReAct</span>
+        <span class="chip">DeepSeek</span><span class="chip">ChromaDB RAG</span>
+        <span class="chip">SQLAlchemy</span><span class="chip">uv + Docker</span>
+      </div>
+    </header>
+
+    <div class="searchbar">
+      <input id="search" type="text" placeholder="输入关键词实时检索：滑动窗口 / CORS / astream / 存货 / 路径穿越 …" autocomplete="off">
+      <span class="search-hint" id="hint"></span>
+    </div>
+
+    <div class="no-result" id="noResult">未找到匹配内容，试试其他关键词～</div>
+
+    <!-- ═══════ Round 1 ═══════ -->
+    <section class="round" id="r1" data-title="整体架构与技术选型">
+      <h3><span class="num">1</span>整体架构与技术选型</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>入口 <code>main.py</code> 导入了一个叫 <code>local_shims</code> 的模块。它到底是什么？为什么一个"本地运行"的项目要专门写一个兼容层？说清楚它的动机和边界。</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><code>local_shims</code> 是<strong>平台解耦层</strong>。项目最初在 Coze/扣子托管平台开发，原始代码大量依赖 <code>coze_coding_utils</code> / <code>coze_coding_dev_sdk</code> 提供 Context、日志、错误分类、流式 Runner、Agent 加载、异步任务运行时。为脱离平台在本地零依赖运行，我做了这些接口的<strong>最小可运行等价实现</strong>。</p>
+          <p>共 11 块：<code>Context</code> 用 dataclass+uuid 复刻；<code>request_context</code> 用 <code>contextvars.ContextVar</code> 保证协程安全；<code>setup_logging</code> 用 <code>RotatingFileHandler</code>；<code>graph_helper</code> 用 <code>importlib</code> 动态加载 agent。核心原则是<strong>保持签名完全一致</strong>，业务代码一行不改，只换 import 来源。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>你 shim 里 <code>AsyncTaskRuntime.submit</code> 就是直接 <code>await graph.ainvoke</code>，<code>get</code> 永远返回 None。你把平台的<em>异步任务持久化</em>阉割成了同步阻塞，那 <code>/run</code> 的超时控制、任务取消还有意义吗？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>有意义，但层次不同。<code>AsyncTaskRuntime</code> 是<strong>降级桩</strong>。真正的生命周期管理没依赖它，而是在 <code>GraphService</code> 里用<strong>原生 asyncio</strong> 重写：<code>asyncio.create_task</code> 登记进 <code>running_tasks</code> 字典，<code>asyncio.wait_for(task, timeout=900)</code> 做超时，超时后 <code>task.cancel()</code>，并 <code>except asyncio.CancelledError</code> 优雅处理。那个 shim 在当前调用链其实是<strong>死代码</strong>，保留只为 import 不报错、未来平滑接回平台。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>为什么选 LangGraph 的 <code>create_react_agent</code>，而不是自写状态机？你业务流程是<em>强顺序</em>的——先校验、再算指标、再检索、最后导出。顺序固定，ReAct 让 LLM 自主决策不是画蛇添足？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>业务流程<strong>看似固定实则动态</strong>：① 工具调用数量参数不确定——<code>search_regulations</code> 要对每条风险各检索一次，风险几条只有 LLM 读完年报才知道；② 存在条件分支——单公司/批量 <code>batch_analyze_companies</code>/多年 <code>compare_multi_year</code>、图表三选一；③ ReAct 自主性我用两道护栏兜住：系统提示词"强制规则"约束顺序 + 代码层 <code>_AgentWrapper</code> 兜底。所以是<strong>"LLM 决策 + 硬编码兜底"混合架构</strong>，不是纯放养。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 2 ═══════ -->
+    <section class="round" id="r2" data-title="滑动窗口致命隐患 消息截断 tool_calls">
+      <h3><span class="num">2</span>Agent 核心——滑动窗口的致命隐患</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>agent.py</code> 的 <code>_windowed_messages</code> 写的是 <code>add_messages(old,new)[-40:]</code>，挂在 <code>AgentState.messages</code> 的 reducer 上。这个<em>无脑切片</em>会切出什么后果？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>本项目最危险的一处。OpenAI 协议要求每个 <code>AIMessage</code> 的 <code>tool_calls</code> 后必须紧跟 <code>tool_call_id</code> 匹配的 <code>ToolMessage</code>。<code>[-40:]</code> 从尾部粗暴截取，极可能保留 AIMessage(带 tool_calls) 却挤掉对应 ToolMessage，或留下<strong>孤儿 ToolMessage</strong>。两种情况 DeepSeek/OpenAI 都会返回 <strong>400</strong>。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>既然明知道，为什么不修？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>做了风险评估，判断当前用量可控但承认是待办缺陷。单次审计工具调用约 10~13 次，消息总数 30~40 条边缘，<code>40</code> 是贴着单轮满链路上限设的。真正风险在<strong>多轮对话</strong>——同一 <code>thread_id</code> 追问累积超 40，截断会切开中间某个 tool 配对。正解：把 reducer 换成<strong>按对话轮次原子块裁剪</strong>，或用 <code>trim_messages(start_on="human")</code>。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>_post_process</code> 用 ToolMessage 集合判断 PDF/Excel 有没导出。如果滑动窗口刚好把 <code>export_pdf_report</code> 的 ToolMessage 截掉，你会误判"没导出"重复导出。你这兜底会不会打自己？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>会。这是两机制的<strong>耦合缺陷</strong>。<code>result.get("messages")</code> 经过同一个被 window 过的 state，若导出发生很早又被挤出 40 条，<code>called</code> 集合不含 <code>export_pdf_report</code>，兜底会<strong>重复生成一份 PDF</strong>——不崩，但脏输出。根治还是修 reducer，两个 bug 是<strong>同一根因</strong>。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 3 ═══════ -->
+    <section class="round" id="r3" data-title="流式 astream 同步 一致性 __getattr__ 辩论复核">
+      <h3><span class="num">3</span>流式与同步的一致性缺陷</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>_AgentWrapper</code> 只重写了 <code>invoke</code>/<code>ainvoke</code> 调 <code>_post_process</code>。但 <code>/stream_run</code> 走 <code>agent.astream</code>，而你根本没定义 astream。它怎么被调用到的？这条路径上辩论和兜底还执行吗？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>本项目<strong>同步/流式行为不一致</strong>的核心问题。<code>_AgentWrapper</code> 的 <code>__getattr__</code> 会<strong>透传</strong>未定义属性给底层 agent，所以 <code>astream</code> 完全<strong>绕过了 _AgentWrapper</strong>。结果：<code>/run</code>(ainvoke) 会执行兜底导出+三方辩论+综合评分；<code>/stream_run</code>(astream) <strong>一次都不跑</strong>。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>前端主用哪条？这不是严重的功能不对等吗——流式用户拿到的报告没辩论复核、没兜底导出？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>前端主用 <code>/stream_run</code>，所以<strong>实际生效路径缺失了增强功能</strong>，我不辩护。部分补偿：① 导出不完全靠兜底——提示词强制 LLM 主动调用导出，<code>_build_final_report_from_messages</code> 也用正则抓 <code>/local_storage/*.pdf|xlsx</code> 链接；② 辩论复核确实丢失，是真实缺陷。正解：给 <code>_AgentWrapper</code> 补一个 <code>astream</code> 包装，透传 chunk 做进度，末尾用积累消息跑一次 <code>_post_process</code> 再作为最后 SSE 事件推出。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>stream_sse</code> 里 AI 每吐一段就 <code>current_pct+1</code> 加到 96。这进度条是<em>真实</em>还是<em>演戏</em>？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>一半真一半"演"。<strong>真实</strong>：工具阶段命中 <code>TOOL_NAME_TO_STEP</code> 就跳到预设百分比（解析 8%/算指标 18%/导出PDF 85%），这些是真实执行锚点。<strong>启发式</strong>：锚点之间用"每段+1%封顶96%"制造平滑观感，避免卡死让用户以为死机。属于<strong>不可精确度量任务的进度估计</strong>，填充部分与真实工作量无严格对应。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 4 ═══════ -->
+    <section class="round" id="r4" data-title="RAG ChromaDB 分块 前瞻断言 缓存失效 embedding sentence-transformers Dockerfile">
+      <h3><span class="num">4</span>RAG 知识库——分块、缓存失效与依赖地雷</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>local_knowledge.py</code> 用正则 <code>(?=第[一二三四...]+条)</code> 分块，<code>len(splits)&gt;3</code> 才用。为什么用<em>前瞻断言</em>而不是普通 split？<code>&gt;3</code> 这个魔数依据是什么？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>前瞻 <code>(?=...)</code> 是<strong>零宽匹配</strong>，只在"第X条"前切一刀、不消费字符，所以每块开头<strong>完整保留条款号</strong>——这是最强语义锚点和引用凭据，报告 <code>regulatory_basis</code> 要写"依据第N条"。<code>&gt;3</code> 是<strong>文本类型判别启发式</strong>：能切 3 段以上判定为法规条文按条款细分，切不出来的（<code>cases_*.txt</code> 案例）按自然段分。<code>3</code> 是经验值，严谨应按"条款数/总长度"密度判别。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>缓存判断 <code>if collection.count() != len(chunks): 重建</code>。用户改了某法规内容但<em>条款数没变</em>，你这缓存会怎样？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>会<strong>命中脏缓存</strong>返回旧内容。<code>count</code> 只感知块数量、感知不到内容变化，新内容永远进不了索引。规避靠 <code>/api/reload_kb</code> 或 <code>/api/upload_kb</code> 强制重扫，但原地改文件不会自动失效。根治：给每块 metadata 加<strong>内容 md5 哈希</strong>，或对整个目录算指纹，指纹变了才重建。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>最狠一刀：<code>Dockerfile</code> 第 31 行预下载 <code>sentence_transformers</code> 模型，但 <code>pyproject.toml</code> <em>根本没有这个依赖</em>。你这镜像能 build 出来吗？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>当前依赖下<strong>会 build 失败</strong>（<code>ModuleNotFoundError</code>），是真实构建断裂。成因：<code>chromadb</code> 默认嵌入用 <strong>ONNX 版 all-MiniLM-L6-v2</strong>，并不硬性依赖 sentence-transformers；我写这行意图是"烤进镜像避免联网超时"但误用了包名。影响分环境：<strong>本地运行</strong>不走 Dockerfile、chromadb 自己按需下 ONNX，所以本地一直好的；<strong>Docker 路径</strong>坏的。正解：改用 chromadb 自带 <code>DefaultEmbeddingFunction()</code> 预热，或显式加依赖。根因是<strong>两条部署路径没有同等测试覆盖</strong>。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 5 ═══════ -->
+    <section class="round" id="r5" data-title="财务计算 存货 真值陷阱 pct_change 负基数 JSON 大括号 提取算法">
+      <h3><span class="num">5</span>工具实现的边界 bug 与算法缺陷</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>financial_calculator.py</code> 存货周转 <code>avg_inv=(inv_c+(inv_p or inv_c))/2</code>。<code>inv_p or inv_c</code> 想干嘛？这藏了个 bug，自己找出来。</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>Python 真值陷阱</strong>。本意是"没提供 <code>inv_p</code>（None）就退化用本期"。但 <code>or</code> 判的是<strong>假值</strong>不是 None——若上期存货<strong>合法等于 0</strong>（新公司/纯服务业），<code>0 or inv_c</code> 返回 inv_c，把真实为 0 的期初错误替换，周转率失真。正解：<code>inv_p if inv_p is not None else inv_c</code>。凡用 <code>x or default</code> 处理数值型财务数据、且 0 合法的地方都有此隐患，数值计算<strong>必须用 is None 而非真值判断</strong>。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>_pct_change</code> 用 <code>(current-previous)/abs(previous)</code>。为什么分母取绝对值？什么情况会给出<em>违反直觉</em>的结果？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>取 <code>abs</code> 是为<strong>保留变动方向符号</strong>——不取的话上期为负时正负号抵消导致方向错乱。但<strong>上期为负、本期跨零</strong>时仍违反直觉：上期 -100、本期 +50，给出 +150% 读起来像"增长"，实际是<strong>扭亏为盈</strong>（没有良定义增长率）。这种应<strong>特殊标注为'扭亏/减亏'定性描述</strong>而非给数字，当前实现输出的是数学正确但语义误导的百分数。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>_extract_risk_json</code> 用大括号深度计数抠 JSON。什么情况会抠错？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>没处理字符串字面量内部的括号</strong>。<code>depth</code> 无差别遇 <code>{</code> 加一、遇 <code>}</code> 减一，不知自己是否在字符串内。若风险描述含大括号如 <code>"evidence":"货币资金{注:含受限}..."</code>，depth 提前失衡，抠出语法残缺子串。有兜底：<code>json.loads</code> 校验+检查必含字段，失败返回 None——<strong>不崩但会静默丢失结构化报告</strong>退化为纯文本。正解：用支持字符串状态机的解析器，或约束 LLM 用 ```json 代码块包裹。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 6 ═══════ -->
+    <section class="round" id="r6" data-title="数据库 db.py 悬空 MemorySaver 内存泄漏 thread_id 会话 checkpointer">
+      <h3><span class="num">6</span>数据库设计与会话状态</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>main.py</code> import 了 <code>get_session</code>/<code>get_engine</code>/<code>Base</code>，但整个文件<em>一次都没调用</em>。<code>db.py</code> 写了 166 行连接池、重试、双模式，业务流程根本不碰数据库。你这是堆砌代码充门面吗？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>如实说：当前业务数据确实<strong>不落库</strong>——报告图表存文件，会话用内存 checkpointer，<code>db.py</code> 在当前调用链没有实际读写。这是从平台版继承的<strong>基础设施骨架</strong>。保留理由：① 设计本身可直接启用——三级 URL 优先级、连接重试（应对 Docker 慢启动）、SQLite 单连接/PG 连接池，一旦要落库 <code>get_session()</code> 就能用；② <code>.env.example</code> 留了 <code>PGDATABASE_URL</code> 开关。但您批评成立：<strong>当前就是未接线预留件，属 YAGNI 反例</strong>。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>MemorySaver</code> 纯内存，<code>thread_id</code> 绑 <code>ctx.run_id</code>。两个后果：多轮对话能续上吗？长期跑会<em>内存泄漏</em>吗？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>① 会话续接依赖客户端配合</strong>：<code>thread_id=run_id</code>，而 run_id 优先取请求头 <code>x-run-id</code>、没有才新 uuid。要多轮记忆客户端<strong>必须带同一 x-run-id</strong>，否则是无状态单轮。<strong>② 确实会内存泄漏</strong>：MemorySaver 永不淘汰，每个不同 thread_id 沉淀一份状态，重启才释放。正解：<strong>换 SqliteSaver / PostgresSaver</strong> 落到 db.py 那套连接——既解决泄漏又解决重启丢失。<strong>上一题"db.py 悬空"和这题"内存泄漏"恰好互为解药</strong>，一次重构一起消掉，这是架构上最该优先做的事。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 7 ═══════ -->
+    <section class="round" id="r7" data-title="安全 CORS 通配符 credentials 鉴权 路径穿越 path traversal 全量读内存 OOM">
+      <h3><span class="num">7</span>安全审查</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>CORS 同时写 <code>allow_origins=["*"]</code> 和 <code>allow_credentials=True</code>。这个组合在浏览器里意味着什么？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>自相矛盾且不安全</strong>。按 CORS 规范，<code>Allow-Credentials: true</code> 时 <code>Allow-Origin</code> <strong>不允许通配符</strong>，浏览器会直接拒绝。语义上等于"信任任何来源并允许携带凭证"，最宽松危险配置。正解：纯公开只读就 <code>allow_credentials=False</code> 配 <code>*</code>；要凭证就配<strong>显式白名单</strong>。本项目本地工具不需要 credentials，最干净是关掉它。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>所有接口<em>一个鉴权都没有</em>。任何人访问到端口就能烧你 API Key、塞文件。怎么解释？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>信任边界</strong>问题。当前定位本地单机、面向"审计人员自己电脑跑"，无鉴权可接受。但不回避风险：绑的是 <code>0.0.0.0</code> 而非 <code>127.0.0.1</code>，<strong>同网段任何人都能访问</strong>，一旦上公网就是烧 Key/污染知识库/耗磁盘。加固：① 默认绑回 127.0.0.1；② 加 <code>X-API-Key</code> 中间件对写操作强制校验；③ Key 已通过 <code>.env</code> 环境变量注入而非硬编码，这点是对的。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>/upload</code> 用 <code>uuid_+f.filename</code> 拼路径，filename 用户可控。想想<em>路径穿越</em>。</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>有<strong>路径穿越残余风险</strong>。若构造 <code>../../../Windows/Temp/evil.txt</code>，uuid 只在第一段，后面的 <code>../</code> 依然生效跳出目录。正解：落盘前 <code>os.path.basename()</code> 剥路径成分。对比之下 <code>/api/upload_kb</code> <strong>做对了</strong>——用 <code>re.sub</code> 把分隔符全替换成下划线。是<strong>两个上传接口安全强度不一致</strong>，把 /upload 也套上同样净化即可。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>/upload</code> 用 <code>await f.read()</code> 一次性读进内存，上限 100MB。并发几个大文件会怎样？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>会<strong>内存尖峰</strong>。全量读入 + 解析时 <code>PdfReader</code>/<code>pandas</code> 再复制一份，单文件峰值两三百 MB，并发叠加可能 <strong>OOM</strong>。且 <code>f.size</code> 预检可能为 None，<code>len(content)</code> 二次检查时已读进内存、拦截太晚。正解：<strong>流式落盘+边读边计数</strong>，分块写入超限即中断删文件，内存只占一个 chunk。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Round 8 ═══════ -->
+    <section class="round" id="r8" data-title="部署 uvicorn reload 白名单 死循环 workers Docker 层缓存 uv sync frozen">
+      <h3><span class="num">8</span>部署与运行环境</h3>
+      <div class="qa">
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p>为什么专门配 <code>reload_includes=["*.py"]</code> 和一长串 <code>reload_excludes</code>？<code>workers=1</code> 在生产是不是瓶颈？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p><strong>① reload 白名单防热重载死循环</strong>：服务运行时持续写 app.log/.chroma_db/local_storage/.db，不排除就"写日志→reload→重启中又写→再 reload"形成<strong>重启风暴</strong>。所以只监控 <code>*.py</code>，排除这些写入目录；HTML/CSS/JS 每次请求实时 read_text，改了立即生效无需 reload。</p>
+          <p><strong>② workers=1 合理</strong>：reload 与多 worker 本身互斥；更关键——会话用<strong>进程内 MemorySaver</strong>，多 worker 进程内存不共享，同 thread_id 被分到不同 worker 就读不到彼此 checkpoint、多轮记忆失效。想上多 worker <strong>前提是先把 checkpointer 换成数据库持久化</strong>——又指向同一重构。</p></div>
+        <div class="bubble q-bubble"><div class="role">👨‍🏫 老师</div>
+          <p><code>Dockerfile</code> 先 COPY <code>pyproject.toml uv.lock</code> 再 <code>uv sync</code>，然后才 COPY 源码。这顺序是随手写还是有意？</p></div>
+        <div class="bubble a-bubble"><div class="role">🎓 学生</div>
+          <p>有意的，利用 <strong>Docker 层缓存</strong>。依赖变化频率远低于源码。若先 COPY 源码，改一行代码就导致后面 <code>uv sync</code> 层失效、每次重装全部依赖。反过来：依赖没动 <code>uv sync</code> 层永远命中缓存，改代码只重建最后几层。<code>--frozen</code> 按 lock 锁定版本保证可复现，<code>--no-dev</code> 跳过 pytest 减小体积。不过第 31 行那个 <code>sentence_transformers</code> 预热是败笔，得先修那行镜像才真正可用。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ Summary ═══════ -->
+    <section class="round" id="summary" data-title="总结陈词 扎实 窟窿 自评">
+      <h3><span class="num">✦</span>答辩总结陈词</h3>
+      <div class="qa">
+        <div class="bubble a-bubble"><div class="role">🎓 学生 · 自评</div>
+          <p><strong>扎实的部分</strong>：① <code>local_shims</code> 平台解耦证明可移植性；② "LLM 决策+硬编码兜底"混合 Agent 务实；③ RAG 法规按条款前瞻分块 + ChromaDB 向量检索带 TF-IDF 降级；④ 16 项指标 + 三大勾稽校验 + 五维风险，领域逻辑扎实；⑤ Dockerfile 分层、db.py 连接重试等工程细节到位。</p>
+          <p><strong>清楚的窟窿（按优先级）</strong>：<em>P0 致命</em>——滑动窗口切断 tool 配对触发 400 + 兜底误判重复导出；astream 经 __getattr__ 绕过 _post_process 丢失辩论复核。<em>P1 架构债</em>——MemorySaver 内存泄漏+重启丢状态+锁死单 worker，db.py 悬空未接，应合并为"checkpointer 落库"一次重构。<em>P2 质量</em>——ChromaDB 缓存靠块数判失效、inv 0 值真值陷阱、JSON 括号提取、pct_change 负基数误导。<em>P3 安全/部署</em>——CORS 矛盾、无鉴权+绑 0.0.0.0、路径穿越、全量读内存、Dockerfile 依赖缺失。</p>
+          <p>态度：这些不是不知道才留着，是赛期约束下的取舍，每个都能说清根因和修法。<strong>工程能力不在零缺陷，而在清楚知道边界、雷在哪、按什么顺序拆。</strong></p></div>
+      </div>
+    </section>
+
+    <!-- ═══════ FIX LIST ═══════ -->
+    <section class="fixsec" id="fixlist" data-title="修复清单 优先级 具体改法">
+      <h3>🛠 可执行修复清单</h3>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:18px">按优先级 P0→P3 排列。每项含<b style="color:var(--accent)">位置 / 现象 / 改法 / 验收</b>。</p>
+
+      <!-- P0 -->
+      <div id="f-p0"></div>
+      <div class="fix p0" data-title="滑动窗口 tool 配对 reducer trim_messages">
+        <div class="head"><span class="tag">P0 致命</span><span class="title">修复消息滑动窗口切断 tool 配对</span></div>
+        <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_windowed_messages</code> / <code>AgentState.messages</code></div>
+        <div class="row"><b>现象</b>：<code>[-40:]</code> 粗暴切片可能保留 AIMessage(tool_calls) 却挤掉配对 ToolMessage，或留孤儿 ToolMessage → LLM 返回 400。</div>
+        <div class="row"><b>改法</b>：改用 <code>langchain_core.messages.trim_messages(msgs, strategy="last", token_counter=len, start_on="human", include_system=True)</code>；或自写按"AIMessage+其全部 ToolMessage 为原子块"裁剪，禁止切开配对。</div>
+        <div class="row"><b>验收</b>：构造 &gt;40 条含多轮 tool 调用的会话，断言不再出现 400，且每个 tool_call 都有应答。</div>
+      </div>
+      <div class="fix p0" data-title="astream __getattr__ 绕过 post_process 辩论复核 流式">
+        <div class="head"><span class="tag">P0 致命</span><span class="title">流式链路补齐后处理（辩论/兜底导出/评分）</span></div>
+        <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_AgentWrapper</code>（缺 astream）+ <code>src/main.py · stream_sse</code></div>
+        <div class="row"><b>现象</b>：<code>astream</code> 经 <code>__getattr__</code> 透传底层 agent，绕过 <code>_post_process</code>，<code>/stream_run</code> 丢失三方辩论、兜底导出、综合评分。</div>
+        <div class="row"><b>改法</b>：给 <code>_AgentWrapper</code> 显式实现 <code>async def astream(...)</code>：逐 chunk yield 给前端做进度，同时累积 messages；生成器末尾调用 <code>self._post_process({"messages":acc})</code>，把辩论结果作为最后一个 SSE 事件推出。</div>
+        <div class="row"><b>验收</b>：走 <code>/stream_run</code> 的结果与 <code>/run</code> 一致包含"审计合伙人复核意见"和 comprehensive_score。</div>
+      </div>
+
+      <!-- P1 -->
+      <div id="f-p1"></div>
+      <div class="fix p1" data-title="checkpointer 落库 SqliteSaver 内存泄漏 db.py 悬空 多worker">
+        <div class="head"><span class="tag">P1 架构债</span><span class="title">Checkpointer 落库（一箭三雕）</span></div>
+        <div class="loc">📍 <code>src/storage/memory/memory_saver.py</code> + <code>src/storage/database/db.py</code></div>
+        <div class="row"><b>现象</b>：<code>MemorySaver</code> 内存泄漏(永不淘汰)+重启丢状态+锁死单 worker；同时 <code>db.py</code> 完全悬空未被调用。</div>
+        <div class="row"><b>改法</b>：把 <code>_create_fallback_checkpointer</code> 换成 <code>langgraph.checkpoint.sqlite.SqliteSaver</code>（或 <code>Postgres</code>），复用 <code>get_db_url()</code> 的连接；本地默认 SQLite 文件、配 <code>PGDATABASE_URL</code> 时用 PG。同时解开 <code>workers&gt;1</code> 的限制。</div>
+        <div class="row"><b>验收</b>：重启服务后带同一 <code>x-run-id</code> 仍能续接历史；长跑内存不再单调增长；可多 worker。</div>
+      </div>
+
+      <!-- P2 -->
+      <div id="f-p2"></div>
+      <div class="fix p2" data-title="ChromaDB 缓存失效 md5 哈希 内容指纹">
+        <div class="head"><span class="tag">P2 质量</span><span class="title">RAG 缓存失效改为内容哈希</span></div>
+        <div class="loc">📍 <code>src/local_knowledge.py</code> · <code>load()</code> 缓存判断</div>
+        <div class="row"><b>现象</b>：<code>count() != len(chunks)</code> 只感知块数量，法规内容原地修改（条款数不变）会命中脏缓存。</div>
+        <div class="row"><b>改法</b>：对每块存 <code>metadata["hash"]=md5(chunk)</code>，或对整个 kb 目录算指纹并存入 collection metadata；指纹不一致才 <code>delete_collection</code> 重建。</div>
+        <div class="row"><b>验收</b>：改动任一 txt 内容后（不增删条款）检索能返回新内容。</div>
+      </div>
+      <div class="fix p2" data-title="存货 真值陷阱 is None inv_p or inv_c 数值">
+        <div class="head"><span class="tag">P2 质量</span><span class="title">修复数值型字段的真值陷阱</span></div>
+        <div class="loc">📍 <code>src/tools/financial_calculator.py</code> · 存货周转（及全文件同类）</div>
+        <div class="row"><b>现象</b>：<code>inv_p or inv_c</code> 在 <code>inv_p==0</code>（合法）时错误替换为 inv_c，指标失真。</div>
+        <div class="row"><b>改法</b>：全局替换为 <code>inv_p if inv_p is not None else inv_c</code>；排查所有 <code>x or default</code> 处理数值且 0 合法的位置。</div>
+        <div class="row"><b>验收</b>：单测 <code>inv_p=0</code> 时 <code>avg_inv==inv_c/2</code> 而非 <code>inv_c</code>。</div>
+      </div>
+      <div class="fix p2" data-title="JSON 提取 大括号 字符串 状态机 代码块">
+        <div class="head"><span class="tag">P2 质量</span><span class="title">健壮化风险 JSON 提取</span></div>
+        <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_extract_risk_json</code></div>
+        <div class="row"><b>现象</b>：大括号深度计数不识别字符串内的 <code>{}</code>，描述含括号时抠出残缺 JSON、静默丢结构化报告。</div>
+        <div class="row"><b>改法</b>：扫描时维护 <code>in_string</code>/<code>escape</code> 状态，仅在字符串外计数括号；或提示词强制 LLM 用 ```json 代码块包裹后定向提取。</div>
+        <div class="row"><b>验收</b>：description 含 <code>{}</code> 的样例能被正确解析为完整台账。</div>
+      </div>
+      <div class="fix p2" data-title="pct_change 负基数 扭亏 减亏 定性">
+        <div class="head"><span class="tag">P2 质量</span><span class="title">同比变动率负基数语义修正</span></div>
+        <div class="loc">📍 <code>src/tools/financial_calculator.py</code> · <code>_pct_change</code></div>
+        <div class="row"><b>现象</b>：上期为负、本期跨零时输出误导性百分数（如 -100→+50 显示 +150%）。</div>
+        <div class="row"><b>改法</b>：当 <code>previous&lt;0</code> 时不返回百分比，改返回定性标记 <code>"扭亏为盈"/"减亏"/"亏损扩大"</code>。</div>
+        <div class="row"><b>验收</b>：负基数用例返回定性描述而非数字。</div>
+      </div>
+
+      <!-- P3 -->
+      <div id="f-p3"></div>
+      <div class="fix p3" data-title="CORS 通配符 credentials 白名单">
+        <div class="head"><span class="tag">P3 安全</span><span class="title">修正 CORS 矛盾配置</span></div>
+        <div class="loc">📍 <code>src/main.py</code> · <code>CORSMiddleware</code></div>
+        <div class="row"><b>改法</b>：本地工具设 <code>allow_credentials=False</code> 保留 <code>*</code>；若需凭证则改 <code>allow_origins=[显式白名单]</code>。</div>
+      </div>
+      <div class="fix p3" data-title="鉴权 X-API-Key 127.0.0.1 绑定">
+        <div class="head"><span class="tag">P3 安全</span><span class="title">增加最小鉴权 + 收敛监听地址</span></div>
+        <div class="loc">📍 <code>src/main.py</code> · 中间件 / <code>uvicorn.run(host=...)</code></div>
+        <div class="row"><b>改法</b>：默认 <code>host=127.0.0.1</code>（对外需显式开）；加 <code>X-API-Key</code> 中间件，值读环境变量，对 <code>/run /stream_run /upload* /api/*</code> 写操作强制校验。</div>
+      </div>
+      <div class="fix p3" data-title="路径穿越 basename 净化 upload">
+        <div class="head"><span class="tag">P3 安全</span><span class="title">修复 /upload 路径穿越</span></div>
+        <div class="loc">📍 <code>src/main.py</code> · <code>upload_files</code></div>
+        <div class="row"><b>改法</b>：落盘前 <code>safe = re.sub(r'[&lt;&gt;:"/\\|?*]','_', os.path.basename(f.filename))</code>，与 <code>/api/upload_kb</code> 的净化逻辑对齐。</div>
+      </div>
+      <div class="fix p3" data-title="流式落盘 内存 OOM chunk">
+        <div class="head"><span class="tag">P3 部署</span><span class="title">上传改流式落盘防 OOM</span></div>
+        <div class="loc">📍 <code>src/main.py</code> · <code>upload_files</code></div>
+        <div class="row"><b>改法</b>：分块 <code>await f.read(1MB)</code> 循环写入并累计字节，超 <code>MAX_UPLOAD_SIZE</code> 立即中断并删除半成品文件。</div>
+      </div>
+      <div class="fix p3" data-title="Dockerfile sentence-transformers 依赖缺失 embedding 预热">
+        <div class="head"><span class="tag">P3 部署</span><span class="title">修复 Dockerfile 构建断裂</span></div>
+        <div class="loc">📍 <code>Dockerfile</code> · 第 31 行模型预热</div>
+        <div class="row"><b>改法</b>：改为 chromadb 自带 <code>python -c "from chromadb.utils import embedding_functions as e; e.DefaultEmbeddingFunction()(['warmup'])"</code>；或在 <code>pyproject.toml</code> 显式加 <code>sentence-transformers</code> 依赖。</div>
+        <div class="row"><b>验收</b>：<code>docker build</code> 全程通过并能离线检索。</div>
+      </div>
+    </section>
+
+    <footer>
+      ⚠️ 本文档基于项目真实代码分析，所有文件路径、缺陷与改法均可对照源码验证，未虚构功能。<br>
+      仅供技术评审与代码改进参考 · <code>audit-risk-agent v3.0</code>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  const input = document.getElementById('search');
+  const hint = document.getElementById('hint');
+  const noResult = document.getElementById('noResult');
+  const rounds = Array.from(document.querySelectorAll('.round, .fix'));
+
+  // 记录原始 HTML 用于高亮还原
+  rounds.forEach(el => el.dataset.orig = el.innerHTML);
+
+  function clearHL(){
+    rounds.forEach(el => { if(el.innerHTML.indexOf('class="hl"')>=0) el.innerHTML = el.dataset.orig; });
+  }
+  function escapeReg(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+
+  function run(){
+    const q = input.value.trim().toLowerCase();
+    clearHL();
+    if(!q){
+      rounds.forEach(el => el.style.display='');
+      document.querySelectorAll('.round').forEach(r=>r.style.display='');
+      noResult.style.display='none';
+      hint.textContent='';
+      return;
+    }
+    let count=0;
+    const re = new RegExp('('+escapeReg(q)+')','gi');
+    rounds.forEach(el=>{
+      const title = (el.dataset.title||'').toLowerCase();
+      const text = el.textContent.toLowerCase();
+      const match = text.includes(q) || title.includes(q);
+      el.style.display = match ? '' : 'none';
+      if(match){
+        count++;
+        // 仅高亮文本节点，避免破坏标签/code
+        highlight(el, re);
+      }
+    });
+    // 隐藏没有可见子项的空 round 容器（.fix 独立，round 内含 qa）
+    document.querySelectorAll('.round').forEach(r=>{
+      if(r.style.display==='none') return;
+    });
+    noResult.style.display = count? 'none':'block';
+    hint.textContent = count? ('命中 '+count+' 段') : '';
+  }
+
+  function highlight(root, re){
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode:function(n){
+        if(!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const targets=[];
+    while(walker.nextNode()){
+      if(re.test(walker.currentNode.nodeValue)) targets.push(walker.currentNode);
+      re.lastIndex=0;
+    }
+    targets.forEach(node=>{
+      const span=document.createElement('span');
+      span.innerHTML=node.nodeValue.replace(re,'<span class="hl">$1</span>');
+      node.parentNode.replaceChild(span, node);
+    });
+  }
+
+  let t;
+  input.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(run,160); });
+  // 快捷键 / 聚焦
+  document.addEventListener('keydown', e=>{
+    if(e.key==='/' && document.activeElement!==input){ e.preventDefault(); input.focus(); }
+    if(e.key==='Escape'){ input.value=''; run(); input.blur(); }
+  });
+})();
+</script>
+</body>
+</html>

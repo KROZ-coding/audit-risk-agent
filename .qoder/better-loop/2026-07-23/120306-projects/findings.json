@@ -1,0 +1,148 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "项目具备清晰的运行方式（uv/Docker/脚本）、可复现的评估脚本与基础单元测试，是一份可上手的参赛工程；但面向智能体协作的操作系统仍有缺口：缺少 Agent 导航入口、核心工具测试覆盖偏低且无变更即触发的校验闸门、领域规则仅停留在提示词层面、生成产物与日志被纳入版本库。本次为会话受限评估（0 个可用会话、5 个源根仅 1 个存在），结论主要基于仓库静态证据，会话行为类结论不做断言。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Skills",
+        "Custom Agents"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "config/agent_llm_config.json"
+          ]
+        }
+      ]
+    },
+    "suggestions": [],
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 58,
+        "summary": "README 与目录说明提供了良好的人读上下文，但缺少面向智能体的导航入口与高风险区/任务路由。",
+        "findingRefs": [
+          "missing-agent-entrypoint"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 54,
+        "summary": "运行命令齐备（uv、Docker、脚本），但强制工具顺序与审计措辞规则仅存于提示词，无机制化校验。",
+        "findingRefs": [
+          "domain-rules-prompt-only"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 48,
+        "summary": "存在 pytest 与量化评估脚本，但 12 个工具仅 2 个有单测，且无 lint/typecheck。",
+        "findingRefs": [
+          "core-tools-untested"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 34,
+        "summary": "无 CI/变更触发闸门，且生成图表、报告、日志被纳入版本库，弱化了变更信号与可归因性。",
+        "findingRefs": [
+          "no-change-triggered-gate",
+          "generated-artifacts-tracked"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 25,
+        "summary": "缺少可用会话证据与可比观察窗口，尚无可验证的可复用改进沉淀。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "missing-agent-entrypoint",
+      "title": "缺少面向智能体的导航入口",
+      "severity": "Medium",
+      "reason": "README 面向人类快速上手，项目规则集中写在 config/agent_llm_config.json 的运行时系统提示词中，不能充当协作智能体的导航路由；智能体需通读整个仓库才能定位任务边界、高风险区与下一步，抬高了误改概率。",
+      "expectedOutput": [
+        "一份可独立成路由的 AGENTS.md，含定位、目录职责、任务路径与高风险区。"
+      ],
+      "expectedArtifact": "AGENTS.md",
+      "aiFixPrompt": "/better-loop fix this issue\n\n新增一个 80-150 行的 AGENTS.md 导航入口：包含项目定位、目录职责表、常见任务路径、高风险区（工具执行顺序、报告导出、知识库检索）与更深文档链接。不要把运行时系统提示词内容照搬进来。\n\n## Validation\n\n- 确认 AGENTS.md 指向 src/tools、tests、config 的正确相对路径\n- 确认高风险区与对应校验命令（pytest/评估脚本）被明确列出",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    },
+    {
+      "id": "core-tools-untested",
+      "title": "核心工具单测覆盖偏低且缺少静态检查",
+      "severity": "Medium",
+      "reason": "src/tools 下 12 个工具模块仅 data_validator 与 financial_calculator 有单测；risk_scorer、disclosure_checker、multi_year_comparison、pdf_parser、pdf_export、excel_export、visualizer、batch_processor 等关键逻辑无自动化校验，且未配置 lint/typecheck，改动后难以快速定位回归。",
+      "expectedOutput": [
+        "新增至少覆盖 3 个未测核心工具的单测，以及一条可运行的快速静态检查命令。"
+      ],
+      "expectedArtifact": "Tests",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为覆盖率最低且风险最高的核心工具补充最小可运行单测（优先 risk_scorer、disclosure_checker、multi_year_comparison），并在 pyproject.toml 增加一条快速静态检查（如 ruff）命令。\n\n## Validation\n\n- 运行 uv run pytest tests/ -v 全部通过\n- 运行新增的 lint 命令并确认对已知问题能给出文件/行定位",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "no-change-triggered-gate",
+      "title": "缺少变更即触发的自动校验闸门",
+      "severity": "Medium",
+      "reason": "仓库无任何 CI/工作流配置，现有 pytest 与 evaluation_report.py 仅靠人工本地执行；变更不会自动触发校验，回归与质量退化无法在提交/合并时被归因和拦截。",
+      "expectedOutput": [
+        "一个在变更时触发、执行测试与静态检查并可阻断的最小 CI 工作流。"
+      ],
+      "expectedArtifact": "CI workflow",
+      "aiFixPrompt": "/better-loop fix this issue\n\n新增最小 CI 工作流（如 .github/workflows/ci.yml），在 push/PR 时执行 uv sync、pytest 与快速 lint；失败即阻断。保持与现有本地命令一致，避免重复定义。\n\n## Validation\n\n- 确认工作流在 push/PR 触发并运行 pytest 与 lint\n- 确认校验失败会使流水线失败（非仅告警）",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "generated-artifacts-tracked",
+      "title": "生成产物与日志被纳入版本库",
+      "severity": "Low",
+      "reason": "local_storage/charts 与 reports、重复的 src/local_storage 目录、app.log 与 src/app.log 等运行期生成物已被 git 跟踪（local_storage 下即有 16+ 个已跟踪文件），使真实代码变更淹没在生成文件 diff 中，削弱变更可归因性并使仓库膨胀。",
+      "expectedOutput": [
+        "更新 .gitignore 并停止跟踪运行期生成物，仓库仅保留源代码、配置与知识库。"
+      ],
+      "expectedArtifact": "Config",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将 local_storage/、src/local_storage/、*.log、.chroma_db/ 等运行期生成物从版本库移除并加入 .gitignore；保留必要的示例产物到独立的 assets/ 或 samples/ 并在文档说明。不要删除源代码或知识库。\n\n## Validation\n\n- 确认 git status 中不再出现新生成的图表/报告/日志\n- 确认应用运行仍能在本地生成这些产物（目录自动创建）",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "domain-rules-prompt-only",
+      "title": "关键领域规则仅停留在提示词、未机制化",
+      "severity": "Medium",
+      "reason": "「validate→calculate→export」强制工具顺序、审计措辞规范与 AI 生成免责声明等关键约束仅写在 agent_llm_config.json 系统提示词中，依赖 LLM 自觉遵守；无任何 hook/断言/后置检查在代码或流程层验证执行顺序与输出合规，规则违背难以被机制发现。",
+      "expectedOutput": [
+        "至少一条领域约束由代码/流程层的确定性检查强制执行，并带可读的修复提示。"
+      ],
+      "expectedArtifact": "Guardrail check",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为最关键的一条领域约束增加机制化校验：在 Agent 执行链或导出环节加入断言/后置检查，验证工具调用顺序（先 validate 后 calculate）与导出内容包含免责声明；失败时给出明确修复方向。\n\n## Validation\n\n- 构造一个乱序调用用例，确认校验能捕获并报错\n- 确认导出报告缺失免责声明时被检查拦截",
+      "dimensionRefs": [
+        "controlled-execution"
+      ]
+    }
+  ]
+}

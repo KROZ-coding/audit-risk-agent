@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审计风险识别系统 · 操作指南 v4.0</title>
+    <style>
+        :root {
+            --bg-deep: #0a0f1a;
+            --bg-dark: #0d1a2e;
+            --bg-mid: #162240;
+            --accent: #3b82f6;
+            --accent-light: #60a5fa;
+            --accent-glow: #7dd3fc;
+            --purple: #8b5cf6;
+            --success: #4ade80;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --frost: rgba(59, 130, 246, 0.12);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(180deg, var(--bg-deep) 0%, #060d1a 40%, var(--bg-dark) 100%);
+            color: var(--text-main); line-height: 1.75; overflow-x: hidden; min-height: 100vh;
+        }
+        #snow-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+        .container { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; position: relative; z-index: 1; }
+
+        /* ── Glass Card ── */
+        .glass-card {
+            background: rgba(13, 26, 46, 0.55); backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            border-radius: 20px; padding: 36px 40px; margin-bottom: 32px;
+            box-shadow: 0 4px 32px rgba(0, 100, 255, 0.06), inset 0 1px 0 rgba(255,255,255,0.04);
+            opacity: 0; transform: translateY(40px);
+            transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .glass-card.visible { opacity: 1; transform: translateY(0); }
+
+        /* ── Hero ── */
+        .hero { text-align: center; padding: 48px 0 20px; }
+        .hero .main-icon {
+            font-size: 72px; display: block; margin-bottom: 10px;
+            animation: float 3s ease-in-out infinite; filter: drop-shadow(0 0 24px rgba(59,130,246,0.4));
+        }
+        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+        .hero h1 {
+            font-size: 2.6rem; font-weight: 900;
+            background: linear-gradient(135deg, #60a5fa, #a5f3fc, #c084fc);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 10px; letter-spacing: 2px;
+        }
+        .hero .version-tag {
+            display: inline-block; background: var(--frost); border: 1px solid rgba(59,130,246,0.3);
+            padding: 6px 24px; border-radius: 50px; font-size: 0.9rem;
+            color: var(--accent-light); letter-spacing: 3px; margin-bottom: 16px;
+        }
+        .hero .nine-scatter {
+            font-size: 1.6rem; letter-spacing: 12px; color: rgba(59,130,246,0.2);
+            margin-top: 12px; user-select: none;
+        }
+
+        h2 { font-size: 1.6rem; margin-bottom: 20px; display: flex; align-items: center; gap: 14px; color: #fff; }
+        h2 .icon {
+            width: 40px; height: 40px; min-width: 40px;
+            background: linear-gradient(135deg, var(--accent-light), var(--purple));
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; box-shadow: 0 0 18px rgba(59,130,246,0.3);
+        }
+        h3 {
+            font-size: 1.15rem; color: var(--accent-glow); margin: 24px 0 12px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        h3 .step-badge {
+            background: rgba(59,130,246,0.1); border: 1px solid var(--accent-light);
+            color: var(--accent-light); padding: 2px 10px; border-radius: 6px;
+            font-size: 0.8rem; font-family: 'Consolas', monospace;
+        }
+        p, li { margin-bottom: 12px; color: var(--text-main); font-size: 1.01rem; }
+        a { color: var(--accent-glow); text-decoration: none; border-bottom: 1px dashed var(--accent-light); transition: all 0.3s; }
+        a:hover { color: #fff; text-shadow: 0 0 10px var(--accent-light); border-bottom-style: solid; }
+
+        /* ── Code Blocks ── */
+        pre {
+            background: rgba(5, 12, 24, 0.9); border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 12px; padding: 20px 22px; margin: 16px 0; position: relative;
+            overflow-x: auto; font-family: 'Fira Code', 'Consolas', 'Courier New', monospace; font-size: 0.9rem;
+            box-shadow: 0 0 24px rgba(59,130,246,0.05), inset 0 0 40px rgba(0,0,0,0.5);
+        }
+        code { color: #e2e8f0; }
+        .comment { color: #64748b; font-style: italic; }
+        .cmd { color: #4ade80; font-weight: bold; text-shadow: 0 0 6px rgba(74,222,128,0.2); }
+        .string { color: #f9a8d4; }
+        .key { color: #60a5fa; }
+        .copy-btn {
+            position: absolute; top: 12px; right: 12px;
+            background: rgba(59,130,246,0.08); border: 1px solid var(--accent-light);
+            color: var(--accent-light); padding: 6px 12px; border-radius: 8px;
+            cursor: pointer; font-size: 0.8rem; font-weight: bold;
+            transition: all 0.3s; backdrop-filter: blur(5px); z-index: 10;
+        }
+        .copy-btn:hover { background: var(--accent-light); color: #000; box-shadow: 0 0 16px var(--accent-light); }
+
+        /* ── Alert Boxes ── */
+        .alert { padding: 16px 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid; position: relative; }
+        .alert-danger  { border-color: #f87171; background: rgba(248,113,113,0.08); color: #fca5a5; }
+        .alert-warning { border-color: #fbbf24; background: rgba(251,191,36,0.08); color: #fde68a; }
+        .alert-info    { border-color: var(--accent-light); background: rgba(59,130,246,0.07); color: #bae6fd; }
+        .alert-success { border-color: var(--success); background: rgba(74,222,128,0.08); color: #bbf7d0; }
+
+        .highlight { background: rgba(248,113,113,0.2); color: #fff; padding: 2px 8px; border-radius: 4px; font-weight: bold; border: 1px solid #f87171; }
+        .keycap { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); padding: 2px 8px; border-radius: 6px; font-family: monospace; font-size: 0.88em; }
+
+        ol, ul { padding-left: 22px; }
+        li::marker { color: var(--accent-light); font-weight: bold; }
+
+        /* ── Feature Grid ── */
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 16px; }
+        .feature-chip {
+            background: var(--frost); border: 1px solid rgba(59,130,246,0.2); border-radius: 14px;
+            padding: 16px; text-align: center; font-size: 0.92rem; color: #e2e8f0;
+        }
+        .feature-chip .feat-icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+
+        /* ── Step Table ── */
+        .step-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.93rem; }
+        .step-table th { padding: 10px 14px; text-align: left; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(59,130,246,0.15); }
+        .step-table td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .step-table .step-num { color: var(--accent-light); font-weight: 700; font-size: 1.1rem; }
+        .step-table .cmd-cell { font-family: 'Consolas', monospace; font-size: 0.88rem; color: var(--success); }
+
+        /* ── Parameter Table ── */
+        .param-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.92rem; }
+        .param-table th { padding: 8px 12px; text-align: left; color: var(--text-muted); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(59,130,246,0.12); }
+        .param-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .param-table .pname { color: #f9a8d4; font-family: monospace; }
+        .param-table .pdefault { color: var(--text-muted); font-family: monospace; }
+
+        /* ── Module Cards ── */
+        .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 16px; }
+        .module-card {
+            background: var(--frost); border: 1px solid rgba(59,130,246,0.18); border-radius: 14px;
+            padding: 20px; text-align: center; transition: all 0.3s;
+        }
+        .module-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(59,130,246,0.12); }
+        .module-card .mc-icon { font-size: 2.2rem; display: block; margin-bottom: 8px; }
+        .module-card .mc-title { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .module-card .mc-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 1.8rem; } .glass-card { padding: 24px 20px; }
+            pre { font-size: 0.8rem; padding: 16px 12px; }
+            .feature-grid, .module-grid { grid-template-columns: repeat(2, 1fr); }
+            .step-table, .param-table { font-size: 0.82rem; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="snow-canvas"></canvas>
+
+<div class="container">
+
+    <!-- ═══ HERO ═══ -->
+    <div class="hero glass-card visible">
+        <span class="main-icon">📊</span>
+        <h1>审计风险识别系统 · 操作指南</h1>
+        <div class="version-tag">v4.0 · AI Agent 智能审计分析平台</div>
+        <p style="color: var(--text-muted); margin-top: 10px; max-width: 640px; margin-left: auto; margin-right: auto;">
+            基于 LangGraph Multi-Agent 架构的上市公司年报审计风险智能识别系统。<br>
+            一键部署、五大核心模块、多智能体辩论、量化效果评估。<br>
+            <strong style="color: var(--accent-light);">适用于 2026 年北京市大学生数智会计创新应用竞赛 · 智能审计赛道</strong>
+        </p>
+        <div class="nine-scatter">◇ ◇ ◇ ◇ ◇ ◇ ◇</div>
+    </div>
+
+    <!-- ═══ 章节1：环境要求与准备 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🔧</span> 一、环境要求与准备</h2>
+        <p>在开始部署之前，请确保你的计算机满足以下最低要求：</p>
+
+        <h3><span class="step-badge">①</span> 操作系统</h3>
+        <p>Windows 10/11（64位）。macOS / Linux 用户可参考手动流程（PowerShell 脚本为 Windows 优化）。</p>
+
+        <h3><span class="step-badge">②</span> Python 3.12</h3>
+        <p>项目依赖 Python 3.10 及以上版本，推荐使用 <strong>Python 3.12</strong>。</p>
+        <div class="alert alert-danger">
+            <strong>⚠️ 重要</strong>：安装时请务必勾选底部 <span class="highlight">"Add Python to PATH"</span>，
+            否则后续命令将无法识别。
+        </div>
+        <p>下载地址：<a href="https://www.python.org/downloads/" target="_blank">python.org/downloads</a></p>
+        <p>项目目录已附带安装包 <code>python-3.12.10-amd64.exe</code>，可直接双击安装。</p>
+
+        <h3><span class="step-badge">③</span> Visual C++ 运行库</h3>
+        <p>部分 Python 包（如 <code>chroma-hnswlib</code>）依赖 VC++ 编译运行时。</p>
+        <p>项目目录已附带 <code>VC_redist.x64.exe</code>，双击并按提示完成安装即可。</p>
+        <div class="alert alert-info">
+            💡 如果之前安装过 Visual Studio / C++ 开发工具，通常已包含该运行库，可跳过此步骤。
+        </div>
+
+        <h3><span class="step-badge">④</span> uv 包管理器</h3>
+        <p>uv 是 Rust 编写的超快速 Python 包管理器，比 pip 快 10-100 倍。项目使用 uv 管理依赖。</p>
+        <p>安装命令（在终端中执行）：</p>
+        <pre><span class="comment"># 方式一：PowerShell 一键安装</span>
+<span class="cmd">powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</span>
+
+<span class="comment"># 方式二：pip 安装</span>
+<span class="cmd">pip install uv</span>
+
+<span class="comment"># 验证安装</span>
+<span class="cmd">uv --version</span></pre>
+
+        <h3><span class="step-badge">⑤</span> DeepSeek API Key（核心）</h3>
+        <p>系统需要调用 LLM 进行审计风险分析，需注册 DeepSeek 开放平台获取 API Key。</p>
+        <ol>
+            <li>访问 <a href="https://platform.deepseek.com/" target="_blank">platform.deepseek.com</a> 注册</li>
+            <li>在控制台创建 API Key（以 <code>sk-</code> 开头）</li>
+            <li>复制备用——后续配置 <code>.env</code> 文件时需要填入</li>
+        </ol>
+        <div class="alert alert-warning">
+            <strong>📌 注意</strong>：如果没有 API Key，系统仍可启动 Web 界面，但发送分析请求时会报 LLM 连接错误。
+            竞赛评委可提前申请测试 Key 进行演示。
+        </div>
+    </div>
+
+    <!-- ═══ 章节2：一键启动流程 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🚀</span> 二、一键启动流程</h2>
+        <p>系统提供两种启动方式：<strong>零门槛一键启动</strong> 和 <strong>手动逐步骤部署</strong>。</p>
+
+        <h3>方式一：极速启动（推荐）</h3>
+        <p>适合首次使用的用户，<strong>双击批处理文件即可完成全部部署</strong>。</p>
+
+        <h4>首次部署（仅需一次）</h4>
+        <ol>
+            <li>双击运行 <code>前置库安装.bat</code><br>
+                <span style="color: var(--text-muted)">→ 自动检测 Python、安装 uv、创建虚拟环境、下载全部依赖</span></li>
+            <li>自动弹出记事本编辑 <code>.env</code> 文件<br>
+                <span style="color: var(--text-muted)">→ 将 <code>OPENAI_API_KEY=...</code> 改为你的 <span class="highlight">真实 API Key</span></span><br>
+                <span style="color: var(--text-muted)">→ <span class="keycap">Ctrl+S</span> 保存关闭 → 回到命令行按任意键继续</span></li>
+            <li>等待浏览器自动打开 <code>http://localhost:5000</code></li>
+        </ol>
+
+        <h4>日常启动</h4>
+        <div class="alert alert-success" style="text-align: center; font-size: 1.15rem;">
+            <strong>双击 <code>启动.bat</code></strong> → 浏览器自动弹出 → 开始使用
+        </div>
+
+        <h3>方式二：PowerShell 脚本启动</h3>
+        <p>适合开发者或需要自定义参数的场景。</p>
+        <pre><span class="comment"># 默认启动（Web 模式 + 自动打开浏览器 + 端口 5000）</span>
+<span class="cmd">.\start.ps1</span>
+
+<span class="comment"># 指定端口（避免端口冲突）</span>
+<span class="cmd">.\start.ps1 -Port 8080</span>
+
+<span class="comment"># 仅启动 HTTP 服务（不打开浏览器）</span>
+<span class="cmd">.\start.ps1 -Mode http -Port 5000</span>
+
+<span class="comment"># 跳过依赖同步和知识库检查（已部署过时快速启动）</span>
+<span class="cmd">.\start.ps1 -SkipSync -SkipKB</span></pre>
+
+        <h4>参数说明</h4>
+        <table class="param-table">
+            <thead><tr><th>参数</th><th>默认值</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td class="pname">-Mode</td><td class="pdefault">web</td><td>运行模式：web（界面+服务）、http（仅服务）、flow（CLI 完整流程）、node（单节点）</td></tr>
+                <tr><td class="pname">-Port</td><td class="pdefault">5000</td><td>HTTP 服务端口</td></tr>
+                <tr><td class="pname">-SkipSync</td><td class="pdefault">-</td><td>跳过 uv sync 依赖安装（已装过时加速）</td></tr>
+                <tr><td class="pname">-SkipKB</td><td class="pdefault">-</td><td>跳过知识库检查</td></tr>
+                <tr><td class="pname">-NoBrowser</td><td class="pdefault">-</td><td>不自动打开浏览器</td></tr>
+            </tbody>
+        </table>
+
+        <h3>方式三：手动逐步骤部署</h3>
+        <p>适合了解每一步具体在做什么的开发者或竞赛评委复现。</p>
+
+        <table class="step-table">
+            <thead><tr><th>#</th><th>步骤</th><th>命令</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td class="step-num">1</td>
+                    <td>安装 uv</td>
+                    <td class="cmd-cell">pip install uv</td>
+                    <td>若已安装可跳过</td>
+                </tr>
+                <tr>
+                    <td class="step-num">2</td>
+                    <td>配置环境变量</td>
+                    <td class="cmd-cell">copy .env.example .env</td>
+                    <td>编辑 .env 填入 API Key</td>
+                </tr>
+                <tr>
+                    <td class="step-num">3</td>
+                    <td>安装依赖</td>
+                    <td class="cmd-cell">uv sync</td>
+                    <td>基于 pyproject.toml 同步</td>
+                </tr>
+                <tr>
+                    <td class="step-num">4</td>
+                    <td>初始化知识库</td>
+                    <td class="cmd-cell">（自动）</td>
+                    <td>首次检索时自动加载</td>
+                </tr>
+                <tr>
+                    <td class="step-num">5</td>
+                    <td>启动 HTTP 服务</td>
+                    <td class="cmd-cell">uv run python src/main.py -m http -p 5000</td>
+                    <td>浏览器打开 localhost:5000</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <pre><span class="comment"># 完整手动部署命令（PowerShell 逐行执行）</span>
+<span class="cmd">pip install uv</span>
+<span class="cmd">copy .env.example .env</span>
+<span class="comment"># ↑ 然后编辑 .env 填入真实的 OPENAI_API_KEY</span>
+<span class="cmd">uv sync</span>
+<span class="cmd">uv run python src/main.py -m http -p 5000</span></pre>
+
+        <div class="alert alert-info">
+            💡 <strong>启动后访问</strong>：浏览器打开 <code>http://localhost:5000</code>，
+            你将看到深色主题的 Web 控制台。左侧状态栏显示系统各组件健康状况。
+        </div>
+    </div>
+
+    <!-- ═══ 章节3：功能模块说明 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🧩</span> 三、五大功能模块</h2>
+        <p>系统提供五个核心审计分析模块，在 Web 界面的欢迎页以快捷按钮呈现，点击后弹出二选一弹窗（上传文件 / 手动输入数据）。</p>
+
+        <div class="module-grid">
+            <div class="module-card">
+                <span class="mc-icon">📊</span>
+                <div class="mc-title">财务指标分析</div>
+                <div class="mc-desc">自动计算 16 项关键财务比率（资产负债率、流动比率、存贷双高、商誉占比等），识别异常指标并生成可视化图表。</div>
+            </div>
+            <div class="module-card">
+                <span class="mc-icon">📝</span>
+                <div class="mc-title">披露规范性检查</div>
+                <div class="mc-desc">对照信披管理办法第 22 条等法规，检查年报 7 项必要章节、5 项关键披露是否完整，输出合规评分。</div>
+            </div>
+            <div class="module-card">
+                <span class="mc-icon">🎯</span>
+                <div class="mc-title">综合风险评估</div>
+                <div class="mc-desc">全方位审计风险分析：财务指标（50%）+ 披露合规（30%）+ 数据校验（20%），输出 0-100 综合评分与风险等级。</div>
+            </div>
+            <div class="module-card">
+                <span class="mc-icon">📦</span>
+                <div class="mc-title">批量上传年报</div>
+                <div class="mc-desc">同时上传多份年报 PDF/Word/Excel，系统逐份独立分析，生成独立报告，支持线程池并行处理。</div>
+            </div>
+            <div class="module-card">
+                <span class="mc-icon">⚖️</span>
+                <div class="mc-title">监管处罚检索</div>
+                <div class="mc-desc">检索证监会处罚函、问询函、警示函等监管信息，基于本地知识库 RAG 检索，进行相似案例对照。</div>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 28px;">📄 报告导出</h3>
+        <p>分析完成后，系统自动生成可下载的审计报告文件：</p>
+        <ul>
+            <li><strong>PDF 风险报告</strong>：包含目录页、风险总览摘要、五维度风险分布表、风险逐项说明、免责声明页</li>
+            <li><strong>Excel 审计底稿</strong>：结构化工时底稿，包含财务指标、校验结果、风险清单等Sheet</li>
+            <li><strong>可视化图表</strong>：风险热力图、财务雷达图、多年趋势图（PNG 格式，可下载）</li>
+        </ul>
+
+        <h3>⚡ Flash 快速模式</h3>
+        <p>点击顶部栏 <strong>⚡ 快速</strong> 按钮启用。启用后跳过多智能体辩论复核环节，直接输出风险分析结果，响应速度提升 2-3 倍。适用于快速预览和压力测试。</p>
+
+        <h3>🧠 多智能体辩论机制</h3>
+        <p>系统内置三方辩论制衡（默认开启，快速模式下跳过）：</p>
+        <ol>
+            <li><strong style="color: #f87171;">风险关注方</strong>：识别并主张存在风险</li>
+            <li><strong style="color: #60a5fa;">风险否定方</strong>：质疑风险识别结果，防止误判</li>
+            <li><strong style="color: #c4b5fd;">裁判仲裁</strong>：综合两方意见，给出最终裁定</li>
+        </ol>
+        <p>辩论结果以折叠面板形式呈现在分析报告末尾。</p>
+    </div>
+
+    <!-- ═══ 章节4：效果评估与测试 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">📊</span> 四、效果评估与测试</h2>
+        <p>系统内置量化效果评估模块，对标竞赛手册 7.1 评分维度中的"效果评估"（15分）。</p>
+
+        <h3>4.1 运行评估脚本</h3>
+        <pre><span class="comment"># 工具模式评估（快速，< 1 秒，22 个测试用例）</span>
+<span class="cmd">uv run python tests/evaluation_report.py --mode tool</span>
+
+<span class="comment"># Agent 全链路评估（约 3 分钟，需 API Key）</span>
+<span class="cmd">uv run python tests/evaluation_report.py --mode agent</span>
+
+<span class="comment"># 两种模式都运行</span>
+<span class="cmd">uv run python tests/evaluation_report.py --mode all</span>
+
+<span class="comment"># 运行单元测试</span>
+<span class="cmd">uv run pytest tests/ -v</span></pre>
+
+        <h3>4.2 Web 界面评估面板</h3>
+        <p>启动 HTTP 服务后，点击顶部栏 <strong>📊 效果评估</strong> 按钮查看：</p>
+        <ul>
+            <li><strong>指标卡片</strong>：Precision（准确率）、Recall（召回率）、F1 分数、基线提升、平均耗时</li>
+            <li><strong>五维雷达图</strong>：按五大风险维度（财务错报、关联交易、信披合规、持续经营、监管处罚）展示识别准确率</li>
+            <li><strong>基线对比表格</strong>：与简单规则引擎（仅检查负债率>70%）的召回率提升对比</li>
+            <li><strong>逐用例明细</strong>：每个测试用例的预期/实际告警、F1 分数、耗时等详细信息</li>
+        </ul>
+        <p>点击 <strong>▶ 运行工具评估</strong> 按钮可随时重新运行评估并刷新结果。</p>
+
+        <h3>4.3 评估指标说明</h3>
+        <table class="param-table">
+            <thead><tr><th>指标</th><th>说明</th><th>参考值</th></tr></thead>
+            <tbody>
+                <tr><td>Precision（精确率）</td><td>系统标记的风险中确实存在的比例</td><td>≥ 95%</td></tr>
+                <tr><td>Recall（召回率）</td><td>实际风险中被系统识别出的比例</td><td>≥ 95%</td></tr>
+                <tr><td>F1 分数</td><td>精确率与召回率的调和平均</td><td>≥ 95%</td></tr>
+                <tr><td>误报率</td><td>正常公司被错误标记风险的比例</td><td>0%</td></tr>
+                <tr><td>基线提升</td><td>相对于简单规则引擎的提升幅度</td><td>+90%+</td></tr>
+            </tbody>
+        </table>
+
+        <h3>4.4 测试用例覆盖</h3>
+        <p>工具模式评估包含 <strong>22 个标注测试样本</strong>，覆盖：</p>
+        <div class="feature-grid">
+            <div class="feature-chip"><span class="feat-icon">📊</span>财务错报风险<br><small style="color:var(--text-muted)">10 用例</small></div>
+            <div class="feature-chip"><span class="feat-icon">🔗</span>关联交易风险<br><small style="color:var(--text-muted)">2 用例</small></div>
+            <div class="feature-chip"><span class="feat-icon">📋</span>信息披露合规风险<br><small style="color:var(--text-muted)">2 用例</small></div>
+            <div class="feature-chip"><span class="feat-icon">💹</span>持续经营风险<br><small style="color:var(--text-muted)">9 用例</small></div>
+            <div class="feature-chip"><span class="feat-icon">⚖️</span>监管处罚类风险<br><small style="color:var(--text-muted)">2 用例</small></div>
+        </div>
+    </div>
+
+    <!-- ═══ 章节5：常见问题与故障排除 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">❓</span> 五、常见问题与故障排除</h2>
+
+        <h3>Q1: PowerShell 执行报错 "&& 是无效的语句分隔符"</h3>
+        <p>Windows PowerShell 不支持 <code>&&</code> 连接多条命令。请改用 <code>;</code>（分号）分隔。</p>
+        <pre><span class="comment"># ❌ 错误</span>
+<span class="cmd">cd project && uv sync</span>
+
+<span class="comment"># ✅ 正确</span>
+<span class="cmd">cd project; uv sync</span></pre>
+
+        <h3>Q2: 启动后页面全是 ❌ 状态（服务频繁重启）</h3>
+        <p>这是 uvicorn 热重载机制导致的问题。当 <code>app.log</code> 写入日志时触发热重载 → 重启后再次写日志 → 死循环。</p>
+        <p>解决方法：确保启动命令中包含 reload 白名单配置（v4.0 版本已默认修复）。</p>
+        <div class="alert alert-info">
+            💡 如果仍遇到此问题，请在 <code>src/main.py</code> 中确认 <code>uvicorn.run()</code> 包含
+            <code>reload_includes=["*.py"]</code> 参数。
+        </div>
+
+        <h3>Q3: 端口被占用</h3>
+        <pre><span class="comment"># 检查 5000 端口占用</span>
+<span class="cmd">netstat -ano | findstr :5000</span>
+
+<span class="comment"># 使用其他端口启动</span>
+<span class="cmd">.\start.ps1 -Port 8080</span></pre>
+
+        <h3>Q4: 知识库加载失败</h3>
+        <p>知识库文件位于 <code>knowledge_base/</code> 目录。确保目录下至少有一个 <code>.txt</code> 文件。</p>
+        <p>如果知识库状态显示「未就绪」，可尝试：</p>
+        <ol>
+            <li>点击左侧栏底部的 <strong>🔄 重载知识库</strong> 按钮</li>
+            <li>或通过 <strong>📥 添加知识库</strong> 按钮上传额外的法规文件（支持 PDF/Word/Excel/TXT 等格式）</li>
+        </ol>
+
+        <h3>Q5: 中文字体导致 PDF/图表中文显示异常</h3>
+        <p>确保 <code>assets/wqy-microhei.ttc</code> 字体文件存在。如果缺失，PDF 导出和图表中的中文可能显示为方框。</p>
+        <p>可从文泉驿官网下载 <code>wqy-microhei.ttc</code> 放入 <code>assets/</code> 目录。</p>
+
+        <h3>Q6: ModuleNotFoundError / 依赖缺失</h3>
+        <p>重新运行依赖同步：</p>
+        <pre><span class="cmd">uv sync</span></pre>
+        <p>如果 uv sync 失败，检查网络连接或尝试：</p>
+        <pre><span class="cmd">uv sync --reinstall</span></pre>
+
+        <h3>Q7: uv 命令找不到</h3>
+        <p>uv 安装后需要重启终端或手动添加 PATH。PowerShell 中执行：</p>
+        <pre><span class="cmd">$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+uv --version</span></pre>
+
+        <h3>Q8: Python 中文路径读取失败</h3>
+        <p>如果项目路径包含中文，某些工具可能出错。建议将项目放在纯英文路径下（如 <code>D:\projects\audit</code>）。</p>
+    </div>
+
+    <!-- ═══ 章节6：项目结构 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">📁</span> 六、项目目录结构</h2>
+        <pre style="font-size: 0.85rem; line-height: 1.8;">
+<span class="key">projects/</span>
+├── <span class="key">src/</span>
+│   ├── <span class="key">agents/</span><span class="comment">agent.py</span>         # Agent 构建 + 辩论机制 + 综合评分兜底
+│   ├── <span class="key">tools/</span>
+│   │   ├── <span class="comment">financial_calculator.py</span>   # 16 项财务指标计算
+│   │   ├── <span class="comment">data_validator.py</span>         # 三大勾稽校验
+│   │   ├── <span class="comment">disclosure_checker.py</span>     # 披露规范性检查（v4.0）
+│   │   ├── <span class="comment">risk_scorer.py</span>            # 综合风险评分（v4.0）
+│   │   ├── <span class="comment">knowledge_search.py</span>       # 法规知识库 RAG 检索
+│   │   ├── <span class="comment">pdf_parser.py</span>             # PDF/多格式年报解析
+│   │   ├── <span class="comment">visualizer.py</span>             # 热力图 + 雷达图 + 趋势图
+│   │   ├── <span class="comment">pdf_export.py</span>             # PDF 审计报告导出
+│   │   ├── <span class="comment">excel_export.py</span>           # Excel 审计底稿导出
+│   │   ├── <span class="comment">batch_processor.py</span>        # 多公司批量并行分析
+│   │   ├── <span class="comment">multi_year_comparison.py</span>  # 多年财务对比
+│   │   └── <span class="comment">upload_helper.py</span>          # 文件上传处理
+│   ├── <span class="key">web/</span><span class="comment">index.html</span>             # Web 前端界面
+│   ├── <span class="key">storage/</span>                    # SQLite + S3 + 内存存储
+│   └── <span class="comment">main.py</span>                    # FastAPI 服务入口
+├── <span class="key">tests/</span>
+│   ├── <span class="comment">evaluation_report.py</span>       # 量化效果评估（22 用例）
+│   ├── <span class="comment">evaluation_results.json</span>   # 评估结果数据
+│   ├── <span class="comment">test_financial_calculator.py</span>
+│   └── <span class="comment">test_data_validator.py</span>
+├── <span class="key">config/</span><span class="comment">agent_llm_config.json</span>  # LLM 配置 + 系统提示词
+├── <span class="key">knowledge_base/</span>             # 审计法规 + 处罚案例知识库
+├── <span class="key">assets/</span>                     # 字体 + 行业基准配置
+├── <span class="comment">start.ps1</span>                   # PowerShell 启动脚本
+├── <span class="comment">.env.example</span>                # 环境变量模板
+├── <span class="comment">pyproject.toml</span>             # 依赖配置
+├── <span class="comment">前置库安装.bat</span>              # 首次安装脚本
+└── <span class="comment">启动.bat</span>                    # 日常启动脚本</pre>
+    </div>
+
+    <!-- ═══ 章节7：技术架构 ═══ -->
+    <div class="glass-card">
+        <h2><span class="icon">🏗️</span> 七、技术架构概览</h2>
+
+        <div class="feature-grid">
+            <div class="feature-chip">
+                <span class="feat-icon">🧠</span>
+                <strong>LLM：DeepSeek-Chat</strong><br>
+                <small style="color:var(--text-muted)">国产大模型，OpenAI 兼容<br>高性价比，18 元/百万 Token</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">🔗</span>
+                <strong>Agent 框架：LangGraph</strong><br>
+                <small style="color:var(--text-muted)">ReAct 模式 + 有状态图<br>多智能体辩论 + 工具编排</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">📚</span>
+                <strong>知识库：ChromaDB</strong><br>
+                <small style="color:var(--text-muted)">语义检索 + TF-IDF 回退<br>懒加载，不阻塞启动</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">⚡</span>
+                <strong>后端：FastAPI + SSE</strong><br>
+                <small style="color:var(--text-muted)">异步流式输出<br>实时思考过程可视化</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">🎨</span>
+                <strong>前端：原生 HTML</strong><br>
+                <small style="color:var(--text-muted)">暗色玻璃拟态<br>零外部依赖，即改即用</small>
+            </div>
+            <div class="feature-chip">
+                <span class="feat-icon">📊</span>
+                <strong>导出：reportlab + openpyxl</strong><br>
+                <small style="color:var(--text-muted)">PDF 报告 + Excel 底稿<br>含目录和免责声明页</small>
+            </div>
+        </div>
+
+        <div class="alert alert-success" style="margin-top: 20px;">
+            🎉 <strong>恭喜！</strong> 你已经掌握了审计风险识别系统的全部部署与使用方法。<br>
+            如需了解更详细的开发文档和 API 接口说明，请查看项目源代码。
+        </div>
+
+        <div class="alert alert-warning" style="margin-top: 12px;">
+            ⚠️ <strong>免责声明</strong>：本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，<br>
+            不构成最终审计意见或投资建议。数据来源为巨潮资讯网公开年报、证监会行政处罚决定书等合法公开信息。
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── 雪花粒子画布 ──
+(function() {
+    const canvas = document.getElementById('snow-canvas');
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [];
+
+    function resize() {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: 1.2 + Math.random() * 2.5,
+            a: 0.2 + Math.random() * 0.5,
+            speed: 0.15 + Math.random() * 0.35,
+            drift: (Math.random() - 0.5) * 0.4,
+            swing: Math.random() * Math.PI * 2,
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, w, h);
+        for (const p of particles) {
+            p.swing += 0.008;
+            p.x += p.drift + Math.sin(p.swing) * 0.3;
+            p.y += p.speed;
+            if (p.y > h + 10) { p.y = -10; p.x = Math.random() * w; }
+            if (p.x < -10) p.x = w + 10;
+            if (p.x > w + 10) p.x = -10;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(148, 163, 184, ${p.a})`;
+            ctx.fill();
+        }
+        requestAnimationFrame(draw);
+    }
+    draw();
+})();
+
+// ── 滚动渐入动画 ──
+(function() {
+    const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        }
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.glass-card').forEach(el => observer.observe(el));
+})();
+
+// ── 复制按钮 ──
+(function() {
+    document.querySelectorAll('pre').forEach(pre => {
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = '📋 复制';
+        btn.onclick = () => {
+            const text = pre.textContent.replace(/^.*?复制$/, '').trim();
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = '✅ 已复制';
+                setTimeout(() => btn.textContent = '📋 复制', 2000);
+            });
+        };
+        pre.appendChild(btn);
+    });
+})();
+</script>
+
+</body>
+</html>

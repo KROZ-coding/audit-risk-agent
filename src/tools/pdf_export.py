@@ -265,6 +265,22 @@ def _export_pdf_impl(risk_report_json: str, output_path: str = None) -> str:
     ]
 
     # ═══════════════════════════════════════════════════════
+    # 目录页 —— 报告章节导航
+    # ═══════════════════════════════════════════════════════
+    elements += [Paragraph("目  录", st['title']), Spacer(1, 30)]
+    toc_items = [
+        ("一、风险总览", "风险统计摘要、五维度分布、风险清单"),
+        ("二、风险明细", f"共 {len(rd)} 条风险的详细分析"),
+        ("三、整体风险评估结论", "综合评估意见与审计建议"),
+    ]
+    if "industry_benchmark" in report:
+        toc_items.append(("四、行业基准对比", "与行业平均水平的横向比较"))
+    toc_data = [["章节", "内容说明"]]
+    for title, desc in toc_items:
+        toc_data.append([title, desc])
+    elements += [_styled_table(toc_data, [180, 250], font, font_size=11), PageBreak()]
+
+    # ═══════════════════════════════════════════════════════
     # 章节2：风险总览 —— 统计摘要 + 五维度分布表 + 清单摘要
     # ═══════════════════════════════════════════════════════
     elements += [Paragraph("一、风险总览", st['h1']), Spacer(1, 10)]
@@ -368,6 +384,34 @@ def _export_pdf_impl(risk_report_json: str, output_path: str = None) -> str:
                 for sk, sv in v.items():
                     elements.append(Paragraph(f"  {sk}: {sv}", st['small']))
 
+    # ═══════════════════════════════════════════════════════
+    # 免责声明页 —— 独立章节，明确 AI 生成性质与使用限制
+    # ═══════════════════════════════════════════════════════
+    elements += [PageBreak(), Paragraph("免责声明", st['h1']), Spacer(1, 15)]
+    disclaimer_paragraphs = [
+        "本报告由人工智能大语言模型基于公开数据自动生成，属于 AI 辅助分析工具的输出结果，"
+        "不构成任何注册会计师审计意见、鉴证结论或投资建议。",
+        "AI 模型可能存在幻觉（Hallucination）或推理偏差，报告中的风险判定、法规引用及数据分析"
+        "均需经具备专业资质的审计人员复核确认后方可作为决策依据。",
+        "本报告所引用的数据来源包括：巨潮资讯网上市公司公开年报、中国证监会近五年行政处罚决定书、"
+        "上海/深圳证券交易所问询函、中国审计准则及企业会计准则电子版。所有数据均为合法公开信息。",
+        "使用者不得将本报告用于对特定上市公司或个人作出未经核实的负面评价，亦不得将其作为"
+        "证券买卖、信贷审批等商业决策的唯一依据。",
+        "如需正式审计意见，请委托具备证券期货相关业务资格的会计师事务所执行独立审计程序。",
+    ]
+    for para in disclaimer_paragraphs:
+        elements += [Paragraph(para, st['body']), Spacer(1, 8)]
+
+    # ── 领域约束后置校验：导出内容必须包含 AI 免责声明 ──
+    # 在真正构建/落盘 PDF 前拦截：若模板被误改导致声明缺失，则不产出文件，
+    # 直接返回带修复方向的错误，避免生成看似正式审计意见的无声明报告。
+    from tools.domain_guard import collect_flowable_texts, assert_disclaimer_present, DisclaimerMissingError
+    try:
+        assert_disclaimer_present(collect_flowable_texts(elements), doc_kind="PDF风险报告")
+    except DisclaimerMissingError as e:
+        logger.error(f"PDF导出被拦截: {e}")
+        return f"导出被拦截：{e}"
+
     # ── 构建 PDF 文件 ──
     prefix = _build_file_prefix(report)
     # 输出路径：使用指定路径或系统临时目录
@@ -375,12 +419,15 @@ def _export_pdf_impl(risk_report_json: str, output_path: str = None) -> str:
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2.5*cm, bottomMargin=2.5*cm)
 
-    # 页脚水印回调：每页底部居中渲染灰色 AI 声明小字
+    # 页脚水印回调：每页底部居中渲染灰色 AI 声明小字 + 页码
     def _add_footer(canvas, doc_obj):
         canvas.saveState()
         canvas.setFont(font, 7)                          # 7pt 灰色小字
         canvas.setFillColor(HexColor("#999999"))
         canvas.drawCentredString(A4[0] / 2, 1.2 * cm, AI_DISCLAIMER)
+        # 页码：右下角显示“第 X 页”
+        canvas.setFont(font, 8)
+        canvas.drawRightString(A4[0] - 2 * cm, 1.2 * cm, f"第 {doc_obj.page} 页")
         canvas.restoreState()
 
     # 构建 PDF，首页和后续页均应用页脚水印
