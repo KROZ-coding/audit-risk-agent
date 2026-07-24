@@ -293,21 +293,6 @@ body { display: flex; }
   color: rgb(167, 139, 250);
   font-weight: 500;
 }
-.thinking-percent {
-  font-size: 28px;
-  font-weight: 700;
-  color: rgb(243, 244, 246);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -1px;
-  flex-shrink: 0;
-  min-width: 72px;
-  text-align: right;
-}
-.thinking-percent span {
-  font-size: 16px;
-  font-weight: 400;
-  color: rgb(156, 163, 175);
-}
 
 /* Progress Bar */
 .progress-track {
@@ -353,40 +338,66 @@ body { display: flex; }
 }
 
 /* Completed Steps List */
-.thinking-steps {
+.thinking-steps-vertical {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding-left: 4px;
 }
-.step-tag {
-  display: inline-flex;
+.vstep {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 99px;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-  background: rgb(30, 41, 59);
   color: rgb(148, 163, 184);
-  border: 1px solid rgb(51, 65, 85);
+  border-left: 2px solid rgb(51, 65, 85);
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateX(-6px);
   animation: tagIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-.step-tag.done {
-  background: rgba(16, 185, 129, 0.1);
+.vstep.done {
   color: rgb(52, 211, 153);
-  border-color: rgba(16, 185, 129, 0.25);
+  border-left-color: rgba(16, 185, 129, 0.4);
 }
-.step-tag.active {
-  background: rgba(99, 102, 241, 0.12);
+.vstep.active {
   color: rgb(165, 180, 252);
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
+  border-left-color: rgba(99, 102, 241, 0.6);
+  background: rgba(99, 102, 241, 0.06);
 }
-.step-tag .tag-icon { font-size: 11px; }
+.vstep-icon { font-size: 11px; width: 14px; text-align: center; }
+.vstep-label { flex: 1; }
 @keyframes tagIn {
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 折叠按钮 */
+.think-collapse-btn {
+  background: none; border: 1px solid var(--glass-border);
+  color: var(--text-muted); width: 28px; height: 28px;
+  border-radius: 6px; cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.think-collapse-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+
+/* 折叠状态：隐藏进度条和步骤列表 */
+.thinking-card.collapsed .progress-track,
+.thinking-card.collapsed .thinking-steps-vertical { display: none; }
+.thinking-card.collapsed .think-collapse-btn { transform: rotate(-90deg); }
+
+/* 不确定进度条动画（不依赖实际百分比） */
+.progress-indeterminate {
+  width: 30% !important;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  0% { margin-left: 0; }
+  50% { margin-left: 70%; }
+  100% { margin-left: 0; }
 }
 
 /* Inline Images */
@@ -446,6 +457,7 @@ body { display: flex; }
 }
 .quick-btn:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); transform: translateY(-2px); box-shadow: var(--shadow-glow); }
 .quick-btn .icon { font-size: 20px; }
+.quick-grid .quick-btn:last-child:nth-child(odd) { grid-column: 1 / -1; justify-content: center; }
 
 /* ── Input Area ────────────────────────────────────── */
 .input-area { padding: 20px 32px 32px; background: linear-gradient(to top, var(--bg-base), transparent); position: relative; }
@@ -591,7 +603,200 @@ body { display: flex; }
 .review-verdict.supplement { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
 .review-verdict.redo { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
+/* ── 辩论三段式折叠面板 ───────────────────── */
+.debate-section {
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.debate-section-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px; font-weight: 600;
+  transition: background 0.2s;
+  user-select: none;
+}
+.debate-section-header:hover { background: rgba(255,255,255,0.04); }
+.debate-section-header .arrow { transition: transform 0.2s; font-size: 10px; }
+.debate-section.open .debate-section-header .arrow { transform: rotate(90deg); }
+.debate-section-body {
+  display: none;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  border-top: 1px solid var(--glass-border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.debate-section.open .debate-section-body { display: block; }
+.debate-advocate .debate-section-header { color: #f87171; background: rgba(239,68,68,0.06); }
+.debate-skeptic .debate-section-header { color: #60a5fa; background: rgba(59,130,246,0.06); }
+.debate-arbiter .debate-section-header { color: #c4b5fd; background: rgba(139,92,246,0.06); }
+
+/* ── 思维链五步卡片 ───────────────────────── */
+.reasoning-chain {
+  margin: 12px 0;
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.reasoning-chain-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: rgba(99,102,241,0.08);
+  cursor: pointer;
+  font-size: 13px; font-weight: 600; color: #a5b4fc;
+  user-select: none;
+}
+.reasoning-chain-header .arrow { transition: transform 0.2s; font-size: 10px; }
+.reasoning-chain.open .reasoning-chain-header .arrow { transform: rotate(90deg); }
+.reasoning-chain-body { display: none; padding: 12px 16px; }
+.reasoning-chain.open .reasoning-chain-body { display: block; }
+.rc-step {
+  display: flex; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.rc-step:last-child { border-bottom: none; }
+.rc-step-icon {
+  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: #fff;
+}
+.rc-step-content { flex: 1; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.rc-step-label { font-weight: 600; color: var(--text-primary); font-size: 12px; margin-bottom: 2px; }
+
+/* ── 模块入口二选一弹窗 ───────────────────── */
+.module-choice-overlay {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.module-choice-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  min-width: 340px;
+}
+.module-choice-title {
+  font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px;
+}
+.module-choice-btns {
+  display: flex; gap: 16px; justify-content: center;
+}
+.module-choice-btn {
+  flex: 1; padding: 20px 16px;
+  border-radius: 12px; border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.03);
+  cursor: pointer; transition: all 0.2s;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.module-choice-btn:hover {
+  background: rgba(59,130,246,0.1); border-color: var(--accent);
+  transform: translateY(-2px); box-shadow: 0 4px 16px rgba(59,130,246,0.15);
+}
+.module-choice-btn .mc-icon { font-size: 28px; }
+.module-choice-btn .mc-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.module-choice-btn .mc-sub { font-size: 11px; color: var(--text-muted); }
+
+/* ── 综合评分卡片 ───────────────────────── */
+.score-card {
+  margin-bottom: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9));
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.score-ring {
+  width: 80px; height: 80px; position: relative; flex-shrink: 0;
+}
+.score-ring svg { transform: rotate(-90deg); }
+.score-ring .score-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800; color: var(--text-primary);
+}
+.score-info { flex: 1; }
+.score-level {
+  display: inline-block; padding: 3px 12px; border-radius: 6px;
+  font-size: 13px; font-weight: 700; margin-bottom: 8px;
+}
+.score-level.low { background: rgba(16,185,129,0.15); color: #34d399; }
+.score-level.medium { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.score-level.high { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.score-level.critical { background: rgba(239,68,68,0.15); color: #f87171; }
+.score-breakdown { display: flex; gap: 12px; margin-top: 8px; }
+.score-dim { flex: 1; }
+.score-dim-label { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+.score-dim-bar { height: 6px; border-radius: 3px; background: rgb(30,41,59); overflow: hidden; }
+.score-dim-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
 /* ── Responsive ────────────────────────────────────── */
+
+/* ── 文件完成 Toast 通知（右下角堆叠卡片）─────── */
+.toast-stack {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 0;
+  pointer-events: none;
+}
+.toast-card {
+  background: linear-gradient(135deg, #065f46, #047857);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  border-radius: 12px;
+  padding: 14px 20px;
+  color: #ecfdf5;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 12px rgba(16, 185, 129, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  pointer-events: auto;
+  animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  cursor: pointer;
+}
+.toast-card .toast-icon {
+  width: 28px; height: 28px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.toast-card .toast-body { flex: 1; }
+.toast-card .toast-title { font-weight: 700; font-size: 13px; }
+.toast-card .toast-sub { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+/* 堆叠效果：非最新卡片缩小并上移，露出边缘 */
+.toast-card.stacked {
+  transform: scale(0.95) translateY(-8px);
+  opacity: 0.7;
+}
+.toast-card.stacked-2 {
+  transform: scale(0.9) translateY(-16px);
+  opacity: 0.5;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(40px) scale(0.9); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
 @media (max-width: 768px) {
   .sidebar { position: absolute; height: 100%; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
   .sidebar.collapsed { margin-left: -280px; box-shadow: none; }
@@ -840,8 +1045,8 @@ body.splash-active .main {
 .eval-metric-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
 .eval-metric-card .value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
 .eval-metric-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-.eval-metric-card.highlight { border-color: var(--accent); }
-.eval-metric-card.highlight .value { color: var(--accent); }
+.eval-metric-card.highlight { border-color: var(--success); }
+.eval-metric-card.highlight .value { color: var(--success); }
 .eval-section { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 20px; }
 .eval-section h3 { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
 .eval-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -853,7 +1058,10 @@ body.splash-active .main {
 .eval-btn:hover { background: rgba(245,158,11,0.2); }
 .eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-sm.active { background: rgba(255,255,255,0.1); border-color: var(--accent); color: var(--accent); }
-</style>
+
+/* ── 雷达图 SVG 动画 ── */
+@keyframes radarDraw { to { stroke-dashoffset: 0; } }
+.radar-polygon { stroke-dasharray: 800; stroke-dashoffset: 800; animation: radarDraw 1.2s ease-out forwards; }</style>
 </head>
 <body class="splash-active">
 
@@ -879,7 +1087,7 @@ body.splash-active .main {
     <div class="splash-loading">
       <span></span><span></span><span></span>
     </div>
-    <div class="splash-version">v3.0.0 · 载入中...</div>
+    <div class="splash-version">v4.0.0 · 载入中...</div>
   </div>
 </div>
 
@@ -935,7 +1143,7 @@ body.splash-active .main {
 
     <div class="sidebar-footer">
     <div>本地模式 · LangGraph + DeepSeek</div>
-    <div style="margin-top:4px">v3.0.0 · © 2026</div>
+    <div style="margin-top:4px">v4.0.0 · © 2026</div>
     <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
       <button onclick="triggerKBUpload()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）">📥 添加知识库</button>
       <button onclick="reloadKB(this)" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="重新加载知识库文件">🔄 重载知识库</button>
@@ -953,6 +1161,8 @@ body.splash-active .main {
       <button class="btn-sm active" id="panelBtnChat" onclick="togglePanel('chat')">💬 对话</button>
       <button class="btn-sm" id="panelBtnEval" onclick="togglePanel('eval')">📊 效果评估</button>
       <button class="btn-sm" onclick="clearChat()" title="清空对话">🗑️ 新会话</button>
+      <button class="btn-sm" onclick="exportChat()" title="导出对话记录">💾 导出</button>
+      <button class="btn-sm" id="flashToggle" onclick="toggleFlashMode()" title="快速模式：跳过辩论复核，加快响应速度">⚡ 快速</button>
     </div>
   </div>
 
@@ -962,20 +1172,23 @@ body.splash-active .main {
       <h2>上市公司年报审计风险识别</h2>
       <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告（PDF + Excel）。</p>
       <div class="quick-grid">
-        <button class="quick-btn" onclick="quickSend('请分析贵州茅台2024年年报的审计风险')">
-          <span class="icon">🍷</span> <span>分析贵州茅台年报风险</span>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','📊 财务指标分析')">
+          <span class="icon">📊</span> <span>财务指标分析</span>
         </button>
-        <button class="quick-btn" onclick="quickSend('请对比分析恒大和碧桂园的财务风险差异')">
-          <span class="icon">🏠</span> <span>恒大 vs 碧桂园对比</span>
+        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','📝 披露规范性检查')">
+          <span class="icon">📝</span> <span>披露规范性检查</span>
         </button>
-        <button class="quick-btn" onclick="quickSend('帮我检测以下财务数据是否存在异常：营收50亿，净利润8亿，经营现金流-2亿，应收账款20亿')">
-          <span class="icon">🔎</span> <span>财务异常数据检测</span>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','🎯 综合风险评估')">
+          <span class="icon">🎯</span> <span>综合风险评估</span>
         </button>
-        <button class="quick-btn" onclick="quickSend('请解释存贷双高的审计风险及核查方法')">
-          <span class="icon">📖</span> <span>存贷双高风险分析</span>
+        <button class="quick-btn" onclick="searchPenalty()">
+          <span class="icon">⚖️</span> <span>监管处罚检索</span>
+        </button>
+        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件">
+          <span class="icon">📦</span> <span>批量上传年报</span>
         </button>
       </div>
-      <p class="ai-disclaimer-welcome">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。</p>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:8px;opacity:0.6">数据来源：巨潮资讯网上市公司公开年报、证监会近五年行政处罚决定书、上交所/深交所问询函、中国审计准则及会计准则电子版。所有数据均为合法公开信息。</p>
     </div>
   </div>
 
@@ -991,6 +1204,11 @@ body.splash-active .main {
     <div id="evalContent" style="display:none">
       <!-- 指标卡片 -->
       <div class="eval-metrics-grid" id="evalMetrics"></div>
+      <!-- 五维能力雷达图 -->
+      <div class="eval-section" id="evalRadar" style="margin-top:16px">
+        <h3>🕸️ 分维度识别能力雷达图</h3>
+        <div id="evalRadarContent" style="display:flex;justify-content:center;padding:12px 0"></div>
+      </div>
       <!-- 基线对比 -->
       <div class="eval-section" id="evalBaseline" style="margin-top:16px">
         <h3>📈 基线方案对比</h3>
@@ -1022,9 +1240,12 @@ body.splash-active .main {
       </div>
     </div>
     <div class="ai-disclaimer">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。</div>
-    <input type="file" id="fileInput" accept=".pdf,.xlsx,.csv" multiple style="display:none" onchange="handleFiles(this.files)">
+    <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.pptx,.html,.htm,.txt,.md" multiple style="display:none" onchange="handleFiles(this.files)">
   </div>
 </div>
+
+<!-- ═══ 文件完成 Toast 通知堆叠区 ═══ -->
+<div class="toast-stack" id="toastStack"></div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -1050,17 +1271,21 @@ function resetStreamState() {
 let _thinkTimer = null;
 let _thinkStart = 0;
 let _completedSteps = [];
+let _thinkCardId = 0;
 
 function showThinkingCard() {
   _completedSteps = [];
   _thinkStart = Date.now();
+  _thinkCardId++;
+  const cardId = `thinkingWrapper_${_thinkCardId}`;
 
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
   div.className = 'msg assistant';
-  div.id = 'thinkingWrapper';
+  div.id = cardId;
+  div.dataset.thinkId = _thinkCardId;
   div.innerHTML = `
-    <div class="thinking-card" id="thinkingCard">
+    <div class="thinking-card">
       <div class="thinking-header">
         <div class="thinking-icon-wrap">
           <div class="thinking-icon-ring"></div>
@@ -1069,17 +1294,17 @@ function showThinkingCard() {
         <div class="thinking-info">
           <div class="thinking-title">AI 正在深度分析中</div>
           <div class="thinking-sub">
-            <span id="thinkTimer">00:00</span>
+            <span class="think-timer">00:00</span>
             <span style="color:rgb(75,85,99)">·</span>
-            <span class="thinking-step-text" id="thinkStepText">初始化…</span>
+            <span class="thinking-step-text">初始化…</span>
           </div>
         </div>
-        <div class="thinking-percent" id="thinkPercent">0<span>%</span></div>
+        <button class="think-collapse-btn" onclick="this.closest('.thinking-card').classList.toggle('collapsed')" title="折叠/展开思考过程"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5L5 6.5L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       </div>
       <div class="progress-track">
-        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        <div class="progress-fill progress-indeterminate"></div>
       </div>
-      <div class="thinking-steps" id="thinkSteps"></div>
+      <div class="thinking-steps-vertical"></div>
     </div>`;
   area.appendChild(div);
   scrollToBottom();
@@ -1089,7 +1314,8 @@ function showThinkingCard() {
 }
 
 function _updateThinkTimer() {
-  const el = document.getElementById('thinkTimer');
+  const timers = document.querySelectorAll('.thinking-card .think-timer');
+  const el = timers[timers.length - 1];
   if (!el) return;
   const sec = Math.floor((Date.now() - _thinkStart) / 1000);
   const m = String(Math.floor(sec / 60)).padStart(2, '0');
@@ -1098,30 +1324,30 @@ function _updateThinkTimer() {
 }
 
 function updateProgress(step, percent) {
-  const fill = document.getElementById('progressFill');
-  const pctEl = document.getElementById('thinkPercent');
-  const stepEl = document.getElementById('thinkStepText');
+  // 更新当前思考卡片的步骤文本和竖向步骤列表
+  const cards = document.querySelectorAll('.thinking-card');
+  const card = cards[cards.length - 1];
+  if (!card) return;
 
-  if (fill) fill.style.width = percent + '%';
-  if (pctEl) pctEl.innerHTML = `${percent}<span>%</span>`;
+  const stepEl = card.querySelector('.thinking-step-text');
   if (stepEl) stepEl.textContent = step;
 
-  const container = document.getElementById('thinkSteps');
+  const container = card.querySelector('.thinking-steps-vertical');
   if (!container) return;
 
-  if (_completedSteps.length > 0) {
-    const lastTag = container.querySelector('.step-tag.active');
-    if (lastTag) {
-      lastTag.classList.remove('active');
-      lastTag.classList.add('done');
-      lastTag.querySelector('.tag-icon').textContent = '✓';
-    }
+  // 将上一个 active 步骤标记为完成
+  const lastActive = container.querySelector('.vstep.active');
+  if (lastActive) {
+    lastActive.classList.remove('active');
+    lastActive.classList.add('done');
+    lastActive.querySelector('.vstep-icon').textContent = '✓';
   }
 
-  const tag = document.createElement('div');
-  tag.className = 'step-tag active';
-  tag.innerHTML = `<span class="tag-icon">◉</span><span>${escapeHtml(step)}</span>`;
-  container.appendChild(tag);
+  // 添加新步骤（竖向排列）
+  const item = document.createElement('div');
+  item.className = 'vstep active';
+  item.innerHTML = `<span class="vstep-icon">◉</span><span class="vstep-label">${escapeHtml(step)}</span>`;
+  container.appendChild(item);
   _completedSteps.push(step);
   scrollToBottom();
 }
@@ -1129,25 +1355,29 @@ function updateProgress(step, percent) {
 function removeThinkingCard() {
   if (_thinkTimer) { clearInterval(_thinkTimer); _thinkTimer = null; }
 
-  const container = document.getElementById('thinkSteps');
-  if (container) {
-    const activeTag = container.querySelector('.step-tag.active');
-    if (activeTag) {
-      activeTag.classList.remove('active');
-      activeTag.classList.add('done');
-      activeTag.querySelector('.tag-icon').textContent = '✓';
+  // 找到当前活跃的思考卡片（最后一个）
+  const wrappers = document.querySelectorAll('[id^="thinkingWrapper_"]');
+  const wrapper = wrappers[wrappers.length - 1];
+  if (!wrapper) return;
+
+  const card = wrapper.querySelector('.thinking-card');
+  if (card) {
+    // 标记最后一个步骤为完成
+    const lastActive = card.querySelector('.vstep.active');
+    if (lastActive) {
+      lastActive.classList.remove('active');
+      lastActive.classList.add('done');
+      lastActive.querySelector('.vstep-icon').textContent = '✓';
     }
+    // 进度条满
+    const fill = card.querySelector('.progress-fill');
+    if (fill) { fill.classList.remove('progress-indeterminate'); fill.style.width = '100%'; }
+    // 自动折叠思考过程
+    card.classList.add('collapsed');
   }
 
-  const fill = document.getElementById('progressFill');
-  if (fill) fill.style.width = '100%';
-  const pctEl = document.getElementById('thinkPercent');
-  if (pctEl) pctEl.innerHTML = `100<span>%</span>`;
-
-  setTimeout(() => {
-    const wrapper = document.getElementById('thinkingWrapper');
-    if (wrapper) wrapper.remove();
-  }, 400);
+  // 立即移除（不再用 setTimeout，避免多文件时 ID 冲突）
+  setTimeout(() => { if (wrapper.parentNode) wrapper.remove(); }, 600);
 }
 
 function renderFinalReport(report) {
@@ -1155,6 +1385,56 @@ function renderFinalReport(report) {
   removeTypingIndicator();
 
   let html = '';
+
+  // 工具调用链可视化：展示本次分析实际调用的工具序列
+  if (report.tool_results && report.tool_results.length > 0) {
+    const toolNames = report.tool_results.map(t => t.name);
+    const toolLabels = {
+      'validate_financial_data': '✅ 数据校验',
+      'calculate_financial_indicators': '📊 指标计算',
+      'search_regulations': '📜 法规检索',
+      'compare_multi_year': '📈 多年对比',
+      'generate_risk_heatmap': '🟥 热力图',
+      'generate_radar_chart': '📡 雷达图',
+      'generate_trend_chart': '📉 趋势图',
+      'export_pdf_report': '📄 PDF导出',
+      'export_excel_report': '📊 Excel导出',
+      'parse_pdf_report': '📖 PDF解析',
+    };
+    const chain = toolNames.map(n => toolLabels[n] || n).join(' → ');
+    html += `<div style="margin-bottom:12px;padding:8px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px;font-size:12px;color:var(--text-muted)"><b style="color:#a5b4fc">🔗 工具调用链：</b>${chain}</div>`;
+  }
+
+  // 综合评分卡片：检测 AI 回复中的 comprehensive_score JSON
+  if (report.ai_text) {
+    const scoreMatch = report.ai_text.match(/"score"\s*:\s*([\d.]+)[\s\S]*?"level"\s*:\s*"([^"]+)"[\s\S]*?"level_key"\s*:\s*"([^"]+)"[\s\S]*?"breakdown"\s*:\s*\{[^}]*"financial"\s*:\s*([\d.]+)[^}]*"disclosure"\s*:\s*([\d.]+)[^}]*"validation"\s*:\s*([\d.]+)/);
+    if (scoreMatch) {
+      const [, score, level, levelKey, fin, disc, val] = scoreMatch;
+      const s = parseFloat(score);
+      const circumference = 2 * Math.PI * 34;
+      const offset = circumference * (1 - s / 100);
+      const colors = { low: '#34d399', medium: '#60a5fa', high: '#fbbf24', critical: '#f87171' };
+      const color = colors[levelKey] || '#60a5fa';
+      html += `<div class="score-card">
+        <div class="score-ring">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="34" fill="none" stroke="rgb(30,41,59)" stroke-width="7"/>
+            <circle cx="40" cy="40" r="34" fill="none" stroke="${color}" stroke-width="7"
+              stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
+          </svg>
+          <div class="score-num">${Math.round(s)}</div>
+        </div>
+        <div class="score-info">
+          <span class="score-level ${levelKey}">综合风险评分：${level}</span>
+          <div class="score-breakdown">
+            <div class="score-dim"><div class="score-dim-label">财务指标 ${parseFloat(fin).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${fin}%;background:#60a5fa"></div></div></div>
+            <div class="score-dim"><div class="score-dim-label">披露合规 ${parseFloat(disc).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${disc}%;background:#fbbf24"></div></div></div>
+            <div class="score-dim"><div class="score-dim-label">数据校验 ${parseFloat(val).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${val}%;background:#a78bfa"></div></div></div>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
 
   if (report.ai_text) {
     html += renderMarkdown(report.ai_text);
@@ -1224,61 +1504,149 @@ function renderFinalReport(report) {
 }
 
 // ══════════════════════════════════════════════════════════
+// 流式请求公共逻辑（单文件/多文件复用）
+// ══════════════════════════════════════════════════════════
+async function _doStreamRequest(payload) {
+  const resp = await fetch(`${API_BASE}/stream_run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: currentController.signal
+  });
+
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const dataStr = line.slice(6);
+        if (dataStr === '[DONE]') continue;
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.type === 'progress') {
+            updateProgress(data.step || '', data.percent || 0);
+          } else if (data.type === 'final_report') {
+            removeThinkingCard();
+            renderFinalReport(data);
+          } else if (data.type === 'error') {
+            removeThinkingCard();
+            addMessage('system', `⚠️ ${data.content || '未知错误'}`);
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // Send Message (Streaming with Abort)
 // ══════════════════════════════════════════════════════════
-async function sendMessage() {
+async function sendMessage(presetPrompt) {
   if (isStreaming) {
     if (currentController) currentController.abort();
     return;
   }
 
   const input = document.getElementById('msgInput');
-  const text = input.value.trim();
+  // presetPrompt：快捷功能入口（财务/披露/综合分析）直接内嵌的分析指令，
+  // 不经过底部输入框展示；未传时才读取输入框内容
+  const hasPreset = typeof presetPrompt === 'string' && presetPrompt.trim().length > 0;
+  const text = hasPreset ? presetPrompt.trim() : input.value.trim();
   if (!text && uploadedFiles.length === 0) return;
 
   resetStreamState();
 
   let userText = text;
-  let fileContextText = '';
 
   if (uploadedFiles.length > 0) {
     const fileNames = uploadedFiles.map(f => f.name).join(', ');
-    userText = text ? `${text}\n\n[附件: ${fileNames}]` : `请分析上传的文件: ${fileNames}`;
-
-    addMessage('user', userText);
-    input.value = '';
-    autoResize(input);
+    addMessage('user', text ? `${text}\n\n[附件: ${fileNames}]` : `请逐份分析以下上传文件: ${fileNames}`);
+    if (!hasPreset) { input.value = ''; autoResize(input); }
 
     isStreaming = true;
     updateSendButton(true);
 
+    // 批量上传所有文件
     const formData = new FormData();
     for (const f of uploadedFiles) {
       formData.append('files', f);
     }
 
+    let parsedFiles = [];
     try {
       const uploadResp = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
       if (uploadResp.ok) {
         const uploadResult = await uploadResp.json();
-        const textParts = [];
-        for (const fileInfo of uploadResult.files || []) {
-          if (fileInfo.status === 'ok' && fileInfo.extracted_text) {
-            textParts.push(`\n📄 **文件: ${fileInfo.filename}** (${fileInfo.page_count || '?'} 页)\n\n${fileInfo.extracted_text}`);
-          } else if (fileInfo.status === 'error') {
-            textParts.push(`\n⚠️ 文件 ${fileInfo.filename} 处理失败: ${fileInfo.error}`);
+        parsedFiles = (uploadResult.files || []).filter(fi => fi.status === 'ok' && fi.extracted_text);
+        // 显示解析失败的文件
+        for (const fi of (uploadResult.files || [])) {
+          if (fi.status === 'error') {
+            addMessage('system', `⚠️ 文件 ${fi.filename} 处理失败: ${fi.error}`);
           }
         }
-        fileContextText = textParts.join('\n');
       } else {
-        fileContextText = `\n⚠️ 文件上传失败: HTTP ${uploadResp.status}`;
+        addMessage('system', `⚠️ 文件上传失败: HTTP ${uploadResp.status}`);
       }
     } catch (uploadErr) {
-      fileContextText = `\n⚠️ 文件上传异常: ${uploadErr.message}`;
+      addMessage('system', `⚠️ 文件上传异常: ${uploadErr.message}`);
     }
 
     uploadedFiles = [];
     document.getElementById('filePreview').innerHTML = '';
+
+    // 逐份文件独立分析，每份生成单独报告
+    for (let i = 0; i < parsedFiles.length; i++) {
+      const fileInfo = parsedFiles[i];
+      // 将快捷模式的分析指令（text）内嵌到发给 LLM 的内容中，确保财务/披露/综合等模式真正生效
+      const instruction = text || '请对该文件进行全方位审计风险分析';
+      const fileUserContent = `${instruction}\n\n（分析以下文件，第 ${i + 1}/${parsedFiles.length} 份）：\n\n📄 **文件: ${fileInfo.filename}**\n\n${fileInfo.extracted_text}`;
+
+      showThinkingCard();
+      addTypingIndicator();
+
+      const payload = {
+        messages: [
+          ...messages.filter(m => m.role !== 'system').map(m => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content
+          })),
+          { role: 'user', content: fileUserContent }
+        ]
+      };
+
+      currentController = new AbortController();
+      try {
+        await _doStreamRequest(payload);
+        // 每份文件完成后弹出 Toast 通知
+        showFileToast(i + 1, parsedFiles.length, fileInfo.filename);
+      } catch (err) {
+        removeThinkingCard();
+        if (err.name === 'AbortError') {
+          addMessage('system', '⏹️ 已停止生成');
+          break;
+        } else {
+          addMessage('system', `⚠️ ${fileInfo.filename} 分析失败: ${err.message}`);
+        }
+      }
+    }
+
+    resetStreamState();
+    isStreaming = false;
+    currentController = null;
+    updateSendButton(false);
+    document.getElementById('msgInput').focus();
+    return;
 
   } else {
     addMessage('user', userText);
@@ -1292,10 +1660,6 @@ async function sendMessage() {
   showThinkingCard();
   addTypingIndicator();
 
-  const fullUserContent = fileContextText
-    ? `${userText}\n\n---\n以下是上传文件的提取内容：\n${fileContextText}`
-    : userText;
-
   const payload = {
     messages: [
       ...messages
@@ -1304,54 +1668,14 @@ async function sendMessage() {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.content
         })),
-      { role: 'user', content: fullUserContent }
+      { role: 'user', content: flashMode ? `${userText}\n\n（快速模式，跳过辩论复核）` : userText }
     ]
   };
 
   currentController = new AbortController();
 
   try {
-    const resp = await fetch(`${API_BASE}/stream_run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: currentController.signal
-    });
-
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6);
-          if (dataStr === '[DONE]') continue;
-          try {
-            const data = JSON.parse(dataStr);
-            if (data.type === 'progress') {
-              updateProgress(data.step || '', data.percent || 0);
-            } else if (data.type === 'final_report') {
-              removeThinkingCard();
-              renderFinalReport(data);
-            } else if (data.type === 'error') {
-              removeThinkingCard();
-              addMessage('system', `⚠️ ${data.content || '未知错误'}`);
-            }
-          } catch (e) { /* skip */ }
-        }
-      }
-    }
-
+    await _doStreamRequest(payload);
   } catch (err) {
     removeThinkingCard();
     if (err.name === 'AbortError') {
@@ -1360,13 +1684,11 @@ async function sendMessage() {
       addMessage('system', `⚠️ 请求失败: ${err.message}。请确认后端服务已启动。`);
     }
   } finally {
-    if (!isStreaming) {
-      resetStreamState();
-      isStreaming = false;
-      currentController = null;
-      updateSendButton(false);
-      document.getElementById('msgInput').focus();
-    }
+    resetStreamState();
+    isStreaming = false;
+    currentController = null;
+    updateSendButton(false);
+    document.getElementById('msgInput').focus();
   }
 }
 
@@ -1439,6 +1761,10 @@ function removeTypingIndicator() {
 function triggerUpload() { document.getElementById('fileInput').click(); }
 
 function handleFiles(files) {
+  // 先捕获文件数量：files 可能是 fileInput.files 的实时引用，
+  // 下方 fileInput.value='' 会同步清空该 FileList、使 files.length 变 0，
+  // 必须在清空前记下数量，否则快捷自动发送的条件会失效。
+  const _hasFiles = !!(files && files.length > 0);
   for (const file of files) {
     uploadedFiles.push(file);
     const preview = document.getElementById('filePreview');
@@ -1459,12 +1785,90 @@ function handleFiles(files) {
     preview.appendChild(tag);
   }
   document.getElementById('fileInput').value = '';
+
+  // 快捷入口自动发送：若存在预设分析指令（来自模块弹窗/批量上传等快捷按钮），
+  // 选完文件后直接按内置提示词发起分析，无需再手动点击发送按钮。
+  // 注意：此逻辑必须内联在本函数内——内联 onchange="handleFiles(this.files)"
+  // 解析到的是本函数声明，对外层的函数重新赋值（猴子补丁）不生效。
+  if (_pendingPrompt && _hasFiles) {
+    const preset = _pendingPrompt;
+    _pendingPrompt = '';
+    setTimeout(() => sendMessage(preset), 100);
+  }
 }
 
 function quickSend(text) {
   document.getElementById('msgInput').value = text;
   sendMessage();
 }
+
+function batchAnalyze() {
+  document.getElementById('fileInput').click();
+}
+
+// 统一模块入口：点击后弹出二选一弹窗（左：文件上传 / 右：手动输入）
+// modeTitle：可选的模式名称，显示在弹窗标题上，让不同分析模式的入口可区分
+function moduleAction(promptText, modeTitle) {
+  // 创建蒙罩层 + 二选一卡片
+  const overlay = document.createElement('div');
+  overlay.className = 'module-choice-overlay';
+  overlay.innerHTML = `
+    <div class="module-choice-box">
+      <div class="module-choice-title">${modeTitle ? modeTitle + ' · 选择数据输入方式' : '选择数据输入方式'}</div>
+      <div class="module-choice-btns">
+        <div class="module-choice-btn" id="mcUpload">
+          <span class="mc-icon">📂</span>
+          <span class="mc-label">上传文件</span>
+          <span class="mc-sub">PDF / Word / Excel / HTML</span>
+        </div>
+        <div class="module-choice-btn" id="mcInput">
+          <span class="mc-icon">✏️</span>
+          <span class="mc-label">手动输入</span>
+          <span class="mc-sub">粘贴数据或输入公司名</span>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  // 点击過罩层背景关闭
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  // 左：文件上传
+  overlay.querySelector('#mcUpload').addEventListener('click', () => {
+    overlay.remove();
+    _pendingPrompt = promptText;
+    document.getElementById('fileInput').click();
+  });
+
+  // 右：手动输入
+  overlay.querySelector('#mcInput').addEventListener('click', () => {
+    overlay.remove();
+    const val = prompt('请输入要分析的内容（财务数据/公司名/年报摘要）：', '');
+    if (val && val.trim()) {
+      // 直接以预设指令+用户输入发起，不写入底部输入框
+      sendMessage(`${promptText}\n\n${val.trim()}`);
+    }
+  });
+}
+
+// 监管处罚检索：先弹出输入框填写公司名，再发送检索请求
+function searchPenalty() {
+  const company = prompt('请输入要检索的公司名称（如：贵州茅台、康美药业、600519）：', '');
+  if (!company || !company.trim()) return;
+  // 快捷功能接口：直接发起检索，不写入底部输入框
+  sendMessage(`请检索与「${company.trim()}」相关的证监会处罚函、问询函、警示函等监管处罚信息，包括处罚原因、处罚结果和相似案例`);
+}
+
+// 带预设 prompt 的文件上传：先选文件，上传后自动发送对应分析请求
+let _pendingPrompt = '';
+function uploadWithPrompt(prompt) {
+  _pendingPrompt = prompt;
+  document.getElementById('fileInput').click();
+}
+
+// 说明：预设 prompt 的自动发送逻辑已内联至 handleFiles() 内部。
+// 之前此处采用「重新赋值 handleFiles」的猴子补丁，但内联 onchange="handleFiles(this.files)"
+// 解析到的仍是原始函数声明，导致补丁不生效、上传后需再次手动点击发送。
 
 function clearChat() {
   messages = [];
@@ -1475,12 +1879,12 @@ function clearChat() {
       <h2>上市公司年报审计风险识别</h2>
       <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告。</p>
       <div class="quick-grid">
-        <button class="quick-btn" onclick="quickSend('请分析贵州茅台2024年年报的审计风险')"><span class="icon">🍷</span> <span>分析贵州茅台年报风险</span></button>
-        <button class="quick-btn" onclick="quickSend('请对比分析恒大和碧桂园的财务风险差异')"><span class="icon">🏠</span> <span>恒大 vs 碧桂园对比</span></button>
-        <button class="quick-btn" onclick="quickSend('帮我检测以下财务数据是否存在异常：营收50亿，净利润8亿，经营现金流-2亿，应收账款20亿')"><span class="icon">🔎</span> <span>财务异常数据检测</span></button>
-        <button class="quick-btn" onclick="quickSend('请解释存贷双高的审计风险及核查方法')"><span class="icon">📖</span> <span>存贷双高风险分析</span></button>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','📊 财务指标分析')"><span class="icon">📊</span> <span>财务指标分析</span></button>
+        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','📝 披露规范性检查')"><span class="icon">📝</span> <span>披露规范性检查</span></button>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','🎯 综合风险评估')"><span class="icon">🎯</span> <span>综合风险评估</span></button>
+        <button class="quick-btn" onclick="searchPenalty()"><span class="icon">⚖️</span> <span>监管处罚检索</span></button>
+        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件"><span class="icon">📦</span> <span>批量上传年报</span></button>
       </div>
-      <p class="ai-disclaimer-welcome">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。</p>
     </div>`;
   updateSessionInfo();
 }
@@ -1537,6 +1941,20 @@ async function downloadFile(url, fileName, evt) {
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+
+// ── Flash 快速模式开关 ──
+let flashMode = false;
+function toggleFlashMode() {
+  flashMode = !flashMode;
+  const btn = document.getElementById('flashToggle');
+  if (flashMode) {
+    btn.classList.add('active');
+    btn.textContent = '⚡ 快速(开)';
+  } else {
+    btn.classList.remove('active');
+    btn.textContent = '⚡ 快速';
+  }
+}
 
 async function reloadKB(btn) {
   btn.textContent = '⏳ 重载中...';
@@ -1614,7 +2032,53 @@ function autoResize(el) {
 
 function scrollToBottom() {
   const area = document.getElementById('chatArea');
-  requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+  // 智能滚动：仅当用户在底部附近时才自动滚动，避免强制拉回
+  const isNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
+  if (isNearBottom) {
+    requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+  }
+}
+
+// ── 文件完成 Toast 通知（右下角堆叠卡片）──
+function showFileToast(index, total, filename) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+
+  // 将已有卡片推为堆叠状态
+  const existing = stack.querySelectorAll('.toast-card');
+  existing.forEach((card, i) => {
+    card.classList.remove('stacked', 'stacked-2');
+    if (i === existing.length - 1) card.classList.add('stacked');
+    else card.classList.add('stacked-2');
+  });
+
+  // 创建新卡片
+  const toast = document.createElement('div');
+  toast.className = 'toast-card';
+  toast.innerHTML = `
+    <div class="toast-icon">✅</div>
+    <div class="toast-body">
+      <div class="toast-title">年报 ${index}/${total} 分析完成</div>
+      <div class="toast-sub">${filename}</div>
+    </div>`;
+  toast.onclick = () => { toast.style.opacity = '0'; toast.style.transform = 'translateX(40px)'; setTimeout(() => toast.remove(), 300); };
+  stack.appendChild(toast);
+
+  // 最多保留 3 张，超出的移除最早的
+  while (stack.children.length > 3) {
+    stack.children[0].remove();
+  }
+
+  // 全部完成后 5 秒自动消失
+  if (index === total) {
+    setTimeout(() => {
+      stack.querySelectorAll('.toast-card').forEach(c => {
+        c.style.opacity = '0';
+        c.style.transform = 'translateX(40px)';
+      });
+      setTimeout(() => { stack.innerHTML = ''; }, 400);
+    }, 5000);
+  }
 }
 
 function hideWelcome() {
@@ -1626,7 +2090,14 @@ function updateSessionInfo() {
   document.getElementById('info-msgcount').textContent = messages.length;
   document.getElementById('info-toolcount').textContent = toolCallCount;
   document.getElementById('info-runid').textContent = messages.length > 0 ? (messages[0].time ? new Date(messages[0].time).toISOString().slice(11,19).replace(/:/g,'') : '-') : '-';
-  if (messages.length > 0) document.getElementById('topbar-title').textContent = '审计分析会话';
+  const titleEl = document.getElementById('topbar-title');
+  if (messages.length > 0) {
+    titleEl.textContent = '审计分析会话';
+    titleEl.title = '当前会话中，点击 🗑️ 新会话 按钮开始新会话';
+  } else {
+    titleEl.textContent = '新建会话';
+    titleEl.title = '等待输入… 发送消息或选择快捷功能开始分析';
+  }
 }
 
 function escapeHtml(str) {
@@ -1712,6 +2183,27 @@ function renderMarkdown(text) {
   html = html.replace(/重要(?![^<]*>)/g, '<span class="risk-important">重要</span>');
   html = html.replace(/一般(?![^<]*>)/g, '<span class="risk-general">一般</span>');
 
+  // 思维链五步卡片：检测【数据发现】...【风险判定】模式并渲染为可折叠组件
+  html = html.replace(/【数据发现】([\s\S]*?)【指标异常】([\s\S]*?)【法规依据】([\s\S]*?)【案例对照】([\s\S]*?)【风险判定】([\s\S]*?)(?=【数据发现】|$)/g,
+    (_, s1, s2, s3, s4, s5) => {
+      const steps = [
+        { icon: '📊', bg: '#3b82f6', label: '数据发现', detail: s1.trim() },
+        { icon: '📈', bg: '#f59e0b', label: '指标异常', detail: s2.trim() },
+        { icon: '📜', bg: '#10b981', label: '法规依据', detail: s3.trim() },
+        { icon: '⚖️', bg: '#8b5cf6', label: '案例对照', detail: s4.trim() },
+        { icon: '🎯', bg: '#ef4444', label: '风险判定', detail: s5.trim() },
+      ];
+      let rc = `<div class="reasoning-chain" onclick="this.classList.toggle('open')">`;
+      rc += `<div class="reasoning-chain-header"><span class="arrow">▶</span> 🧠 思维链推理过程（5步）</div>`;
+      rc += `<div class="reasoning-chain-body">`;
+      for (const st of steps) {
+        rc += `<div class="rc-step"><div class="rc-step-icon" style="background:${st.bg}">${st.icon}</div>`;
+        rc += `<div class="rc-step-content"><div class="rc-step-label">${st.label}</div>${escapeHtml(st.detail)}</div></div>`;
+      }
+      rc += `</div></div>`;
+      return rc;
+    });
+
   // Paragraphs
   html = html.replace(/\n\n/g, '</p><p>');
   html = html.replace(/\n/g, '<br>');
@@ -1726,10 +2218,59 @@ function renderMarkdown(text) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 多智能体辩论复核卡片渲染
+// 多智能体辩论复核卡片渲染（三段式折叠面板）
 // ══════════════════════════════════════════════════════════
 function renderReviewCard(reviewText) {
-  // 解析复核文本中的四个区块
+  // 解析三段式辩论结果：【风险关注方】/【风险否定方】/【裁判仲裁】
+  const debateSections = [
+    { key: 'advocate', label: '【风险关注方】', title: '🟥 风险关注方意见', cls: 'debate-advocate' },
+    { key: 'skeptic', label: '【风险否定方】', title: '🟦 风险否定方反驳', cls: 'debate-skeptic' },
+    { key: 'arbiter', label: '【裁判仲裁】', title: '🟪 裁判仲裁结论', cls: 'debate-arbiter' },
+  ];
+
+  const parsed = {};
+  for (const s of debateSections) {
+    const idx = reviewText.indexOf(s.label);
+    if (idx !== -1) {
+      let end = reviewText.length;
+      for (const other of debateSections) {
+        if (other.key === s.key) continue;
+        const otherIdx = reviewText.indexOf(other.label, idx + 1);
+        if (otherIdx !== -1 && otherIdx < end) end = otherIdx;
+      }
+      parsed[s.key] = reviewText.substring(idx + s.label.length, end).trim();
+    }
+  }
+
+  // 如果解析不到三段式，回退到旧格式渲染
+  if (!parsed.advocate && !parsed.arbiter) {
+    return renderReviewCardLegacy(reviewText);
+  }
+
+  let html = `<div class="review-card">`;
+  html += `<div class="review-card-header">`;
+  html += `<div class="review-card-icon">⚖️</div>`;
+  html += `<div><div class="review-card-title">多智能体辩论复核</div>`;
+  html += `<div class="review-card-subtitle">风险关注方 → 风险否定方 → 裁判仲裁 · 三方制衡</div></div>`;
+  html += `</div>`;
+
+  for (const s of debateSections) {
+    const content = parsed[s.key];
+    if (!content) continue;
+    // 裁判仲裁默认展开，其余折叠
+    const isOpen = s.key === 'arbiter' ? ' open' : '';
+    html += `<div class="debate-section ${s.cls}${isOpen}" onclick="this.classList.toggle('open')">`;
+    html += `<div class="debate-section-header"><span class="arrow">▶</span> ${s.title}</div>`;
+    html += `<div class="debate-section-body">${escapeHtml(content)}</div>`;
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// 旧格式兼容（【复核结论】/【遗漏风险】等）
+function renderReviewCardLegacy(reviewText) {
   const sections = {};
   const patterns = [
     ['verdict', '【复核结论】'],
@@ -1740,7 +2281,6 @@ function renderReviewCard(reviewText) {
   for (const [key, label] of patterns) {
     const idx = reviewText.indexOf(label);
     if (idx !== -1) {
-      // 找到下一个标签或文本末尾
       let end = reviewText.length;
       for (const [, otherLabel] of patterns) {
         if (otherLabel === label) continue;
@@ -1751,7 +2291,6 @@ function renderReviewCard(reviewText) {
     }
   }
 
-  // 判定结论样式
   const verdictText = sections.verdict || '';
   let verdictClass = 'pass';
   if (verdictText.includes('补充') || verdictText.includes('需补充')) verdictClass = 'supplement';
@@ -2094,6 +2633,115 @@ async function runEvaluationTool() {
   }
 }
 
+/** 渲染五维识别能力雷达图（SVG 增强版：渐变+辉光+彩色标签+动画） */
+function renderDimensionRadar(dims) {
+  const container = document.getElementById('evalRadarContent');
+  if (!container) return;
+
+  const dimNames = {
+    financial_misstatement: '财务错报',
+    related_party: '关联交易',
+    disclosure_compliance: '信披合规',
+    going_concern: '持续经营',
+    regulatory_penalty: '监管处罚',
+  };
+  const dimIcons = {
+    financial_misstatement: '📊',
+    related_party: '🔗',
+    disclosure_compliance: '📋',
+    going_concern: '💹',
+    regulatory_penalty: '⚖️',
+  };
+
+  const keys = Object.keys(dimNames);
+  const values = keys.map(k => {
+    const dm = dims[k];
+    return dm && dm.total_cases > 0 ? Math.round((dm.accuracy || 0) * 100) : 0;
+  });
+  const labels = keys.map(k => dimNames[k]);
+  const icons = keys.map(k => dimIcons[k]);
+
+  const cx = 170, cy = 150, R = 95;
+  const n = 5;
+  const angle = i => (Math.PI * 2 * i / n) - Math.PI / 2;
+  const pt = (i, r) => [cx + r * Math.cos(angle(i)), cy + r * Math.sin(angle(i))];
+
+  // SVG 定义：渐变 + 滤镜
+  let defs = `
+    <defs>
+      <linearGradient id="radarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.4"/>
+        <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.25"/>
+      </linearGradient>
+      <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <filter id="dotGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2.5" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>`;
+
+  // 网格环 (20% ~ 100%) + 刻度标签
+  let grid = '';
+  for (let lvl = 1; lvl <= 5; lvl++) {
+    const r = R * lvl / 5;
+    const pts = keys.map((_, i) => pt(i, r).join(',')).join(' ');
+    const isOuter = lvl === 5;
+    grid += `<polygon points="${pts}" fill="none" stroke="rgba(148,163,184,${isOuter ? 0.3 : 0.1})" stroke-width="${isOuter ? 1.5 : 1}"/>`;
+    // 刻度标签
+    const lx = cx + r + 5;
+    grid += `<text x="${lx}" y="${cy + 1}" dominant-baseline="middle" fill="rgba(148,163,184,0.35)" font-size="10">${lvl * 20}%</text>`;
+  }
+
+  // 轴线
+  let axes = '';
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pt(i, R);
+    axes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(148,163,184,0.12)" stroke-width="1"/>`;
+  }
+
+  // 数据多边形（渐变填充 + 辉光 + 描边动画）
+  const dataPts = values.map((v, i) => pt(i, R * v / 100).join(',')).join(' ');
+  const polygon = `<polygon points="${dataPts}" fill="url(#radarGrad)" stroke="#60a5fa" stroke-width="2" filter="url(#radarGlow)" class="radar-polygon"/>`;
+
+  // 数据点 + 维度标签卡片
+  let dots = '', labelEls = '';
+  values.forEach((v, i) => {
+    const [dx, dy] = pt(i, R * v / 100);
+    // 根据数值着色
+    const dotColor = v >= 80 ? '#34d399' : v >= 50 ? '#f59e0b' : '#ef4444';
+    dots += `<circle cx="${dx}" cy="${dy}" r="5" fill="${dotColor}" stroke="#0b0f19" stroke-width="2" filter="url(#dotGlow)"/>`;
+    dots += `<circle cx="${dx}" cy="${dy}" r="2" fill="#fff" stroke="none" opacity="0.7"/>`;
+
+    // 标签位置
+    const [lx, ly] = pt(i, R + 26);
+    const lblW = 88, lblH = 36;
+    const lx2 = lx - lblW / 2, ly2 = ly - lblH / 2;
+    labelEls += `
+      <g>
+        <rect x="${lx2}" y="${ly2}" width="${lblW}" height="${lblH}" rx="8" fill="rgba(11,15,25,0.75)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <text x="${lx}" y="${ly - 5}" text-anchor="middle" fill="#94a3b8" font-size="10.5">${icons[i]} ${labels[i]}</text>
+        <text x="${lx}" y="${ly + 12}" text-anchor="middle" fill="${dotColor}" font-size="13" font-weight="bold">${v}%</text>
+      </g>`;
+  });
+
+  // 中心装饰
+  const center = `
+    <circle cx="${cx}" cy="${cy}" r="4" fill="#60a5fa" stroke="#0b0f19" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy}" r="1.5" fill="#fff" stroke="none" opacity="0.5"/>`;
+
+  const svgW = 375, svgH = 330;
+  container.innerHTML = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${defs}${grid}${axes}${polygon}${dots}${labelEls}${center}</svg>`;
+}
+
 /** 渲染评估结果到面板 */
 function renderEvalResults(data) {
   // 优先取 tool 模式结果
@@ -2144,17 +2792,28 @@ function renderEvalResults(data) {
       <div class="value">${avgTime < 1 ? (avgTime * 1000).toFixed(0) + 'ms' : avgTime.toFixed(1) + 's'}</div>
       <div class="sub">${tool.test_count || 0} 个样本 · 工具模式</div>
     </div>
+    <div class="eval-metric-card">
+      <div class="label">API 调用成本</div>
+      <div class="value" style="color:#fbbf24">${agent && agent.summary ? (agent.summary.estimated_total_tokens || 0).toLocaleString() : '-'}</div>
+      <div class="sub">估算 Token 消耗${agent && agent.summary ? ' · ' + (agent.summary.total_duration_sec || 0) + 's' : ' · Agent模式'}</div>
+    </div>
   `;
 
-  // ── 基线对比表格 ──
+  // ── 五维能力雷达图 ──
+  renderDimensionRadar(dims);
+
+  // ── 基线对比表格（含零样本 LLM 基线）──
+  const zeroShotRecall = baseline.zero_shot_llm_recall != null ? (baseline.zero_shot_llm_recall * 100) : null;
+  const zeroShotImprovement = baseline.zero_shot_llm_improvement != null ? (baseline.zero_shot_llm_improvement * 100) : null;
   document.getElementById('evalBaselineContent').innerHTML = `
     <table class="eval-table">
-      <thead><tr><th>指标</th><th>本系统</th><th>基线（规则引擎）</th><th>提升</th></tr></thead>
+      <thead><tr><th>指标</th><th>本系统</th><th>基线（规则引擎）</th><th>零样本 LLM</th><th>提升</th></tr></thead>
       <tbody>
         <tr>
           <td>召回率</td>
           <td class="pass"><b>${recall.toFixed(1)}%</b></td>
           <td>${(baseline.baseline_recall * 100 || 0).toFixed(1)}%</td>
+          <td>${zeroShotRecall != null ? zeroShotRecall.toFixed(1) + '%' : '未测试'}</td>
           <td class="pass"><b>+${improvement.toFixed(1)}%</b></td>
         </tr>
         <tr>
@@ -2162,11 +2821,12 @@ function renderEvalResults(data) {
           <td class="pass"><b>${baseline.system_normal_correct || 0}/${baseline.system_normal_total || 0}</b></td>
           <td>${baseline.baseline_normal_correct || 0}/${baseline.baseline_normal_total || 0}</td>
           <td>-</td>
+          <td>-</td>
         </tr>
       </tbody>
     </table>
     <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">
-      基线方案：仅含一条规则（资产负债率 > 70% 报警）
+      基线方案：规则引擎（资产负债率 > 70% 报警）；零样本 LLM（无工具/RAG/辩论，纯模型判断）
     </div>
   `;
 

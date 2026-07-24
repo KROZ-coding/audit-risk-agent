@@ -177,11 +177,151 @@ TEST_CASES = [
         "expected_alerts": ["营业收入"],
         "expected_dimensions": ["going_concern"],
     },
+    # ─── 新增用例（11-18）：覆盖流动性、收入质量、杠杆、现金流等财务场景 ───
+    {
+        "name": "速动比率不足（剔除存货后流动性紧张）",
+        "data": {
+            "current_assets_current": 6000,
+            "current_liabilities_current": 5000,
+            "inventory_current": 4000,
+        },
+        "expected_alerts": ["速动比率"],
+        "expected_dimensions": ["going_concern"],
+    },
+    {
+        "name": "应收账款占营收比过高（回款风险）",
+        "data": {
+            "accounts_receivable_current": 10000,
+            "revenue_current": 25000,
+        },
+        "expected_alerts": ["应收账款"],
+        "expected_dimensions": ["financial_misstatement"],
+    },
+    {
+        "name": "净利润大幅波动（盈利稳定性差）",
+        "data": {
+            "net_profit_current": 100,
+            "net_profit_previous": 3000,
+        },
+        "expected_alerts": ["净利润"],
+        "expected_dimensions": ["financial_misstatement"],
+    },
+    {
+        "name": "资产负债率超标（净资产为负）",
+        "data": {
+            "total_assets_current": 30000,
+            "total_liabilities_current": 35000,
+        },
+        "expected_alerts": ["70%"],
+        "expected_dimensions": ["going_concern"],
+    },
+    {
+        "name": "营收异常高速增长（收入真实性存疑）",
+        "data": {
+            "revenue_current": 20000,
+            "revenue_previous": 10000,
+        },
+        "expected_alerts": ["营业收入"],
+        "expected_dimensions": ["financial_misstatement"],
+    },
+    {
+        "name": "经营现金流连续为负（造血能力不足）",
+        "data": {
+            "operating_cashflow_current": -1000,
+            "operating_cashflow_previous": -500,
+        },
+        "expected_alerts": ["持续经营"],
+        "expected_dimensions": ["going_concern"],
+    },
+    {
+        "name": "正常公司（高增长科技企业，无误报）",
+        "data": {
+            "revenue_current": 50000,
+            "revenue_previous": 40000,
+            "net_profit_current": 11000,
+            "net_profit_previous": 8000,
+            "operating_cashflow_current": 10000,
+            "total_assets_current": 80000,
+            "total_liabilities_current": 20000,
+            "accounts_receivable_current": 5000,
+            "accounts_receivable_previous": 4000,
+            "inventory_current": 3000,
+            "inventory_previous": 2800,
+            "current_assets_current": 30000,
+            "current_liabilities_current": 10000,
+        },
+        "expected_alerts": [],
+        "expected_dimensions": [],
+    },
+    {
+        "name": "多维度复合风险（同时触发3个维度）",
+        "data": {
+            "cash_and_equivalents_current": 20000,
+            "short_term_debt_current": 18000,
+            "interest_income_current": 100,
+            "interest_expense_current": 1200,
+            "revenue_current": 40000,
+            "revenue_previous": 55000,
+            "net_profit_current": -8000,
+            "net_profit_previous": -3000,
+            "operating_cashflow_current": -6000,
+            "total_assets_current": 90000,
+            "total_liabilities_current": 75000,
+            "accounts_receivable_current": 15000,
+            "accounts_receivable_previous": 8000,
+            "other_receivables_current": 7000,
+        },
+        "expected_alerts": ["存贷双高", "持续经营", "应收"],
+        "expected_dimensions": ["financial_misstatement", "going_concern", "related_party"],
+    },
+    # ─── 新增用例（19-22）：覆盖信披合规与监管处罚维度，补全雷达图五维展示 ───
+    {
+        "name": "经营现金流与净利润严重背离（收入确认合规性存疑）",
+        "data": {
+            "net_profit_current": 5000,
+            "operating_cashflow_current": 300,
+            "revenue_current": 30000,
+        },
+        "expected_alerts": ["现金流"],
+        "expected_dimensions": ["disclosure_compliance"],
+    },
+    {
+        "name": "大额其他应收款占比（未披露关联方资金占用风险）",
+        "data": {
+            "other_receivables_current": 7000,
+            "total_assets_current": 80000,
+            "revenue_current": 40000,
+        },
+        "expected_alerts": ["其他应收款"],
+        "expected_dimensions": ["disclosure_compliance"],
+    },
+    {
+        "name": "商誉占净资产比超标（会计估计易引发监管问询）",
+        "data": {
+            "goodwill_current": 10000,
+            "net_assets_current": 25000,
+            "total_assets_current": 70000,
+            "total_liabilities_current": 45000,
+        },
+        "expected_alerts": ["商誉"],
+        "expected_dimensions": ["regulatory_penalty"],
+    },
+    {
+        "name": "流动性与速动比率双低（流动性风险触发监管关注）",
+        "data": {
+            "current_assets_current": 5000,
+            "current_liabilities_current": 6000,
+            "inventory_current": 3500,
+        },
+        "expected_alerts": ["流动比率", "速动比率"],
+        "expected_dimensions": ["regulatory_penalty", "going_concern"],
+    },
 ]
 
-# ─── Agent 模式测试用例（选 3 个代表性案例做端到端测试）───
+# ─── Agent 模式测试用例（选 5 个代表性案例做端到端测试）───
 # 注意：Agent 模式每个用例耗时约 30-60 秒，调用需谨慎
-AGENT_TEST_CASES = TEST_CASES[:2] + [TEST_CASES[5]]  # 前2个+正常公司
+# 覆盖：存贷双高、连续亏损、正常公司、关联交易、多维度复合
+AGENT_TEST_CASES = [TEST_CASES[0], TEST_CASES[1], TEST_CASES[5], TEST_CASES[13], TEST_CASES[17]]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -295,6 +435,80 @@ def run_baseline(case: dict) -> dict:
         "recall": round(recall, 3),
         "alert_count": len(baseline_alerts),
     }
+
+
+def run_zero_shot_baseline(case: dict) -> dict:
+    """零样本 LLM 基线：直接将财务数据发给 LLM，无工具、无 RAG、无辩论。
+
+    用于对比本系统（工具+RAG+辩论）相对于纯 LLM 的增量价值。
+    需要 OPENAI_API_KEY 环境变量，否则跳过。
+
+    Args:
+        case: 测试用例字典
+
+    Returns:
+        零样本基线评估结果，含 precision/recall/f1/elapsed_sec
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key or api_key.startswith("sk-your"):
+        return {"name": case["name"], "skipped": True, "reason": "API Key 未配置"}
+
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+
+        llm = ChatOpenAI(
+            model=os.getenv("REVIEW_MODEL", "deepseek-chat"),
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
+            temperature=0.1,
+            max_tokens=1024,
+            timeout=60,
+        )
+
+        data_json = json.dumps(case["data"], ensure_ascii=False)
+        prompt = (
+            f"你是一位审计专家。请分析以下公司财务数据，识别存在的审计风险。\n\n"
+            f"财务数据（单位：万元）：\n{data_json}\n\n"
+            f"请列出所有识别到的风险点（每个风险用一行描述）。如果没有风险，请回复\"无重大风险\"。"
+        )
+
+        start_time = time.time()
+        response = llm.invoke([
+            SystemMessage(content="你是一位资深 CPA 审计师，请基于财务数据识别审计风险。"),
+            HumanMessage(content=prompt),
+        ])
+        elapsed = time.time() - start_time
+        response_text = response.content or ""
+
+        # 比对预期关键词
+        expected = case["expected_alerts"]
+        if not expected:
+            is_correct = "无重大风险" in response_text or "无风险" in response_text
+            return {
+                "name": case["name"],
+                "correct": is_correct,
+                "alert_count": 0 if is_correct else 1,
+                "elapsed_sec": round(elapsed, 1),
+                "response_preview": response_text[:200],
+            }
+
+        hits = sum(1 for kw in expected if kw in response_text)
+        precision = hits / max(len(expected), 1)
+        recall = hits / max(len(expected), 1)
+        f1 = 2 * precision * recall / max(precision + recall, 0.001)
+
+        return {
+            "name": case["name"],
+            "precision": round(precision, 3),
+            "recall": round(recall, 3),
+            "f1": round(f1, 3),
+            "keyword_hits": hits,
+            "elapsed_sec": round(elapsed, 1),
+            "response_preview": response_text[:200],
+        }
+    except Exception as e:
+        return {"name": case["name"], "skipped": True, "reason": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -591,6 +805,12 @@ def generate_tool_report():
     # ─── 基线对比 ───
     baseline_results = [run_baseline(case) for case in TEST_CASES]
 
+    # ─── 零样本 LLM 基线（可选，需 API Key）───
+    zero_shot_results = [run_zero_shot_baseline(case) for case in TEST_CASES]
+    zero_shot_valid = [r for r in zero_shot_results if not r.get("skipped")]
+    zero_shot_recalls = [r.get("recall", 0) for r in zero_shot_valid if r.get("recall") is not None]
+    zero_shot_avg_recall = sum(zero_shot_recalls) / len(zero_shot_recalls) if zero_shot_recalls else 0
+
     # ─── 汇总统计 ───
     risk_cases = [r for r in results if r.get("expected") != "无风险"]
     normal_cases = [r for r in results if r.get("expected") == "无风险"]
@@ -703,6 +923,9 @@ def generate_tool_report():
             "system_normal_total": len(normal_cases),
             "baseline_normal_correct": baseline_correct,
             "baseline_normal_total": len(baseline_results),
+            "zero_shot_llm_recall": round(zero_shot_avg_recall, 3),
+            "zero_shot_llm_improvement": round(avg_recall - zero_shot_avg_recall, 3) if zero_shot_valid else None,
+            "zero_shot_llm_cases": len(zero_shot_valid),
         },
         "dimension_metrics": dim_metrics,
         "case_details": results,

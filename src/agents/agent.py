@@ -28,6 +28,9 @@ from tools.multi_year_comparison import compare_multi_year
 from tools.data_validator import validate_financial_data
 from tools.visualizer import generate_risk_heatmap, generate_radar_chart, generate_trend_chart
 from tools.batch_processor import batch_analyze_companies
+from tools.disclosure_checker import check_disclosure_compliance
+from tools.risk_scorer import calculate_comprehensive_score
+from tools.domain_guard import assert_tool_call_order, ToolCallOrderViolation
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +114,97 @@ EN_TO_CN_DIM = {v: k for k, v in CN_TO_EN_DIM.items()}
 
 
 def _windowed_messages(old, new):
-    """消息滑动窗口：合并新旧消息后只保留最后 MAX_MESSAGES 条，防止上下文超长"""
-    return add_messages(old, new)[-MAX_MESSAGES:]  # type: ignore
+    """消息滑动窗口（配对安全版）：合并新旧消息后裁剪至约 MAX_MESSAGES 条，防止上下文超长。
+
+    关键约束：OpenAI/DeepSeek 协议要求带 tool_calls 的 AIMessage 后必须紧跟
+    tool_call_id 匹配的 ToolMessage，否则返回 400。因此不能用无脑切片 [-N:]，
+    否则可能：① 切掉某条 AIMessage 对应的 ToolMessage（tool_calls 无应答）；
+    ② 保留孤儿 ToolMessage（前面的 AIMessage 被切走）。
+
+    裁剪策略：
+    1. 先合并出完整消息列表；
+    2. 从列表尾部保留最后 MAX_MESSAGES 条作为初始候选窗口；
+    3. 向前扩展窗口起点，跳过开头的孤儿 ToolMessage —— 即窗口不能以 ToolMessage
+       开头（它的 tool_calls 母消息已在窗口外），逐条前移直到窗口首条不是 ToolMessage；
+    4. 若窗口首条是带 tool_calls 的 AIMessage，其应答 ToolMessage 均在其后，天然完整。
+    这样保证窗口内不出现「孤儿 ToolMessage」和「无应答 tool_calls」。
+    """
+    merged = add_messages(old, new)  # type: ignore
+    if len(merged) <= MAX_MESSAGES:
+        return merged
+
+    # 初始窗口起点：保留最后 MAX_MESSAGES 条
+    start = len(merged) - MAX_MESSAGES
+    # 向后收缩：窗口不能以孤儿 ToolMessage 开头（其 tool_calls 母消息在窗口外）
+    while start < len(merged) and isinstance(merged[start], ToolMessage):
+        start += 1
+    return merged[start:]
+
+
+def _merge_tool_ledger(old, new):
+    """工具链记账台账 reducer：与受滑窗裁剪的 messages 解耦，累积完整链路记录。
+
+    背景：messages 会被 _windowed_messages 裁剪以限制 LLM 上下文长度，早期的
+    validate/calculate 等工具消息可能被丢弃。若顺序门禁与综合评分兜底直接读取
+    裁剪后的 messages，会出现「误判工具顺序违规」或「读到空结果」。本台账在裁剪前
+    由 post_model_hook 增量累积，永不裁剪，作为这些记账用途的权威来源。
+
+    台账结构：
+    - seq:     按调用先后排列的工具名序列（完整，不受滑窗影响）
+    - results: {工具名: 该工具最近一次结果内容}
+    - seen:    已记账的 ToolMessage id 集合（去重，避免重复累积）
+
+    Args:
+        old: 既有台账（首次为 None）
+        new: 增量更新，形如 {"entries": [[msg_id, tool_name, content], ...]}
+
+    Returns:
+        合并后的台账字典。
+    """
+    base = {"seq": [], "results": {}, "seen": []}
+    if isinstance(old, dict):
+        base["seq"] = list(old.get("seq", []))
+        base["results"] = dict(old.get("results", {}))
+        base["seen"] = list(old.get("seen", []))
+    if not new:
+        return base
+    seen = set(base["seen"])
+    for entry in new.get("entries", []):
+        mid, name, content = entry
+        if mid in seen:
+            continue
+        seen.add(mid)
+        base["seen"].append(mid)
+        base["seq"].append(name)
+        base["results"][name] = content
+    return base
+
+
+def _accumulate_tool_ledger(state):
+    """post_model_hook：在消息被后续滑窗裁剪掉之前，将新出现的工具结果累积进台账。
+
+    该钩子在每次模型节点执行后运行，此时最近一批工具的 ToolMessage 仍处于窗口内，
+    据此增量记账即可在裁剪前捕获完整链路。仅返回 tool_ledger 增量，绝不修改 messages，
+    因此不影响滑窗对 LLM 上下文的限长作用。
+
+    Args:
+        state: 当前图状态（含 messages 与 tool_ledger）。
+
+    Returns:
+        {"tool_ledger": {"entries": [...]}}；无新增时返回 {} 表示不更新状态。
+    """
+    ledger = state.get("tool_ledger") or {}
+    seen = set(ledger.get("seen", []))
+    entries = []
+    for m in state.get("messages", []):
+        if isinstance(m, ToolMessage):
+            mid = getattr(m, "id", None) or f"pos-{id(m)}"
+            if mid not in seen:
+                entries.append([mid, m.name, m.content])
+                seen.add(mid)
+    if not entries:
+        return {}
+    return {"tool_ledger": {"entries": entries}}
 
 
 class AgentState(MessagesState):
@@ -121,9 +213,11 @@ class AgentState(MessagesState):
     Attributes:
         messages: 对话消息列表，通过 _windowed_messages 实现自动滑动窗口
         remaining_steps: 剩余工具调用步数上限，防止死循环
+        tool_ledger: 工具链记账台账，与滑窗解耦、永不裁剪，供顺序门禁与综合评分兜底读取
     """
     messages: Annotated[list[AnyMessage], _windowed_messages]
     remaining_steps: int = 25
+    tool_ledger: Annotated[dict, _merge_tool_ledger]
 
 
 def _normalize_dims(parsed: dict) -> dict:
@@ -173,11 +267,29 @@ def _extract_risk_json(text: str) -> str | None:
     if brace_start < 0:
         return None
     # 第三步：大括号深度计数，找到配对的结束位置
+    # 维护字符串状态（in_string / escape），仅在字符串外部计数括号，
+    # 防止风险描述文本内含有 { } 时（如 "evidence":"货币资金{注:含受限}..."）
+    # 导致 depth 提前失衡、抠出语法残缺的子串
     depth, end = 0, -1
+    in_string = False
+    escape = False
     for i in range(brace_start, len(text)):
-        if text[i] == '{':
+        ch = text[i]
+        if in_string:
+            # 字符串内：处理转义，遇未转义的 " 退出字符串
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        # 字符串外：正常计数括号
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
             depth += 1
-        elif text[i] == '}':
+        elif ch == '}':
             depth -= 1
             if depth == 0:
                 end = i + 1
@@ -221,6 +333,61 @@ class _AgentWrapper:
         """同步调用 agent 并执行兜底后处理"""
         return self._post_process(self._agent.invoke(payload, config=config, **kw))
 
+    @staticmethod
+    def _iter_chunk_messages(chunk):
+        """从 astream 的单个 chunk 中提取 LangChain 消息对象。
+
+        astream 在 updates 模式下逐节点产出增量消息，chunk 形如
+        {"agent": {"messages": [...]}} 或 {"tools": {"messages": [...]}}。
+        """
+        if not isinstance(chunk, dict):
+            return
+        if "messages" in chunk and isinstance(chunk["messages"], list):
+            for m in chunk["messages"]:
+                yield m
+        for node_key in ("agent", "tools"):
+            node = chunk.get(node_key)
+            if isinstance(node, dict):
+                for m in node.get("messages", []):
+                    yield m
+
+    async def astream(self, payload, config=None, **kw):
+        """流式透传底层 agent，并在流结束后补跑 _post_process。
+
+        设计背景：底层 create_react_agent 的 astream 不经过 _AgentWrapper 的
+        后处理（_post_process 仅在 invoke/ainvoke 中调用），导致 /stream_run 丢失
+        兜底 PDF/Excel 导出、多智能体辩论复核、综合评分。此处在流结束后
+        手动补齐，保证 /stream_run 与 /run 行为一致。
+
+        工作流程：
+        1. 逐 chunk 透传给上游（前端据此追踪真实工具进度）；
+        2. 同时按消息 id 去重累积消息对象（保留顺序）；
+        3. 流结束后对累积消息跑 _post_process（就地修改最后一条 AIMessage）；
+        4. 额外 yield 一个带 __post_processed__ 标记的 chunk，携带后处理后的消息，
+           供上游用于构建含辩论/导出/评分的最终报告。
+        """
+        seen = {}
+        order = []
+        async for chunk in self._agent.astream(payload, config=config, **kw):
+            yield chunk
+            for m in self._iter_chunk_messages(chunk):
+                mid = getattr(m, "id", None) or id(m)
+                if mid not in seen:
+                    seen[mid] = m
+                    order.append(mid)
+        messages = [seen[i] for i in order]
+        if not messages:
+            return
+        try:
+            self._post_process({"messages": messages})
+            # messages 已被 _post_process 就地补充（最后 AIMessage 含导出链接+辩论+评分）
+            yield {"__post_processed__": True, "messages": messages}
+        except ToolCallOrderViolation:
+            # 顺序强制门禁 fail-closed：不吞掉异常，向上抛出以清晰错误中断流式响应
+            raise
+        except Exception as e:
+            logger.warning(f"流式后处理失败（不影响主报告）: {e}")
+
     def _post_process(self, result):
         """兜底后处理：检测并补调遗漏的导出工具，并执行多智能体辩论复核。
 
@@ -242,8 +409,16 @@ class _AgentWrapper:
         if not messages:
             return result
 
-        # 第一步：扫描已调用的工具集合
-        called = {m.name for m in messages if isinstance(m, ToolMessage)}
+        # 第一步：从「不受滑窗裁剪的 tool_ledger」与「（可能已被裁剪的）messages」
+        # 两个来源合并出工具链记账，供顺序门禁与综合评分兜底读取。
+        called_seq, tool_results, called = self._gather_tool_bookkeeping(result, messages)
+
+        # ─── 领域约束强制门禁：工具调用顺序必须符合完整声明链路（fail-closed）───
+        # 在评分 / 导出兜底路径之前先行拦截：一旦工具调用顺序违反声明链路，立即以
+        # 清晰错误中断，绝不在依据不足 / 次序错乱的前提下继续产出并导出报告。
+        # 采用 tool_ledger 的完整序列而非裁剪后的 messages，避免因早期消息被丢弃而误判。
+        self._enforce_tool_call_order(called_seq)
+
         need_pdf = "export_pdf_report" not in called
         need_excel = "export_excel_report" not in called
 
@@ -268,17 +443,21 @@ class _AgentWrapper:
             pass
 
         # 第五步：补调遗漏的导出工具，并将下载链接追加到回复中
+        # 降级可见原则：兜底导出失败时不再静默吞掉——除写日志外，还须在返回给用户的
+        # 报告文本中追加醒目失败提示，避免「分析看似成功、报告实则缺失」的静默断裂。
         links = ""
         if need_pdf:
             try:
                 links += f"\n\n📎 PDF报告: {export_pdf_report.invoke({'risk_report_json': risk_json})}"
             except Exception as e:
                 logger.warning(f"PDF兜底导出失败: {e}")
+                links += "\n\n⚠️ PDF报告导出失败，本次结论未生成可下载的 PDF 报告，请重试或联系维护者（详见服务日志）。"
         if need_excel:
             try:
                 links += f"\n\n📊 Excel底稿: {export_excel_report.invoke({'risk_report_json': risk_json})}"
             except Exception as e:
                 logger.warning(f"Excel兜底导出失败: {e}")
+                links += "\n\n⚠️ Excel底稿导出失败，本次结论未生成可下载的 Excel 底稿，请重试或联系维护者（详见服务日志）。"
 
         if links:
             if isinstance(last_ai.content, str):
@@ -287,7 +466,12 @@ class _AgentWrapper:
                 last_ai.content.append(links)
 
         # ─── 多智能体辩论机制（替代原有的 Agent-as-a-Judge 复核）───
-        if REVIEW_ENABLED:
+        # Flash 快速模式：若用户消息中包含“快速模式”关键词则跳过辩论
+        skip_debate = any(
+            "快速模式" in str(m.content)
+            for m in messages if hasattr(m, 'content') and isinstance(m.content, str)
+        )
+        if REVIEW_ENABLED and not skip_debate:
             debate_result = self._run_debate(risk_json)
             if debate_result:
                 review_text = f"\n\n---\n### 🔍 审计合伙人复核意见\n{debate_result}"
@@ -296,7 +480,87 @@ class _AgentWrapper:
                 else:
                     last_ai.content.append(review_text)
 
+        # ─── 综合评分兜底：确保输出中始终包含 comprehensive_score JSON ───
+        try:
+            from tools.risk_scorer import calculate_comprehensive_score
+            # 从工具链台账读取财务分析 / 校验 / 披露检查结果（台账不受滑窗裁剪，
+            # 即使早期工具消息已被窗口丢弃，仍能读到真实结果而非空值）
+            financial_result = tool_results.get("calculate_financial_indicators", "{}")
+            validation_result = tool_results.get("validate_financial_data", "{}")
+            disclosure_result = tool_results.get("check_disclosure_compliance", "{}")
+            score_output = calculate_comprehensive_score.invoke({
+                "financial_analysis_json": financial_result,
+                "disclosure_check_json": disclosure_result,
+                "validation_json": validation_result,
+            })
+            score_text = f"\n\n<!--COMPREHENSIVE_SCORE-->\n{score_output}"
+            if isinstance(last_ai.content, str):
+                last_ai.content += score_text
+            else:
+                last_ai.content.append(score_text)
+        except Exception as e:
+            logger.warning(f"综合评分兜底失败: {e}")
+            # 综合评分直接决定审计结论，兜底失败同样须对用户可见，防止静默降级。
+            fail_text = "\n\n⚠️ 综合风险评分生成失败，本次结论未包含综合评分，请结合人工判断复核并重试（详见服务日志）。"
+            if isinstance(last_ai.content, str):
+                last_ai.content += fail_text
+            else:
+                last_ai.content.append(fail_text)
+
         return result
+
+    @staticmethod
+    def _gather_tool_bookkeeping(result, messages):
+        """合并工具链记账：优先采用不受滑窗裁剪的 tool_ledger，辅以 messages 扫描。
+
+        解耦背景：invoke / ainvoke 路径下 result["messages"] 为滑窗裁剪后的子集，
+        早期的 validate / calculate 等工具消息可能已被丢弃；tool_ledger 在裁剪前由
+        post_model_hook 完整累积，因此作为顺序与结果的权威来源。astream 路径下
+        无 tool_ledger，但累积的 messages 为全量，回退 messages 扫描仍可独立成立。
+
+        Args:
+            result: agent 返回的状态字典（可能含 tool_ledger）。
+            messages: 待扫描的消息列表（invoke 下为窗口子集，astream 下为全量）。
+
+        Returns:
+            (called_seq, results, called)
+            - called_seq: 按调用先后排列的工具名序列（优先取台账的完整序列）
+            - results:    {工具名: 最近一次结果内容}（台账为主，messages 补充）
+            - called:     已调用工具名集合（台账与 messages 的并集）
+        """
+        ledger = (result or {}).get("tool_ledger") or {}
+        ledger_seq = list(ledger.get("seq", []))
+        ledger_results = dict(ledger.get("results", {}))
+
+        msg_seq = [m.name for m in messages if isinstance(m, ToolMessage)]
+        msg_results = {m.name: m.content for m in messages if isinstance(m, ToolMessage)}
+
+        # 顺序：台账为裁剪前完整记录，优先采用；缺失时回退 messages 扫描
+        called_seq = ledger_seq if ledger_seq else msg_seq
+        # 结果：以 messages 为底，再用台账覆盖（台账保存全历史最近值，权威度更高）
+        results = dict(msg_results)
+        results.update(ledger_results)
+        # 已调用集合：两来源并集（避免早期导出工具被裁剪后被误判为未调用而重复导出）
+        called = set(msg_seq) | set(ledger_seq)
+        return called_seq, results, called
+
+    @staticmethod
+    def _enforce_tool_call_order(called_seq):
+        """强制门禁：复用会抛异常的 assert_tool_call_order 覆盖完整声明链路。
+
+        与旧版「仅追加警告」不同，此处 fail-closed：一旦检测到工具调用顺序违反
+        声明链路（如未先校验就计算、后置步骤早于前置步骤），立即抛出
+        ToolCallOrderViolation，阻断后续评分 / 导出兜底，避免产出无依据的报告。
+
+        Args:
+            called_seq: 按实际调用先后顺序排列的工具名称序列。
+
+        Raises:
+            ToolCallOrderViolation: 当工具调用顺序违反声明链路时。
+        """
+        order_msg = assert_tool_call_order(called_seq)
+        logger.info(f"工具调用顺序门禁通过: {order_msg}")
+        return order_msg
 
     def _run_debate(self, risk_json: str) -> str | None:
         """多智能体辩论机制：风险关注方 -> 风险否定方 -> 裁判仲裁。
@@ -360,11 +624,11 @@ class _AgentWrapper:
             arbiter_text = arbiter_response.content or ""
             logger.info(f"裁判仲裁完成（{len(arbiter_text)}字）")
 
-            # 组装辩论结果，格式兼容前端 review-card 组件渲染
+            # 组装辩论结果，使用结构化标记便于前端三段式渲染
             return (
-                f"**风险关注方意见**\n{advocate_text}\n\n"
-                f"**风险否定方反驳**\n{skeptic_text}\n\n"
-                f"**裁判仲裁结论**\n{arbiter_text}"
+                f"【风险关注方】\n{advocate_text}\n\n"
+                f"【风险否定方】\n{skeptic_text}\n\n"
+                f"【裁判仲裁】\n{arbiter_text}"
             )
         except Exception as e:
             logger.warning(f"辩论机制失败（不影响主报告）: {e}")
@@ -430,6 +694,8 @@ def build_agent(ctx=None):
         generate_radar_chart,          # 财务雷达图生成
         generate_trend_chart,          # 趋势折线图生成
         batch_analyze_companies,       # 多公司批量分析
+        check_disclosure_compliance,   # 信息披露规范性检查
+        calculate_comprehensive_score, # 综合风险评分
     ]
 
     # 使用 LangGraph 的 create_react_agent 构建 ReAct 模式智能体
@@ -439,6 +705,7 @@ def build_agent(ctx=None):
         prompt=cfg.get("sp"),           # 系统提示词（System Prompt）
         checkpointer=get_memory_saver(), # 会话记忆存储
         state_schema=AgentState,         # 自定义状态 schema
+        post_model_hook=_accumulate_tool_ledger,  # 裁剪前累积工具链台账，与滑窗解耦
     )
 
     # 包装为 _AgentWrapper 以提供兜底导出能力

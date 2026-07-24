@@ -95,6 +95,11 @@ validate_financial_data → calculate_financial_indicators → check_disclosure_
 
 ## 更深文档链接
 
+> **when-to-load 路由**：当任务是「上传单份年报做完整审计风险分析 / 出报告」时（最高频任务），
+> 先加载 `docs/exec-plan-单份年报完整分析.md` —— 内含触发条件、固定工具链步骤与验收校验；
+> 多公司批量分析则改走 `src/tools/batch_processor.py`（`batch_analyze_companies`）。
+
+- `docs/exec-plan-单份年报完整分析.md` — 单份年报完整分析的可复用执行清单（固定工具链 + 验收校验）
 - `README.md` — 项目总览与部署说明
 - `DATA_SOURCES.md` — 知识库与数据来源说明
 - `审计风险识别系统专用readme.html` — 完整操作指南（运行时 `/readme` 可访问）

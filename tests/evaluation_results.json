@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-19T10:38:04.228362",
+  "generated_at": "2026-07-23T14:07:36.243105",
   "test_suite": {
-    "total_cases": 10,
+    "total_cases": 22,
     "dimensions": [
       "financial_misstatement",
       "related_party",
@@ -13,55 +13,58 @@
   "results": {
     "tool": {
       "mode": "tool",
-      "evaluation_time": "2026-07-19T10:38:04.240978",
-      "test_count": 10,
+      "evaluation_time": "2026-07-23T14:07:36.258717",
+      "test_count": 22,
       "metrics": {
-        "average_precision": 0.944,
-        "average_recall": 0.944,
-        "average_f1": 0.944,
+        "average_precision": 0.975,
+        "average_recall": 0.975,
+        "average_f1": 0.975,
         "false_positive_count": 0,
-        "false_positive_total": 1,
+        "false_positive_total": 2,
         "average_response_time_sec": 0.001
       },
       "baseline_comparison": {
-        "system_recall": 0.944,
-        "baseline_recall": 0.037,
-        "improvement": 0.907,
-        "system_normal_correct": 1,
-        "system_normal_total": 1,
-        "baseline_normal_correct": 1,
-        "baseline_normal_total": 10
+        "system_recall": 0.975,
+        "baseline_recall": 0.067,
+        "improvement": 0.908,
+        "system_normal_correct": 2,
+        "system_normal_total": 2,
+        "baseline_normal_correct": 2,
+        "baseline_normal_total": 22,
+        "zero_shot_llm_recall": 0,
+        "zero_shot_llm_improvement": null,
+        "zero_shot_llm_cases": 0
       },
       "dimension_metrics": {
         "financial_misstatement": {
-          "total_cases": 6,
-          "correct": 6,
+          "total_cases": 10,
+          "correct": 10,
           "accuracy": 1.0,
-          "false_positives": 3
+          "false_positives": 10
         },
         "related_party": {
-          "total_cases": 1,
-          "correct": 1,
+          "total_cases": 2,
+          "correct": 2,
           "accuracy": 1.0,
-          "false_positives": 8
+          "false_positives": 18
         },
         "disclosure_compliance": {
-          "total_cases": 0,
-          "correct": 0,
-          "accuracy": 0.0,
-          "false_positives": 9
+          "total_cases": 2,
+          "correct": 2,
+          "accuracy": 1.0,
+          "false_positives": 18
         },
         "going_concern": {
-          "total_cases": 4,
-          "correct": 4,
+          "total_cases": 9,
+          "correct": 9,
           "accuracy": 1.0,
-          "false_positives": 5
+          "false_positives": 11
         },
         "regulatory_penalty": {
-          "total_cases": 0,
-          "correct": 0,
-          "accuracy": 0.0,
-          "false_positives": 9
+          "total_cases": 2,
+          "correct": 2,
+          "accuracy": 1.0,
+          "false_positives": 18
         }
       },
       "case_details": [
@@ -100,10 +103,11 @@
           ],
           "actual_alerts": [
             "营业收入同比变动 -33.33%，幅度较大，需关注合理性",
+            "净利润由上期 -2000 变为本期 -3000，呈亏损扩大，上期为负致同比百分比不适用，需关注盈利可持续性",
             "连续两年净利润为负，存在持续经营风险",
             "经营活动现金流量净额连续两年为负，持续经营风险较高"
           ],
-          "alert_count": 3,
+          "alert_count": 4,
           "keyword_hits": 2,
           "precision": 1.0,
           "recall": 1.0,
@@ -233,7 +237,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "going_concern",
             "financial_misstatement"
@@ -311,6 +315,31 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
+          "elapsed_sec": 0.001,
+          "expected_dimensions": [
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "速动比率不足（剔除存货后流动性紧张）",
+          "expected": [
+            "速动比率"
+          ],
+          "actual_alerts": [
+            "速动比率 = 0.4，低于 0.5，流动性风险较高"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
           "elapsed_sec": 0.0,
           "expected_dimensions": [
             "going_concern"
@@ -321,6 +350,285 @@
             "disclosure_compliance": false,
             "going_concern": true,
             "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "应收账款占营收比过高（回款风险）",
+          "expected": [
+            "应收账款"
+          ],
+          "actual_alerts": [
+            "应收账款占营收比 = 40.0%，超过 30%，需关注回款风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "净利润大幅波动（盈利稳定性差）",
+          "expected": [
+            "净利润"
+          ],
+          "actual_alerts": [
+            "净利润同比变动 -96.67%，波动显著"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "资产负债率超标（净资产为负）",
+          "expected": [
+            "70%"
+          ],
+          "actual_alerts": [
+            "资产负债率 = 116.67%，超过 70%，财务杠杆较高"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.001,
+          "expected_dimensions": [
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "营收异常高速增长（收入真实性存疑）",
+          "expected": [
+            "营业收入"
+          ],
+          "actual_alerts": [
+            "营业收入同比变动 100.0%，幅度较大，需关注合理性"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "financial_misstatement"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "经营现金流连续为负（造血能力不足）",
+          "expected": [
+            "持续经营"
+          ],
+          "actual_alerts": [
+            "经营活动现金流量净额连续两年为负，持续经营风险较高"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "正常公司（高增长科技企业，无误报）",
+          "expected": "无风险",
+          "actual_count": 0,
+          "correct": true,
+          "alerts": [],
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": true,
+            "disclosure_compliance": true,
+            "going_concern": true,
+            "regulatory_penalty": true
+          }
+        },
+        {
+          "name": "多维度复合风险（同时触发3个维度）",
+          "expected": [
+            "存贷双高",
+            "持续经营",
+            "应收"
+          ],
+          "actual_alerts": [
+            "净利润由上期 -3000 变为本期 -8000，呈亏损扩大，上期为负致同比百分比不适用，需关注盈利可持续性",
+            "应收账款占营收比 = 37.5%，超过 30%，需关注回款风险",
+            "应收账款增速(87.5%)显著高于营收增速(-27.27%)，可能存在提前确认收入或放宽信用政策",
+            "资产负债率 = 83.33%，超过 70%，财务杠杆较高",
+            "其他应收款占总资产比 = 7.78%，超过 5%，需关注资金占用风险",
+            "货币资金(20000)高于短期借款(18000)，但利息支出(1200)远大于利息收入(100)，存在'存贷双高'异常，需核查资金真实性",
+            "连续两年净利润为负，存在持续经营风险"
+          ],
+          "alert_count": 7,
+          "keyword_hits": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.001,
+          "expected_dimensions": [
+            "financial_misstatement",
+            "going_concern",
+            "related_party"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": true,
+            "related_party": true,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "经营现金流与净利润严重背离（收入确认合规性存疑）",
+          "expected": [
+            "现金流"
+          ],
+          "actual_alerts": [
+            "经营现金流/净利润比 = 0.06，低于 0.5，现金流与利润严重背离，存在利润质量风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "disclosure_compliance"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": true,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "大额其他应收款占比（未披露关联方资金占用风险）",
+          "expected": [
+            "其他应收款"
+          ],
+          "actual_alerts": [
+            "其他应收款占总资产比 = 8.75%，超过 5%，需关注资金占用风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "disclosure_compliance"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": true,
+            "going_concern": false,
+            "regulatory_penalty": false
+          }
+        },
+        {
+          "name": "商誉占净资产比超标（会计估计易引发监管问询）",
+          "expected": [
+            "商誉"
+          ],
+          "actual_alerts": [
+            "商誉占净资产比 = 40.0%，超过 30%，存在较大减值风险"
+          ],
+          "alert_count": 1,
+          "keyword_hits": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "regulatory_penalty"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": false,
+            "regulatory_penalty": true
+          }
+        },
+        {
+          "name": "流动性与速动比率双低（流动性风险触发监管关注）",
+          "expected": [
+            "流动比率",
+            "速动比率"
+          ],
+          "actual_alerts": [
+            "流动比率 = 0.8333，低于 1，短期偿债能力不足",
+            "速动比率 = 0.25，低于 0.5，流动性风险较高"
+          ],
+          "alert_count": 2,
+          "keyword_hits": 2,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.0,
+          "expected_dimensions": [
+            "regulatory_penalty",
+            "going_concern"
+          ],
+          "dimension_hits": {
+            "financial_misstatement": false,
+            "related_party": false,
+            "disclosure_compliance": false,
+            "going_concern": true,
+            "regulatory_penalty": true
           }
         }
       ]

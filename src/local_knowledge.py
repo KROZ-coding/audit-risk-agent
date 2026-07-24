@@ -44,7 +44,7 @@ class LocalKnowledgeBase:
                 self._loaded = True
                 return
 
-            # 读取所有 txt 文件并分块
+            # 读取所有 txt 文件并分块（优先按“第X条”分块，回退到按段落分块）
             chunks = []
             metadatas = []
             for fname in sorted(os.listdir(self.kb_dir)):
@@ -54,7 +54,15 @@ class LocalKnowledgeBase:
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         content = f.read()
-                    file_chunks = [c.strip() for c in content.split("\n\n") if c.strip()]
+                    # 策略：优先按法规条款分块（匹配“第X条”模式），提升检索精度
+                    import re
+                    article_splits = re.split(r'(?=第[一二三四五六七八九十百千\d]+条)', content)
+                    if len(article_splits) > 3:
+                        # 法规文本：按条款分块，每块保留条款号作为上下文
+                        file_chunks = [c.strip() for c in article_splits if c.strip() and len(c.strip()) > 20]
+                    else:
+                        # 非法规文本（如案例分析）：按双换行分块
+                        file_chunks = [c.strip() for c in content.split("\n\n") if c.strip()]
                     for i, chunk in enumerate(file_chunks):
                         chunks.append(chunk)
                         metadatas.append({"source": fname, "chunk_id": i})
@@ -76,18 +84,25 @@ class LocalKnowledgeBase:
                 client = self._get_chroma_client()
                 # 使用或创建 collection（如果已存在则复用缓存）
                 collection_name = "audit_regulations"
+                # 内容指纹：对全部分块内容 + 块数算 md5，感知「内容变化」而非仅「块数变化」
+                # 解决原 count() 比较无法发现「原地修改法规内容但条款数不变」的脏缓存问题
+                import hashlib
+                fingerprint = hashlib.md5(
+                    ("\x1f".join(chunks) + f"|n={len(chunks)}").encode("utf-8")
+                ).hexdigest()
                 try:
                     self._collection = client.get_collection(collection_name)
-                    # 检查文档数量是否匹配，不匹配则重建
-                    if self._collection.count() != len(chunks):
+                    cached_fp = (self._collection.metadata or {}).get("content_fingerprint")
+                    # 指纹不一致（内容或块数变化）或缺失则重建
+                    if cached_fp != fingerprint:
                         client.delete_collection(collection_name)
                         raise ValueError("rebuild")
-                    logger.info(f"ChromaDB 缓存命中，共 {self._collection.count()} 个文档块")
+                    logger.info(f"ChromaDB 缓存命中（指纹一致），共 {self._collection.count()} 个文档块")
                 except (ValueError, Exception):
-                    # 创建新 collection 并写入文档
+                    # 创建新 collection 并写入文档（metadata 记录内容指纹用于下次校验）
                     self._collection = client.create_collection(
                         name=collection_name,
-                        metadata={"hnsw:space": "cosine"},
+                        metadata={"hnsw:space": "cosine", "content_fingerprint": fingerprint},
                     )
                     # 批量写入文档（ChromaDB 自动使用默认 embedding 函数）
                     ids = [f"doc_{i}" for i in range(len(chunks))]
@@ -137,6 +152,11 @@ class LocalKnowledgeBase:
         import math
         import re
         from collections import Counter
+
+        # ChromaDB 初始化成功但运行时 query 抛异常时，_build_tfidf_fallback 尚未执行，
+        # 此处惰性构建 IDF 与分词索引，确保回退路径可用（否则会因缺少 _idf 抛 AttributeError）。
+        if not getattr(self, "_idf", None):
+            self._build_tfidf_fallback()
 
         q_tokens = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', query.lower())
         tf = Counter(q_tokens)

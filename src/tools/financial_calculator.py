@@ -37,6 +37,10 @@ def _pct_change(current, previous, default=None):
 
     公式：(本期值 - 上期值) / |上期值| × 100
 
+    重要边界：当上期值为负（如上期亏损）时，同比百分比无良好定义
+    （例如上期 -100、本期 +50 会算出 +150%，误导读者误以为“增长”，
+    实则为扭亏为盈），故此时返回 default（None），由调用方改用定性描述。
+
     Args:
         current: 本期值
         previous: 上期值
@@ -46,6 +50,9 @@ def _pct_change(current, previous, default=None):
         变动百分比（保留2位小数），或 default
     """
     if current is None or previous is None or previous == 0:
+        return default
+    # 上期为负：百分比无良好定义（扭亏/减亏场景），返回 default 避免输出误导性数字
+    if previous < 0:
         return default
     return round((current - previous) / abs(previous) * 100, 2)
 
@@ -100,10 +107,24 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
     np_p = data.get("net_profit_previous")
     if np_c is not None and np_p is not None:
         np_change = _pct_change(np_c, np_p)
-        results["net_profit_yoy_change_pct"] = np_change
-        # 净利润波动超过 50% 需重点关注
-        if np_change is not None and abs(np_change) > 50:
-            alerts.append(f"净利润同比变动 {np_change}%，波动显著")
+        if np_change is not None:
+            results["net_profit_yoy_change_pct"] = np_change
+            # 净利润波动超过 50% 需重点关注
+            if abs(np_change) > 50:
+                alerts.append(f"净利润同比变动 {np_change}%，波动显著")
+        elif np_p < 0:
+            # 上期亏损：同比百分比不适用，改用定性描述（扭亏/减亏/亏损扩大）
+            if np_c > 0:
+                desc = "扭亏为盈"
+            elif np_c > np_p:
+                desc = "亏损收窄（减亏）"
+            else:
+                desc = "亏损扩大"
+            results["net_profit_yoy_change_desc"] = desc
+            alerts.append(
+                f"净利润由上期 {np_p} 变为本期 {np_c}，呈{desc}，"
+                f"上期为负致同比百分比不适用，需关注盈利可持续性"
+            )
 
     # ── 3. 毛利率：(营收-营业成本)/营收，衡量核心盈利能力 ──
     cog = data.get("cost_of_goods_current")
@@ -157,11 +178,14 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
     inv_c = data.get("inventory_current")
     inv_p = data.get("inventory_previous")
     if cog is not None and inv_c is not None:
-        avg_inv = (inv_c + (inv_p or inv_c)) / 2  # 简化：取期初期末平均值
+        # 注：必须用 is None 判断而非 `inv_p or inv_c`——后者在上期存货合法为 0（如
+        # 新成立/纯服务业无期初存货）时会错误地把 0 当作“未提供”而退化为 inv_c，导致均值失真
+        prev_inv = inv_p if inv_p is not None else inv_c
+        avg_inv = (inv_c + prev_inv) / 2  # 取期初期末平均值（上期缺失时退化为本期）
         inv_turnover = _safe_div(cog, avg_inv)
         results["inventory_turnover_ratio"] = inv_turnover
-        if inv_turnover is not None and inv_p is not None:
-            # 存货同比增长超过 50%，可能存在滞销或虚增存货
+        if inv_turnover is not None and inv_p is not None and inv_p > 0:
+            # 存货同比增长超过 50%，可能存在滞销或虚增存货（inv_p>0 防除零）
             if inv_c > inv_p * 1.5:
                 alerts.append(
                     f"存货同比增长 {round((inv_c / inv_p - 1) * 100, 2)}%，"

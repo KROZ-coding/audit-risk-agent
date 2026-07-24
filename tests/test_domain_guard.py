@@ -26,6 +26,11 @@ from tools.domain_guard import (
     DisclaimerMissingError,
     VALIDATE_TOOL,
     CALCULATE_TOOL,
+    DISCLOSURE_TOOL,
+    SEARCH_TOOL,
+    SCORE_TOOL,
+    EXPORT_PDF_TOOL,
+    EXPORT_EXCEL_TOOL,
     DISCLAIMER_MARKER,
 )
 
@@ -71,6 +76,56 @@ class TestToolCallOrder:
     def test_empty_sequence_passes(self):
         """空调用序列应视为通过（无可校验对象）。"""
         ok, _ = check_tool_call_order([])
+        assert ok is True
+
+
+class TestFullPipelineOrder:
+    """完整声明链路顺序不变量（fail-closed 强制门禁）。
+
+    声明链路：
+        validate → calculate → check_disclosure → search → score
+        → export_pdf + export_excel（导出对为并行，彼此无先后约束）。
+    """
+
+    def test_full_pipeline_out_of_order_raises(self):
+        """乱序用例：后置步骤早于前置步骤（export 早于 score）应 fail-closed 抛异常。
+
+        该序列已满足「先 validate 后 calculate」，专门验证完整链路相对次序层。
+        """
+        seq = [VALIDATE_TOOL, CALCULATE_TOOL, EXPORT_PDF_TOOL, SCORE_TOOL]
+        ok, msg = check_tool_call_order(seq)
+        assert ok is False
+        assert "工具链声明顺序" in msg
+        assert "修复方向" in msg
+        # 断言版本应 fail-closed 抛出顺序违规
+        with pytest.raises(ToolCallOrderViolation):
+            assert_tool_call_order(seq)
+
+    def test_disclosure_after_search_raises(self):
+        """乱序用例：check_disclosure 晚于 search 与 score 调用，应招异常。"""
+        seq = [VALIDATE_TOOL, CALCULATE_TOOL, SEARCH_TOOL, SCORE_TOOL, DISCLOSURE_TOOL]
+        with pytest.raises(ToolCallOrderViolation):
+            assert_tool_call_order(seq)
+
+    def test_full_pipeline_correct_order_passes(self):
+        """正序：完整声明链路依次调用应通过且不抛异常。"""
+        seq = [
+            "parse_pdf_report",
+            VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+            SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL,
+        ]
+        ok, _ = check_tool_call_order(seq)
+        assert ok is True
+        # 断言版本不应抛异常
+        assert_tool_call_order(seq)
+
+    def test_export_pair_order_is_interchangeable(self):
+        """并行导出对：export_excel 先于 export_pdf 仍应通过（共享 rank，无先后约束）。"""
+        seq = [
+            VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+            SEARCH_TOOL, SCORE_TOOL, EXPORT_EXCEL_TOOL, EXPORT_PDF_TOOL,
+        ]
+        ok, _ = check_tool_call_order(seq)
         assert ok is True
 
 

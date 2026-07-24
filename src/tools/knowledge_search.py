@@ -68,7 +68,15 @@ def search_regulations(query: str) -> str:
 
         # 用分隔线连接所有结果，便于 LLM 解析
         output = "\n\n---\n\n".join(output_parts)
-        logger.info(f"知识库检索完成，query='{query}'，返回 {len(results)} 条结果")
+
+        # 检索质量指标：输出 top-k 相关度分布，供评估和调试使用
+        scores = [r.get("score", 0) for r in results if isinstance(r.get("score"), (int, float))]
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            score_dist = "/".join(f"{s:.2f}" for s in sorted(scores, reverse=True)[:5])
+            output += f"\n\n---\n【检索质量】返回 {len(results)} 条结果，平均相关度: {avg_score:.3f}，Top-5 分布: {score_dist}"
+
+        logger.info(f"知识库检索完成，query='{query}'，返回 {len(results)} 条结果，平均相关度: {sum(scores)/len(scores):.3f}" if scores else f"知识库检索完成，query='{query}'，返回 {len(results)} 条结果")
         return output
 
     except Exception as e:

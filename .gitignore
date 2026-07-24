@@ -42,6 +42,18 @@ audit-ai_v*.tar.gz
 *.zip
 *.gz
 
+# 可执行安装包（用户自行下载，不纳入版本库）
+*.exe
+
+# 音频文件
+*.mp3
+*.wav
+*.flac
+
+# 无用/冗余文档与散落媒体（历史遗留，不纳入版本库）
+/无用readme/
+/127079590.jpg
+
 # 文档类也默认加入
 *.pdf
 *.docx
@@ -61,3 +73,18 @@ audit-ai_v*.tar.gz
 
 # ChromaDB 向量数据库持久化目录
 .chroma_db/
+
+# ── 运行期生成物（不纳入版本库；应用启动/运行时自动创建目录）──
+# 本地存储：生成的图表(charts/)、报告(reports/)等运行时产物
+/local_storage/
+/src/local_storage/
+# 运行日志
+*.log
+# LangGraph 检查点数据库
+checkpoints.sqlite
+*.sqlite
+*.sqlite3
+# 临时截图
+_screenshot_*.png
+
+# 注：示例产物请放置于版本控制的 samples/ 目录（见 README「示例产物」说明）

@@ -39,6 +39,31 @@
 2. 双击 `启动.bat`（后续日常运行）
 3. 浏览器将自动打开 http://localhost:5000
 
+### 手动复现（开发者/评委）
+```bash
+# 1. 安装 uv 包管理器（若未安装）
+pip install uv
+
+# 2. 一键同步全部依赖（基于 pyproject.toml + uv.lock）
+uv sync
+
+# 3. 配置环境变量（复制模板并填入真实 API Key）
+cp .env.example .env
+# 编辑 .env，将 OPENAI_API_KEY 替换为真实的 DeepSeek API Key
+
+# 4. 启动服务
+uv run python src/main.py -m http -p 5000
+```
+
+### 效果评估复现
+```bash
+# 工具模式评估（<1秒，18 个测试用例）
+uv run python tests/evaluation_report.py --mode tool
+
+# Agent 全链路评估（约 3 分钟，需 API Key）
+uv run python tests/evaluation_report.py --mode agent
+```
+
 ### 手动启动（开发者模式）
 ```bash
 # 1. 同步依赖
@@ -76,10 +101,15 @@ projects/
 │   └── agent_llm_config.json      # LLM 配置 + 系统提示词（含思维链推理）
 ├── knowledge_base/                # 审计法规知识库（txt，来源见 DATA_SOURCES.md）
 ├── assets/                        # 字体文件、行业基准值配置
+├── samples/                       # 示例产物（图表示例，纳入版本库，见 samples/README.md）
 ├── start.ps1                      # PowerShell 启动脚本
 ├── .env.example                   # 环境变量模板
 ├── DATA_SOURCES.md                # 知识库数据来源声明
 └── pyproject.toml                 # 项目依赖与元数据配置
+
+> 运行期产物不纳入版本库：生成的图表/报告（`local_storage/`、`src/local_storage/`）、
+> 日志（`*.log`）、向量库（`.chroma_db/`）、检查点（`checkpoints.sqlite`）均已在 `.gitignore` 中忽略，
+> 应用启动/运行时会自动创建对应目录（无需手动建立）。需展示的图表示例请放入版本化的 `samples/` 目录。
 
 ## 📊 效果评估
 

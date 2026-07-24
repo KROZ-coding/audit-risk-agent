@@ -10,6 +10,7 @@
 import os
 import json
 import uuid
+import logging
 import tempfile
 from datetime import datetime
 
@@ -20,6 +21,8 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
 
 # AI 辅助生成免责声明，强制出现在封面和整体评估 Sheet 中
 AI_DISCLAIMER = "【AI 辅助生成】本报告由大语言模型基于公开数据自动生成，可能存在幻觉或偏差，请务必结合人工专业判断进行复核。"
@@ -278,12 +281,65 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
     # 生成统一文件名前缀
     prefix = _build_file_prefix(report)
 
+    # ═══════════════════════════════════════════════════════
+    # Sheet 4：审计建议汇总 —— 将所有风险的 audit_suggestion 集中展示
+    # ═══════════════════════════════════════════════════════
+    ws_suggestions = wb.create_sheet("审计建议汇总")
+    # 表头：风险ID + 风险标题 + 等级 + 审计建议
+    sug_headers = ["风险ID", "风险标题", "风险等级", "审计核查建议"]
+    sug_widths = [10, 30, 10, 80]
+    for col_idx, (header, width) in enumerate(zip(sug_headers, sug_widths), start=1):
+        cell = ws_suggestions.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = thin_border
+        ws_suggestions.column_dimensions[get_column_letter(col_idx)].width = width
+    # 逐行写入每条风险的审计建议
+    sug_row = 2
+    for risk in risk_details:
+        suggestion = risk.get("audit_suggestion", "")
+        if suggestion:
+            ws_suggestions.cell(row=sug_row, column=1, value=risk.get("risk_id", "")).font = normal_font
+            ws_suggestions.cell(row=sug_row, column=2, value=risk.get("title", "")).font = normal_font
+            lv = risk.get("level", "")
+            lv_cell = ws_suggestions.cell(row=sug_row, column=3, value=lv)
+            lv_cell.font = normal_font
+            if lv in level_colors:
+                lv_cell.fill = level_colors[lv]
+                lv_cell.font = level_fonts[lv]
+            sug_cell = ws_suggestions.cell(row=sug_row, column=4, value=suggestion)
+            sug_cell.font = normal_font
+            sug_cell.alignment = wrap_alignment
+            for c in range(1, 5):
+                ws_suggestions.cell(row=sug_row, column=c).border = thin_border
+            ws_suggestions.row_dimensions[sug_row].height = 40
+            sug_row += 1
+
     # 若未指定输出路径，使用系统临时目录
     if not output_path:
         output_path = os.path.join(tempfile.gettempdir(), f"{prefix}_审计底稿.xlsx")
 
     # 确保输出目录存在
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
+
+    # ── 领域约束后置校验：导出内容必须包含 AI 免责声明 ──
+    # 在落盘/上传前拦截：遍历所有工作表单元格文本，若声明缺失则不产出文件，
+    # 直接返回带修复方向的错误，避免生成看似正式审计意见的无声明底稿。
+    from tools.domain_guard import assert_disclaimer_present, DisclaimerMissingError
+    cell_texts = [
+        v
+        for ws in wb.worksheets
+        for row in ws.iter_rows(values_only=True)
+        for v in row
+        if isinstance(v, str)
+    ]
+    try:
+        assert_disclaimer_present(cell_texts, doc_kind="Excel审计底稿")
+    except DisclaimerMissingError as e:
+        logger.error(f"Excel导出被拦截: {e}")
+        return f"导出被拦截：{e}"
+
     wb.save(output_path)
 
     # 上传到本地存储，返回 HTTP 可访问 URL

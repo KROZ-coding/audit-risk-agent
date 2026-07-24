@@ -69,14 +69,16 @@ class DisclaimerMissingError(Exception):
 # ═══════════════════════════════════════════════════════════
 
 def check_tool_call_order(called_tools):
-    """后置检查：验证工具调用顺序满足"先校验后计算"。
+    """后置检查：验证工具调用顺序满足完整声明链路不变量。
 
-    规则：
-    - 若从未调用 calculate_financial_indicators，则无需校验，视为通过；
-    - 若调用了 calculate_financial_indicators，则其首次调用之前必须已存在
-      至少一次 validate_financial_data 调用；
-    - 若 calculate 之前从未 validate，或 validate 出现在首次 calculate 之后，
-      均判定为违反约束。
+    分两层校验：
+    - 层一（强制前置）“先 validate 后 calculate”：
+        * 若调用了 calculate_financial_indicators，则其首次调用之前必须已存在
+          至少一次 validate_financial_data 调用；若从未 validate 或 validate 晚于
+          首次 calculate，均判定为违反。
+    - 层二（完整声明链路）相对次序：
+        * 仅对实际调用到的链路工具做检查，任一后置步骤早于其前置步骤
+          即判定为违反；未被调用的中间步骤不作要求（跳过某步骤不算顺序违反）。
 
     Args:
         called_tools: 按实际调用先后顺序排列的工具名称序列（可迭代）。
@@ -85,7 +87,16 @@ def check_tool_call_order(called_tools):
         (ok, message)：ok 为是否通过；message 为结论说明，失败时包含明确修复方向。
     """
     seq = list(called_tools)
+    # 层一：先 validate 后 calculate（含 calculate 缺失前置 validate 的强制拦截）
+    ok, message = _check_validate_before_calculate(seq)
+    if not ok:
+        return ok, message
+    # 层二：完整声明链路的相对次序
+    return _check_pipeline_order(seq)
 
+
+def _check_validate_before_calculate(seq):
+    """层一校验：calculate 必须以至少一次前置 validate 为前提。"""
     # 首次 calculate 的位置；未调用则无需校验
     first_calc = next((i for i, name in enumerate(seq) if name == CALCULATE_TOOL), None)
     if first_calc is None:
@@ -110,6 +121,36 @@ def check_tool_call_order(called_tools):
             f"（validate 位置 {first_val} 晚于首次 calculate 位置 {first_calc}）。{repair}"
         )
     return True, "工具调用顺序正确：validate_financial_data 先于 calculate_financial_indicators"
+
+
+def _check_pipeline_order(seq):
+    """层二校验：完整声明链路的相对次序（仅对实际调用到的链路工具生效）。
+
+    规则：对任意两个链路工具 A、B，若声明链路要求 A 先于 B（rank(A) < rank(B)），
+    且二者均被调用，则 A 的首次调用必须早于 B 的首次调用；否则判定违反声明顺序。
+    共享 rank 的并行步骤（export_pdf_report / export_excel_report）之间无先后约束。
+    """
+    # 收集链路工具的首次调用位置
+    first_idx = {}
+    for i, name in enumerate(seq):
+        if name in PIPELINE_RANK and name not in first_idx:
+            first_idx[name] = i
+
+    # 按实际调用先后排序，逐对比较 rank 是否非递减
+    present = sorted(first_idx, key=lambda name: first_idx[name])
+    for a_pos in range(len(present)):
+        for b_pos in range(a_pos + 1, len(present)):
+            earlier, later = present[a_pos], present[b_pos]
+            if PIPELINE_RANK[earlier] > PIPELINE_RANK[later]:
+                repair = (
+                    f"修复方向：请严格按声明链路依次调用工具（{PIPELINE_DESC}），"
+                    f"确保 {later} 在 {earlier} 之前完成。"
+                )
+                return False, (
+                    f"违反领域约束「工具链声明顺序」：{earlier} 早于 {later} 被调用，"
+                    f"但声明链路要求 {later} 先于 {earlier}。{repair}"
+                )
+    return True, "工具调用顺序正确：符合完整声明链路次序"
 
 
 def assert_tool_call_order(called_tools):
