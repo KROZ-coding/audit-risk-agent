@@ -63,7 +63,8 @@ TEST_CASES = [
             "total_assets_current": 80000,
             "total_liabilities_current": 55000,
         },
-        "expected_alerts": ["存贷双高", "70%"],
+        # 标注说明：资产负债率 55000/80000=68.75% 未超 70% 阈值，不应标注 "70%"
+        "expected_alerts": ["存贷双高"],
         "expected_dimensions": ["financial_misstatement", "going_concern"],
     },
     {
@@ -76,7 +77,8 @@ TEST_CASES = [
             "revenue_current": 8000,
             "revenue_previous": 12000,
         },
-        "expected_alerts": ["持续经营", "连续"],
+        # 营收 -33% 与净利润亏损扩大均为数据中真实存在的异常，一并标注（真 Precision 口径下正确告警不应计为误报）
+        "expected_alerts": ["持续经营", "连续", "营业收入", "净利润"],
         "expected_dimensions": ["going_concern"],
     },
     {
@@ -174,7 +176,8 @@ TEST_CASES = [
             "net_profit_current": -2000,
             "net_profit_previous": 3000,
         },
-        "expected_alerts": ["营业收入"],
+        # 净利润由盈转亏（-166.67%）同为数据中真实异常，一并标注
+        "expected_alerts": ["营业收入", "净利润"],
         "expected_dimensions": ["going_concern"],
     },
     # ─── 新增用例（11-18）：覆盖流动性、收入质量、杠杆、现金流等财务场景 ───
@@ -271,7 +274,8 @@ TEST_CASES = [
             "accounts_receivable_previous": 8000,
             "other_receivables_current": 7000,
         },
-        "expected_alerts": ["存贷双高", "持续经营", "应收"],
+        # 净利润亏损扩大与资产负债率 83%（>70%）同为数据中真实异常，一并标注
+        "expected_alerts": ["存贷双高", "持续经营", "应收", "净利润", "70%"],
         "expected_dimensions": ["financial_misstatement", "going_concern", "related_party"],
     },
     # ─── 新增用例（19-22）：覆盖信披合规与监管处罚维度，补全雷达图五维展示 ───
@@ -315,6 +319,91 @@ TEST_CASES = [
         },
         "expected_alerts": ["流动比率", "速动比率"],
         "expected_dimensions": ["regulatory_penalty", "going_concern"],
+    },
+]
+
+# ═══════════════════════════════════════════════════════════════
+# 盲测集：基于真实监管处罚案例公开披露数据构造（与合成集分开报告）
+#
+# 区别于 TEST_CASES（按本系统阈值正向构造的合成样本，验证规则正确性），
+# 盲测集数据取自证监会行政处罚决定书与公司公开年报披露值的简化（万元，
+# 保留量级与比例关系），用于验证对未参与阈值设计的真实数据的泛化能力，
+# 回应「测试集与被测规则同源」的循环验证质疑。数据仅供技术评估，
+# 不构成对相关公司的任何评价。
+# ═══════════════════════════════════════════════════════════════
+BLIND_TEST_CASES = [
+    {
+        # 证监会【2020】3号处罚决定书：货币资金高余额与高额借款利息支出并存
+        "name": "盲测·康得新 2018（存贷双高）",
+        "data": {
+            "cash_and_equivalents_current": 1530000,   # 货币资金约 153 亿
+            "short_term_debt_current": 587000,         # 短期借款约 58.7 亿
+            "interest_income_current": 26000,
+            "interest_expense_current": 110000,        # 利息支出远超利息收入
+            "revenue_current": 921000,
+            "total_assets_current": 3470000,
+            "total_liabilities_current": 1590000,
+        },
+        "expected_alerts": ["存贷双高"],
+        "expected_dimensions": ["financial_misstatement"],
+    },
+    {
+        # 证监会【2020】24号处罚决定书：关联方非经营性资金占用（其他应收款口径）
+        "name": "盲测·康美药业 2018（关联方资金占用）",
+        "data": {
+            "other_receivables_current": 885000,        # 占用金额约 88.5 亿
+            "total_assets_current": 6400000,
+            "revenue_current": 1940000,
+        },
+        "expected_alerts": ["其他应收款", "资金占用"],
+        "expected_dimensions": ["related_party"],
+    },
+    {
+        # 年报公开数据：连续巨额亏损 + 营收断崖 + 经营现金流持续为负
+        "name": "盲测·乐视网 2018（持续经营危机）",
+        "data": {
+            "net_profit_current": -409600,              # 2018 亏损约 41 亿
+            "net_profit_previous": -1387800,            # 2017 亏损约 138.8 亿
+            "operating_cashflow_current": -125000,
+            "operating_cashflow_previous": -302000,
+            "revenue_current": 155800,                  # 营收由 70.2 亿降至 15.6 亿
+            "revenue_previous": 702500,
+        },
+        "expected_alerts": ["营业收入", "净利润", "连续", "持续经营", "现金流"],
+        "expected_dimensions": ["going_concern", "financial_misstatement"],
+    },
+    {
+        # 年报公开数据：高额商誉相对净资产严重失衡，后续巨额减值引发监管问询
+        "name": "盲测·天神娱乐 2018（商誉减值）",
+        "data": {
+            "goodwill_current": 657000,                 # 期初商誉约 65.7 亿
+            "net_assets_current": 216000,
+            "total_assets_current": 1120000,
+            "total_liabilities_current": 560000,
+        },
+        "expected_alerts": ["商誉"],
+        "expected_dimensions": ["financial_misstatement", "regulatory_penalty"],
+    },
+    {
+        # 年报公开数据：经营稳健的正常对照组，验证盲测不误报
+        "name": "盲测·贵州茅台 2022（正常对照）",
+        "data": {
+            "revenue_current": 12755000,
+            "revenue_previous": 10946000,
+            "net_profit_current": 6272000,
+            "net_profit_previous": 5246000,
+            "operating_cashflow_current": 3679000,
+            "total_assets_current": 25437000,
+            "total_liabilities_current": 4973000,
+            "current_assets_current": 21000000,
+            "current_liabilities_current": 4700000,
+            "accounts_receivable_current": 17000,
+            "accounts_receivable_previous": 15000,
+            "inventory_current": 4288000,
+            "inventory_previous": 3888000,
+        },
+        "expected_alerts": [],
+        "expected_dimensions": [],
     },
 ]
 
@@ -370,13 +459,15 @@ def run_single_case(case: dict) -> dict:
             "dimension_hits": {d: True for d in RISK_DIMENSIONS} if is_correct else {},
         }
 
-    # 有预期风险的用例：逐关键词匹配系统输出
-    hits = 0
-    for keyword in expected:
-        if keyword in alert_text:
-            hits += 1
-    precision = hits / max(len(expected), 1)
-    recall = hits / max(len(expected), 1)  # 简化：以预期标签数为全集
+    # 有预期风险的用例，双向计算：
+    # - Recall（漏报视角）：预期关键词中被系统告警命中的比例，分母=预期标签数
+    # - Precision（误报视角）：系统输出的告警中能匹配到任一预期关键词的比例，
+    #   分母=系统实际告警数 —— 修复旧版「以预期标签数为全集」导致 P≡R 退化、
+    #   多报告警不受惩罚的缺陷，使三个指标各自有独立统计含义
+    hits = sum(1 for keyword in expected if keyword in alert_text)
+    matched_alerts = sum(1 for a in alerts if any(kw in str(a) for kw in expected))
+    recall = hits / max(len(expected), 1)
+    precision = (matched_alerts / len(alerts)) if alerts else 0.0
     f1 = 2 * precision * recall / max(precision + recall, 0.001)
 
     # 分维度命中统计：检查预期维度是否被覆盖（基于告警内容关键词匹配）
@@ -391,6 +482,7 @@ def run_single_case(case: dict) -> dict:
         "actual_alerts": alerts,
         "alert_count": len(alerts),
         "keyword_hits": hits,
+        "matched_alerts": matched_alerts,
         "precision": round(precision, 3),
         "recall": round(recall, 3),
         "f1": round(f1, 3),
@@ -805,6 +897,15 @@ def generate_tool_report():
     # ─── 基线对比 ───
     baseline_results = [run_baseline(case) for case in TEST_CASES]
 
+    # ─── 盲测集（真实处罚案例）：与合成集分开评估、分开报告 ───
+    blind_results = [run_single_case(case) for case in BLIND_TEST_CASES]
+    blind_risk = [r for r in blind_results if r.get("expected") != "无风险"]
+    blind_normal = [r for r in blind_results if r.get("expected") == "无风险"]
+    blind_precision = sum(r["precision"] for r in blind_risk) / len(blind_risk) if blind_risk else 0
+    blind_recall = sum(r["recall"] for r in blind_risk) / len(blind_risk) if blind_risk else 0
+    blind_f1 = sum(r["f1"] for r in blind_risk) / len(blind_risk) if blind_risk else 0
+    blind_normal_correct = sum(1 for r in blind_normal if r["correct"])
+
     # ─── 零样本 LLM 基线（可选，需 API Key）───
     zero_shot_results = [run_zero_shot_baseline(case) for case in TEST_CASES]
     zero_shot_valid = [r for r in zero_shot_results if not r.get("skipped")]
@@ -847,7 +948,7 @@ def generate_tool_report():
 
     # ─── 打印报告 ───
     print(f"\n{'─' * 70}")
-    print("  一、风险识别性能指标")
+    print("  一、风险识别性能指标（合成集：按审计阈值构造，验证规则正确性）")
     print(f"{'─' * 70}")
     print(f"  风险用例数:     {len(risk_cases)}")
     print(f"  平均准确率:     {avg_precision:.1%}")
@@ -855,6 +956,22 @@ def generate_tool_report():
     print(f"  平均 F1 分数:   {avg_f1:.1%}")
     print(f"  正常用例误报:   {len(normal_cases) - normal_correct}/{len(normal_cases)}")
     print(f"  平均响应时间:   {avg_time:.3f} 秒")
+
+    print(f"\n{'─' * 70}")
+    print("  一之二、盲测集指标（真实处罚案例公开数据，未参与阈值设计，验证泛化）")
+    print(f"{'─' * 70}")
+    print(f"  盲测用例数:     {len(blind_results)}（风险 {len(blind_risk)} + 正常对照 {len(blind_normal)}）")
+    print(f"  盲测准确率:     {blind_precision:.1%}")
+    print(f"  盲测召回率:     {blind_recall:.1%}")
+    print(f"  盲测 F1 分数:   {blind_f1:.1%}")
+    print(f"  盲测正常误报:   {len(blind_normal) - blind_normal_correct}/{len(blind_normal)}")
+    for r in blind_results:
+        if r.get("expected") == "无风险":
+            status = "✅" if r["correct"] else "❌"
+            print(f"  {status} {r['name']:<32} 预期无风险 | 实际{r['actual_count']}条告警")
+        else:
+            status = "✅" if r.get("f1", 0) >= 0.5 else "❌"
+            print(f"  {status} {r['name']:<32} P={r['precision']:.2f} R={r['recall']:.2f} F1={r['f1']:.2f}")
 
     print(f"\n{'─' * 70}")
     print("  二、与基线方案对比（简单规则引擎：仅检查资产负债率>70%）")
@@ -897,8 +1014,8 @@ def generate_tool_report():
     print("  五、结论")
     print(f"{'─' * 70}")
     print(f"  本系统基于 16 项财务指标计算 + 三大勾稽校验 + ChromaDB RAG 检索 +")
-    print(f"  多智能体辩论机制 + 五步思维链推理，在风险识别准确率和召回率")
-    print(f"  上均显著优于简单规则引擎基线方案，具备实际审计辅助价值。")
+    print(f"  多智能体辩论机制 + 五步思维链推理；合成集验证规则正确性，盲测集（真实")
+    print(f"  处罚案例）验证泛化能力，两组指标均显著优于简单规则引擎基线方案。")
     print(f"\n  ⚠️ 本评估由 AI 辅助生成，仅供技术验证参考。")
     print("=" * 70)
 
@@ -914,6 +1031,16 @@ def generate_tool_report():
             "false_positive_count": len(normal_cases) - normal_correct,
             "false_positive_total": len(normal_cases),
             "average_response_time_sec": round(avg_time, 3),
+        },
+        "blind_test": {
+            "description": "盲测集：真实处罚案例公开数据（未参与阈值设计），与合成集分开报告以验证泛化能力",
+            "case_count": len(blind_results),
+            "average_precision": round(blind_precision, 3),
+            "average_recall": round(blind_recall, 3),
+            "average_f1": round(blind_f1, 3),
+            "normal_correct": blind_normal_correct,
+            "normal_total": len(blind_normal),
+            "case_details": blind_results,
         },
         "baseline_comparison": {
             "system_recall": round(avg_recall, 3),

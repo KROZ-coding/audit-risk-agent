@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-23T14:07:36.243105",
+  "generated_at": "2026-07-25T16:22:05.253103",
   "test_suite": {
     "total_cases": 22,
     "dimensions": [
@@ -13,20 +13,161 @@
   "results": {
     "tool": {
       "mode": "tool",
-      "evaluation_time": "2026-07-23T14:07:36.258717",
+      "evaluation_time": "2026-07-25T16:22:05.271045",
       "test_count": 22,
       "metrics": {
-        "average_precision": 0.975,
-        "average_recall": 0.975,
-        "average_f1": 0.975,
+        "average_precision": 1.0,
+        "average_recall": 1.0,
+        "average_f1": 1.0,
         "false_positive_count": 0,
         "false_positive_total": 2,
         "average_response_time_sec": 0.001
       },
+      "blind_test": {
+        "description": "盲测集：真实处罚案例公开数据（未参与阈值设计），与合成集分开报告以验证泛化能力",
+        "case_count": 5,
+        "average_precision": 1.0,
+        "average_recall": 1.0,
+        "average_f1": 1.0,
+        "normal_correct": 1,
+        "normal_total": 1,
+        "case_details": [
+          {
+            "name": "盲测·康得新 2018（存贷双高）",
+            "expected": [
+              "存贷双高"
+            ],
+            "actual_alerts": [
+              "货币资金(1530000)高于短期借款(587000)，但利息支出(110000)远大于利息收入(26000)，存在'存贷双高'异常，需核查资金真实性"
+            ],
+            "alert_count": 1,
+            "keyword_hits": 1,
+            "matched_alerts": 1,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "elapsed_sec": 0.0,
+            "expected_dimensions": [
+              "financial_misstatement"
+            ],
+            "dimension_hits": {
+              "financial_misstatement": true,
+              "related_party": false,
+              "disclosure_compliance": false,
+              "going_concern": false,
+              "regulatory_penalty": false
+            }
+          },
+          {
+            "name": "盲测·康美药业 2018（关联方资金占用）",
+            "expected": [
+              "其他应收款",
+              "资金占用"
+            ],
+            "actual_alerts": [
+              "其他应收款占总资产比 = 13.83%，超过 5%，需关注资金占用风险"
+            ],
+            "alert_count": 1,
+            "keyword_hits": 2,
+            "matched_alerts": 1,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "elapsed_sec": 0.0,
+            "expected_dimensions": [
+              "related_party"
+            ],
+            "dimension_hits": {
+              "financial_misstatement": false,
+              "related_party": true,
+              "disclosure_compliance": false,
+              "going_concern": false,
+              "regulatory_penalty": false
+            }
+          },
+          {
+            "name": "盲测·乐视网 2018（持续经营危机）",
+            "expected": [
+              "营业收入",
+              "净利润",
+              "连续",
+              "持续经营",
+              "现金流"
+            ],
+            "actual_alerts": [
+              "营业收入同比变动 -77.82%，幅度较大，需关注合理性",
+              "净利润由上期 -1387800 变为本期 -409600，呈亏损收窄（减亏），上期为负致同比百分比不适用，需关注盈利可持续性",
+              "连续两年净利润为负，存在持续经营风险",
+              "经营活动现金流量净额连续两年为负，持续经营风险较高"
+            ],
+            "alert_count": 4,
+            "keyword_hits": 5,
+            "matched_alerts": 4,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "elapsed_sec": 0.001,
+            "expected_dimensions": [
+              "going_concern",
+              "financial_misstatement"
+            ],
+            "dimension_hits": {
+              "financial_misstatement": true,
+              "related_party": false,
+              "disclosure_compliance": false,
+              "going_concern": true,
+              "regulatory_penalty": false
+            }
+          },
+          {
+            "name": "盲测·天神娱乐 2018（商誉减值）",
+            "expected": [
+              "商誉"
+            ],
+            "actual_alerts": [
+              "商誉占净资产比 = 304.17%，超过 30%，存在较大减值风险"
+            ],
+            "alert_count": 1,
+            "keyword_hits": 1,
+            "matched_alerts": 1,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "elapsed_sec": 0.0,
+            "expected_dimensions": [
+              "financial_misstatement",
+              "regulatory_penalty"
+            ],
+            "dimension_hits": {
+              "financial_misstatement": true,
+              "related_party": false,
+              "disclosure_compliance": false,
+              "going_concern": false,
+              "regulatory_penalty": true
+            }
+          },
+          {
+            "name": "盲测·贵州茅台 2022（正常对照）",
+            "expected": "无风险",
+            "actual_count": 0,
+            "correct": true,
+            "alerts": [],
+            "elapsed_sec": 0.0,
+            "expected_dimensions": [],
+            "dimension_hits": {
+              "financial_misstatement": true,
+              "related_party": true,
+              "disclosure_compliance": true,
+              "going_concern": true,
+              "regulatory_penalty": true
+            }
+          }
+        ]
+      },
       "baseline_comparison": {
-        "system_recall": 0.975,
-        "baseline_recall": 0.067,
-        "improvement": 0.908,
+        "system_recall": 1.0,
+        "baseline_recall": 0.077,
+        "improvement": 0.923,
         "system_normal_correct": 2,
         "system_normal_total": 2,
         "baseline_normal_correct": 2,
@@ -71,18 +212,18 @@
         {
           "name": "存贷双高（参考：康得新案）",
           "expected": [
-            "存贷双高",
-            "70%"
+            "存贷双高"
           ],
           "actual_alerts": [
             "货币资金(15000)高于短期借款(12000)，但利息支出(800)远大于利息收入(200)，存在'存贷双高'异常，需核查资金真实性"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
-          "precision": 0.5,
-          "recall": 0.5,
-          "f1": 0.5,
-          "elapsed_sec": 0.01,
+          "matched_alerts": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "elapsed_sec": 0.012,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern"
@@ -99,7 +240,9 @@
           "name": "连续亏损（参考：*ST 类公司）",
           "expected": [
             "持续经营",
-            "连续"
+            "连续",
+            "营业收入",
+            "净利润"
           ],
           "actual_alerts": [
             "营业收入同比变动 -33.33%，幅度较大，需关注合理性",
@@ -108,7 +251,8 @@
             "经营活动现金流量净额连续两年为负，持续经营风险较高"
           ],
           "alert_count": 4,
-          "keyword_hits": 2,
+          "keyword_hits": 4,
+          "matched_alerts": 4,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -137,10 +281,11 @@
           ],
           "alert_count": 3,
           "keyword_hits": 2,
+          "matched_alerts": 3,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -163,10 +308,11 @@
           ],
           "alert_count": 1,
           "keyword_hits": 2,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -188,6 +334,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -234,6 +381,7 @@
           ],
           "alert_count": 4,
           "keyword_hits": 3,
+          "matched_alerts": 4,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -260,10 +408,11 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -286,6 +435,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 2,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -304,18 +454,20 @@
         {
           "name": "营收断崖式下滑",
           "expected": [
-            "营业收入"
+            "营业收入",
+            "净利润"
           ],
           "actual_alerts": [
             "营业收入同比变动 -66.67%，幅度较大，需关注合理性",
             "净利润同比变动 -166.67%，波动显著"
           ],
           "alert_count": 2,
-          "keyword_hits": 1,
+          "keyword_hits": 2,
+          "matched_alerts": 2,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -337,6 +489,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -362,6 +515,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -387,10 +541,11 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -412,10 +567,11 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -437,6 +593,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -462,6 +619,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -483,7 +641,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -498,7 +656,9 @@
           "expected": [
             "存贷双高",
             "持续经营",
-            "应收"
+            "应收",
+            "净利润",
+            "70%"
           ],
           "actual_alerts": [
             "净利润由上期 -3000 变为本期 -8000，呈亏损扩大，上期为负致同比百分比不适用，需关注盈利可持续性",
@@ -510,11 +670,12 @@
             "连续两年净利润为负，存在持续经营风险"
           ],
           "alert_count": 7,
-          "keyword_hits": 3,
+          "keyword_hits": 5,
+          "matched_alerts": 7,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern",
@@ -538,6 +699,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -563,6 +725,7 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
@@ -588,10 +751,11 @@
           ],
           "alert_count": 1,
           "keyword_hits": 1,
+          "matched_alerts": 1,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "regulatory_penalty"
           ],
@@ -615,6 +779,7 @@
           ],
           "alert_count": 2,
           "keyword_hits": 2,
+          "matched_alerts": 2,
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,

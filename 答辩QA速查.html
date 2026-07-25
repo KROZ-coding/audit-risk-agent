@@ -335,19 +335,27 @@
     <!-- ═══════ FIX LIST ═══════ -->
     <section class="fixsec" id="fixlist" data-title="修复清单 优先级 具体改法">
       <h3>🛠 可执行修复清单</h3>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:18px">按优先级 P0→P3 排列。每项含<b style="color:var(--accent)">位置 / 现象 / 改法 / 验收</b>。</p>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:10px">按优先级 P0→P3 排列。每项含<b style="color:var(--accent)">位置 / 现象 / 改法 / 验收</b>。</p>
+      <div style="background:rgba(94,230,168,.08);border:1px solid rgba(94,230,168,.25);border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:14px">
+        ✅ <b>状态更新（v3.1）：本清单全部 12 项均已修复并由回归测试/验收锁定。</b><br>
+        关键证据：滑窗配对安全裁剪 + tool_ledger 台账（<code>agent.py</code>，测试 <code>test_tool_ledger_window.py</code>）；
+        <code>_AgentWrapper.astream</code> 补齐流式后处理；检查点改 <code>AsyncSqliteSaver</code> 持久化（<code>memory_saver.py</code>）；
+        ChromaDB 缓存改内容指纹；存货 <code>is None</code> 判定与 <code>_pct_change</code> 负基数定性化；JSON 提取带字符串状态机；
+        CORS 关闭 credentials；默认监听 127.0.0.1 + 可选 <code>X-API-Key</code> 鉴权；/upload 路径净化 + 流式落盘；
+        Dockerfile 预热改 chromadb 默认嵌入函数（<code>main.py</code> / <code>Dockerfile</code>）。下列条目保留原始「现象/改法/验收」作为技术存档。
+      </div>
 
       <!-- P0 -->
       <div id="f-p0"></div>
       <div class="fix p0" data-title="滑动窗口 tool 配对 reducer trim_messages">
-        <div class="head"><span class="tag">P0 致命</span><span class="title">修复消息滑动窗口切断 tool 配对</span></div>
+        <div class="head"><span class="tag">P0 已修复 ✅</span><span class="title">修复消息滑动窗口切断 tool 配对</span></div>
         <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_windowed_messages</code> / <code>AgentState.messages</code></div>
         <div class="row"><b>现象</b>：<code>[-40:]</code> 粗暴切片可能保留 AIMessage(tool_calls) 却挤掉配对 ToolMessage，或留孤儿 ToolMessage → LLM 返回 400。</div>
         <div class="row"><b>改法</b>：改用 <code>langchain_core.messages.trim_messages(msgs, strategy="last", token_counter=len, start_on="human", include_system=True)</code>；或自写按"AIMessage+其全部 ToolMessage 为原子块"裁剪，禁止切开配对。</div>
         <div class="row"><b>验收</b>：构造 &gt;40 条含多轮 tool 调用的会话，断言不再出现 400，且每个 tool_call 都有应答。</div>
       </div>
       <div class="fix p0" data-title="astream __getattr__ 绕过 post_process 辩论复核 流式">
-        <div class="head"><span class="tag">P0 致命</span><span class="title">流式链路补齐后处理（辩论/兜底导出/评分）</span></div>
+        <div class="head"><span class="tag">P0 已修复 ✅</span><span class="title">流式链路补齐后处理（辩论/兜底导出/评分）</span></div>
         <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_AgentWrapper</code>（缺 astream）+ <code>src/main.py · stream_sse</code></div>
         <div class="row"><b>现象</b>：<code>astream</code> 经 <code>__getattr__</code> 透传底层 agent，绕过 <code>_post_process</code>，<code>/stream_run</code> 丢失三方辩论、兜底导出、综合评分。</div>
         <div class="row"><b>改法</b>：给 <code>_AgentWrapper</code> 显式实现 <code>async def astream(...)</code>：逐 chunk yield 给前端做进度，同时累积 messages；生成器末尾调用 <code>self._post_process({"messages":acc})</code>，把辩论结果作为最后一个 SSE 事件推出。</div>
@@ -357,7 +365,7 @@
       <!-- P1 -->
       <div id="f-p1"></div>
       <div class="fix p1" data-title="checkpointer 落库 SqliteSaver 内存泄漏 db.py 悬空 多worker">
-        <div class="head"><span class="tag">P1 架构债</span><span class="title">Checkpointer 落库（一箭三雕）</span></div>
+        <div class="head"><span class="tag">P1 已修复 ✅</span><span class="title">Checkpointer 落库（一箭三雕）</span></div>
         <div class="loc">📍 <code>src/storage/memory/memory_saver.py</code> + <code>src/storage/database/db.py</code></div>
         <div class="row"><b>现象</b>：<code>MemorySaver</code> 内存泄漏(永不淘汰)+重启丢状态+锁死单 worker；同时 <code>db.py</code> 完全悬空未被调用。</div>
         <div class="row"><b>改法</b>：把 <code>_create_fallback_checkpointer</code> 换成 <code>langgraph.checkpoint.sqlite.SqliteSaver</code>（或 <code>Postgres</code>），复用 <code>get_db_url()</code> 的连接；本地默认 SQLite 文件、配 <code>PGDATABASE_URL</code> 时用 PG。同时解开 <code>workers&gt;1</code> 的限制。</div>
@@ -367,28 +375,28 @@
       <!-- P2 -->
       <div id="f-p2"></div>
       <div class="fix p2" data-title="ChromaDB 缓存失效 md5 哈希 内容指纹">
-        <div class="head"><span class="tag">P2 质量</span><span class="title">RAG 缓存失效改为内容哈希</span></div>
+        <div class="head"><span class="tag">P2 已修复 ✅</span><span class="title">RAG 缓存失效改为内容哈希</span></div>
         <div class="loc">📍 <code>src/local_knowledge.py</code> · <code>load()</code> 缓存判断</div>
         <div class="row"><b>现象</b>：<code>count() != len(chunks)</code> 只感知块数量，法规内容原地修改（条款数不变）会命中脏缓存。</div>
         <div class="row"><b>改法</b>：对每块存 <code>metadata["hash"]=md5(chunk)</code>，或对整个 kb 目录算指纹并存入 collection metadata；指纹不一致才 <code>delete_collection</code> 重建。</div>
         <div class="row"><b>验收</b>：改动任一 txt 内容后（不增删条款）检索能返回新内容。</div>
       </div>
       <div class="fix p2" data-title="存货 真值陷阱 is None inv_p or inv_c 数值">
-        <div class="head"><span class="tag">P2 质量</span><span class="title">修复数值型字段的真值陷阱</span></div>
+        <div class="head"><span class="tag">P2 已修复 ✅</span><span class="title">修复数值型字段的真值陷阱</span></div>
         <div class="loc">📍 <code>src/tools/financial_calculator.py</code> · 存货周转（及全文件同类）</div>
         <div class="row"><b>现象</b>：<code>inv_p or inv_c</code> 在 <code>inv_p==0</code>（合法）时错误替换为 inv_c，指标失真。</div>
         <div class="row"><b>改法</b>：全局替换为 <code>inv_p if inv_p is not None else inv_c</code>；排查所有 <code>x or default</code> 处理数值且 0 合法的位置。</div>
         <div class="row"><b>验收</b>：单测 <code>inv_p=0</code> 时 <code>avg_inv==inv_c/2</code> 而非 <code>inv_c</code>。</div>
       </div>
       <div class="fix p2" data-title="JSON 提取 大括号 字符串 状态机 代码块">
-        <div class="head"><span class="tag">P2 质量</span><span class="title">健壮化风险 JSON 提取</span></div>
+        <div class="head"><span class="tag">P2 已修复 ✅</span><span class="title">健壮化风险 JSON 提取</span></div>
         <div class="loc">📍 <code>src/agents/agent.py</code> · <code>_extract_risk_json</code></div>
         <div class="row"><b>现象</b>：大括号深度计数不识别字符串内的 <code>{}</code>，描述含括号时抠出残缺 JSON、静默丢结构化报告。</div>
         <div class="row"><b>改法</b>：扫描时维护 <code>in_string</code>/<code>escape</code> 状态，仅在字符串外计数括号；或提示词强制 LLM 用 ```json 代码块包裹后定向提取。</div>
         <div class="row"><b>验收</b>：description 含 <code>{}</code> 的样例能被正确解析为完整台账。</div>
       </div>
       <div class="fix p2" data-title="pct_change 负基数 扭亏 减亏 定性">
-        <div class="head"><span class="tag">P2 质量</span><span class="title">同比变动率负基数语义修正</span></div>
+        <div class="head"><span class="tag">P2 已修复 ✅</span><span class="title">同比变动率负基数语义修正</span></div>
         <div class="loc">📍 <code>src/tools/financial_calculator.py</code> · <code>_pct_change</code></div>
         <div class="row"><b>现象</b>：上期为负、本期跨零时输出误导性百分数（如 -100→+50 显示 +150%）。</div>
         <div class="row"><b>改法</b>：当 <code>previous&lt;0</code> 时不返回百分比，改返回定性标记 <code>"扭亏为盈"/"减亏"/"亏损扩大"</code>。</div>
@@ -398,27 +406,27 @@
       <!-- P3 -->
       <div id="f-p3"></div>
       <div class="fix p3" data-title="CORS 通配符 credentials 白名单">
-        <div class="head"><span class="tag">P3 安全</span><span class="title">修正 CORS 矛盾配置</span></div>
+        <div class="head"><span class="tag">P3 已修复 ✅</span><span class="title">修正 CORS 矛盾配置</span></div>
         <div class="loc">📍 <code>src/main.py</code> · <code>CORSMiddleware</code></div>
         <div class="row"><b>改法</b>：本地工具设 <code>allow_credentials=False</code> 保留 <code>*</code>；若需凭证则改 <code>allow_origins=[显式白名单]</code>。</div>
       </div>
       <div class="fix p3" data-title="鉴权 X-API-Key 127.0.0.1 绑定">
-        <div class="head"><span class="tag">P3 安全</span><span class="title">增加最小鉴权 + 收敛监听地址</span></div>
+        <div class="head"><span class="tag">P3 已修复 ✅</span><span class="title">增加最小鉴权 + 收敛监听地址</span></div>
         <div class="loc">📍 <code>src/main.py</code> · 中间件 / <code>uvicorn.run(host=...)</code></div>
         <div class="row"><b>改法</b>：默认 <code>host=127.0.0.1</code>（对外需显式开）；加 <code>X-API-Key</code> 中间件，值读环境变量，对 <code>/run /stream_run /upload* /api/*</code> 写操作强制校验。</div>
       </div>
       <div class="fix p3" data-title="路径穿越 basename 净化 upload">
-        <div class="head"><span class="tag">P3 安全</span><span class="title">修复 /upload 路径穿越</span></div>
+        <div class="head"><span class="tag">P3 已修复 ✅</span><span class="title">修复 /upload 路径穿越</span></div>
         <div class="loc">📍 <code>src/main.py</code> · <code>upload_files</code></div>
         <div class="row"><b>改法</b>：落盘前 <code>safe = re.sub(r'[&lt;&gt;:"/\\|?*]','_', os.path.basename(f.filename))</code>，与 <code>/api/upload_kb</code> 的净化逻辑对齐。</div>
       </div>
       <div class="fix p3" data-title="流式落盘 内存 OOM chunk">
-        <div class="head"><span class="tag">P3 部署</span><span class="title">上传改流式落盘防 OOM</span></div>
+        <div class="head"><span class="tag">P3 已修复 ✅</span><span class="title">上传改流式落盘防 OOM</span></div>
         <div class="loc">📍 <code>src/main.py</code> · <code>upload_files</code></div>
         <div class="row"><b>改法</b>：分块 <code>await f.read(1MB)</code> 循环写入并累计字节，超 <code>MAX_UPLOAD_SIZE</code> 立即中断并删除半成品文件。</div>
       </div>
       <div class="fix p3" data-title="Dockerfile sentence-transformers 依赖缺失 embedding 预热">
-        <div class="head"><span class="tag">P3 部署</span><span class="title">修复 Dockerfile 构建断裂</span></div>
+        <div class="head"><span class="tag">P3 已修复 ✅</span><span class="title">修复 Dockerfile 构建断裂</span></div>
         <div class="loc">📍 <code>Dockerfile</code> · 第 31 行模型预热</div>
         <div class="row"><b>改法</b>：改为 chromadb 自带 <code>python -c "from chromadb.utils import embedding_functions as e; e.DefaultEmbeddingFunction()(['warmup'])"</code>；或在 <code>pyproject.toml</code> 显式加 <code>sentence-transformers</code> 依赖。</div>
         <div class="row"><b>验收</b>：<code>docker build</code> 全程通过并能离线检索。</div>

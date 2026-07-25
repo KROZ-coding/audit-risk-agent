@@ -70,7 +70,7 @@ validate_financial_data → calculate_financial_indicators → check_disclosure_
 ```
 
 - 顺序与规则由 `config/agent_llm_config.json` 的 `sp` 字段约束，进度映射在 `src/main.py` 的 `TOOL_PIPELINE`。
-- 新增/重命名工具时，须同步更新：`src/agents/agent.py`（注册）、`config` 的 `tools` 列表、`main.py` 的 `TOOL_NAME_TO_STEP`。
+- 新增/重命名工具时，须同步更新：`src/agents/agent.py`（注册）、`config` 的 `tools` 列表、`main.py` 的 `TOOL_NAME_TO_STEP`；同时同步工具计数表述——`src/agents/agent.py` 中 `build_agent` docstring 与 `README.md` 项目结构里的「N 个核心审计工具」（当前为 13，须与 `build_agent` 的 `tools` 列表长度、`config` 的 `tools` 数组长度一致）。
 - **校验命令**：`uv run pytest tests/ -q`（验证核心工具行为不回归）。
 
 ### 2. 报告导出（PDF + Excel 缺一不可）

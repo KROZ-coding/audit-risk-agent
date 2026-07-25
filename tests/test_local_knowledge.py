@@ -60,8 +60,14 @@ class _FakeClientQueryFails:
 
 
 def _fresh_kb():
-    """构建独立实例，避免 get_knowledge_base 单例造成跨用例状态污染"""
-    return LocalKnowledgeBase()
+    """构建独立实例，避免 get_knowledge_base 单例造成跨用例状态污染。
+
+    显式传入项目内的 knowledge_base 目录，不依赖 COZE_WORKSPACE_PATH 环境变量——
+    同进程内其他测试（如 test_db_smoke 导入 db.py 触发 load_dotenv）可能将 .env
+    中的路径注入环境，若该值过期会导致知识库目录解析到不存在的位置。
+    """
+    kb_dir = os.path.join(os.path.dirname(__file__), "..", "knowledge_base")
+    return LocalKnowledgeBase(kb_dir=kb_dir)
 
 
 class TestChromaInitFailureFallback:

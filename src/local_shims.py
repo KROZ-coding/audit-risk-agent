@@ -63,11 +63,38 @@ request_context = _RequestContextProxy()
 LOG_FILE = os.path.join(os.getcwd(), "app.log")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
+# 捕获原始 LogRecord 工厂（仅一次），保证重复安装不会层层包裹
+_BASE_LOG_RECORD_FACTORY = logging.getLogRecordFactory()
+
+
+def _run_id_log_record_factory(*args, **kwargs):
+    """LogRecord 工厂：从 request_context 注入当前 run_id。
+
+    每条日志记录都会带上 run_id 属性（无上下文时为 '-'），从而保证格式串中的
+    %(run_id)s 永不缺失，同一次分析（run）内的工具链日志可按 run 关联。
+    """
+    record = _BASE_LOG_RECORD_FACTORY(*args, **kwargs)
+    run_id = "-"
+    try:
+        ctx = request_context.get()
+        if ctx is not None and getattr(ctx, "run_id", ""):
+            run_id = ctx.run_id
+    except Exception:
+        run_id = "-"
+    record.run_id = run_id
+    return record
+
+
+def _install_run_id_log_record_factory():
+    """幂等安装 run_id 工厂：始终以捕获的原始工厂为基准，避免重复包裹。"""
+    logging.setLogRecordFactory(_run_id_log_record_factory)
+
 
 def setup_logging(log_file=None, max_bytes=100*1024*1024, backup_count=5,
                   log_level="INFO", use_json_format=False, console_output=True):
+    _install_run_id_log_record_factory()
     handlers = []
-    fmt = "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+    fmt = "%(asctime)s [%(levelname)s] [run=%(run_id)s] %(name)s - %(message)s"
     formatter = logging.Formatter(fmt)
     if console_output:
         ch = logging.StreamHandler()

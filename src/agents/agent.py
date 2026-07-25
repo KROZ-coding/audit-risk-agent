@@ -9,6 +9,7 @@
 """
 import os
 import json
+import time
 import logging
 from typing import Annotated
 from langgraph.prebuilt import create_react_agent
@@ -90,11 +91,22 @@ ARBITER_SYSTEM_PROMPT = """你是审计仲裁人(Arbiter)，一位拥有20年经
 【遗漏补充】：双方辩论中均未充分覆盖的风险点（如有）
 【仲裁结论】：通过 / 需补充 / 需重新分析
 【建议】：建议追加的审计程序或关注的额外指标
+【裁定JSON】：机器可读裁定，单行输出，格式严格为：
+{"adjustments":[{"risk_id":"R001","final_level":"重大","reason":"裁定理由"}],"verdict":"通过"}
+其中 final_level 只能取 重大/重要/一般；仅列出需调整等级或需补充备注的条目，
+无任何调整时 adjustments 输出空数组；本行将被系统解析并回写风险台账，务必保持合法 JSON。
 
 注意：使用审慎、中立的措辞，不得作出定性结论。你的裁定须基于证据和审计准则。"""
 
 # 复核功能开关，可通过环境变量 REVIEW_ENABLED=false 关闭
 REVIEW_ENABLED = os.getenv("REVIEW_ENABLED", "true").lower() != "false"
+
+# ─── 唯一 LLM 依赖的最小可靠性恢复配置（有限次重试 + 指数退避）───
+# 系统仅依赖单一 LLM（DeepSeek/OpenAI 协议）。为避免瞬时故障（限流 / 超时 /
+# 网络抖动）直接导致分析失败，对 LLM 调用增加有限次重试与指数退避；重试全部
+# 耗尽后不静默吞掉，交由调用方按『降级可见』原则向用户提示。
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))          # 首次失败后的额外重试次数（有限）
+LLM_RETRY_BASE_DELAY = float(os.getenv("LLM_RETRY_BASE_DELAY", "1.5"))  # 指数退避基准秒数
 
 # LLM 配置文件路径（相对于工作目录）
 LLM_CONFIG = "config/agent_llm_config.json"
@@ -304,6 +316,137 @@ def _extract_risk_json(text: str) -> str | None:
         return None
 
 
+# 仲裁回写允许的风险等级白名单（非法等级一律丢弃，防止 LLM 输出污染台账）
+_ARBITER_VALID_LEVELS = {"重大", "重要", "一般"}
+
+
+def _extract_arbiter_adjustments(debate_text: str) -> list:
+    """从辩论结果文本中提取【裁定JSON】的 adjustments 列表。
+
+    解析策略：定位最后一个【裁定JSON】标记，从其后首个 { 开始用
+    字符串感知的大括号配对扫描截取 JSON（与 _extract_risk_json 同款状态机，
+    防裁定理由内含括号导致截断）。任一环节失败均返回空列表（不阻断主流程）。
+
+    Args:
+        debate_text: _run_debate 返回的三方拼接文本
+
+    Returns:
+        adjustments 列表（每项含 risk_id / final_level / reason），失败时为 []
+    """
+    marker = "【裁定JSON】"
+    idx = debate_text.rfind(marker)
+    if idx < 0:
+        return []
+    brace_start = debate_text.find("{", idx)
+    if brace_start < 0:
+        return []
+    # 字符串感知的大括号配对扫描
+    depth, end = 0, -1
+    in_string = False
+    escape = False
+    for i in range(brace_start, len(debate_text)):
+        ch = debate_text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end < 0:
+        return []
+    try:
+        parsed = json.loads(debate_text[brace_start:end])
+        adjustments = parsed.get("adjustments", [])
+        return adjustments if isinstance(adjustments, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def _apply_arbiter_adjustments(risk_json: str, adjustments: list):
+    """按仲裁裁定回写风险台账的等级与备注（白名单校验 + 可追溯）。
+
+    回写规则（防结论污染）：
+    - 仅接受 risk_id 精确匹配到台账内已有条目的裁定，不新增条目；
+    - final_level 必须在 _ARBITER_VALID_LEVELS 白名单内，否则丢弃；
+    - 等级发生变更时保留 original_level 字段可追溯，同时写入 arbiter_note 裁定理由。
+
+    Args:
+        risk_json: 风险台账 JSON 字符串
+        adjustments: _extract_arbiter_adjustments 解析出的裁定列表
+
+    Returns:
+        (回写后的 risk_json, 实际应用的裁定条数)；无有效裁定时原样返回。
+    """
+    try:
+        parsed = json.loads(risk_json)
+    except (json.JSONDecodeError, TypeError):
+        return risk_json, 0
+    details = parsed.get("risk_details") or []
+    by_id = {str(rd.get("risk_id", "")): rd for rd in details if isinstance(rd, dict)}
+    applied = 0
+    for adj in adjustments:
+        if not isinstance(adj, dict):
+            continue
+        rd = by_id.get(str(adj.get("risk_id", "")))
+        level = adj.get("final_level", "")
+        if rd is None or level not in _ARBITER_VALID_LEVELS:
+            continue
+        if rd.get("level") != level:
+            rd["original_level"] = rd.get("level", "")
+            rd["level"] = level
+        rd["arbiter_note"] = str(adj.get("reason", ""))[:500]
+        applied += 1
+    if applied:
+        return json.dumps(parsed, ensure_ascii=False), applied
+    return risk_json, 0
+
+
+def _invoke_llm_with_retry(llm, messages, *, label="LLM"):
+    """对单次 ChatOpenAI 调用增加有限次重试 + 指数退避。
+
+    为唯一的 LLM 依赖提供最小可靠性恢复路径：瞬时故障时按指数退避重试至多
+    LLM_MAX_RETRIES 次；若重试全部失败，向上抛出最后一次异常，由调用方按
+    『降级可见』原则处理（绝不静默返回空结果，避免『看似成功实则缺失』的断裂）。
+
+    Args:
+        llm: ChatOpenAI 实例
+        messages: 传给 llm.invoke 的消息列表
+        label: 日志标识，便于定位是哪一步调用失败
+
+    Returns:
+        llm.invoke 的返回值
+
+    Raises:
+        Exception: 有限次重试全部失败后抛出的最后一次异常
+    """
+    last_err = None
+    for attempt in range(LLM_MAX_RETRIES + 1):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:  # noqa: BLE001 - 瞬时故障统一重试，最终失败向上抛出
+            last_err = e
+            if attempt >= LLM_MAX_RETRIES:
+                break
+            delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                f"{label} 调用失败（第 {attempt + 1}/{LLM_MAX_RETRIES + 1} 次），"
+                f"{delay:.1f}s 后重试: {e}"
+            )
+            time.sleep(delay)
+    raise last_err
+
+
 class _AgentWrapper:
     """Agent 包装器：在 Agent 执行完成后兜底检查 PDF/Excel 导出是否被调用。
 
@@ -442,7 +585,37 @@ class _AgentWrapper:
         except Exception:
             pass
 
-        # 第五步：补调遗漏的导出工具，并将下载链接追加到回复中
+        # ─── 第五步：多智能体辩论机制（前置于导出兜底，替代原有的 Agent-as-a-Judge 复核）───
+        # 辩论仲裁的【裁定JSON】会回写 risk_details 的等级/备注（白名单校验，保留
+        # original_level 可追溯），因此必须先于兜底导出执行，使 PDF/Excel 反映仲裁后
+        # 的最终等级，让辩论对结构化结论产生实质影响而非仅附录文本。
+        # （若 LLM 已自行调用过导出工具，已落盘文件不受回写影响，仲裁意见仍随回复展示）
+        # Flash 快速模式：若用户消息中包含“快速模式”关键词则跳过辩论
+        skip_debate = any(
+            "快速模式" in str(m.content)
+            for m in messages if hasattr(m, 'content') and isinstance(m.content, str)
+        )
+        review_block = None
+        if REVIEW_ENABLED and not skip_debate:
+            debate_result = self._run_debate(risk_json)
+            if debate_result:
+                # 仲裁裁定回写：解析【裁定JSON】并按白名单规则修正风险等级/备注
+                adjustments = _extract_arbiter_adjustments(debate_result)
+                if adjustments:
+                    risk_json, applied = _apply_arbiter_adjustments(risk_json, adjustments)
+                    if applied:
+                        logger.info(f"仲裁裁定已回写风险台账：{applied} 条等级/备注调整")
+                review_block = f"\n\n---\n### 🔍 审计合伙人复核意见\n{debate_result}"
+            else:
+                # 降级可见原则：多智能体复核失败不再静默——除 _run_debate 内写日志外，
+                # 还须在报告中追加醒目提示，避免用户误以为结论已通过复核环节
+                # （与 PDF/Excel/综合评分兜底失败的可见降级保持一致）。
+                review_block = (
+                    "\n\n---\n### 🔍 审计合伙人复核意见\n"
+                    "⚠️ 多智能体复核未能完成，本次结论未经过复核环节，请结合人工判断审慎采信（详见服务日志）。"
+                )
+
+        # 第六步：补调遗漏的导出工具（使用仲裁回写后的台账），并将下载链接追加到回复中
         # 降级可见原则：兜底导出失败时不再静默吞掉——除写日志外，还须在返回给用户的
         # 报告文本中追加醒目失败提示，避免「分析看似成功、报告实则缺失」的静默断裂。
         links = ""
@@ -465,20 +638,12 @@ class _AgentWrapper:
             else:
                 last_ai.content.append(links)
 
-        # ─── 多智能体辩论机制（替代原有的 Agent-as-a-Judge 复核）───
-        # Flash 快速模式：若用户消息中包含“快速模式”关键词则跳过辩论
-        skip_debate = any(
-            "快速模式" in str(m.content)
-            for m in messages if hasattr(m, 'content') and isinstance(m.content, str)
-        )
-        if REVIEW_ENABLED and not skip_debate:
-            debate_result = self._run_debate(risk_json)
-            if debate_result:
-                review_text = f"\n\n---\n### 🔍 审计合伙人复核意见\n{debate_result}"
-                if isinstance(last_ai.content, str):
-                    last_ai.content += review_text
-                else:
-                    last_ai.content.append(review_text)
+        # 第七步：将辩论复核意见（或失败提示）追加到回复末尾（保持链接在前的展示顺序）
+        if review_block:
+            if isinstance(last_ai.content, str):
+                last_ai.content += review_block
+            else:
+                last_ai.content.append(review_block)
 
         # ─── 综合评分兜底：确保输出中始终包含 comprehensive_score JSON ───
         try:
@@ -580,6 +745,7 @@ class _AgentWrapper:
             from langchain_core.messages import SystemMessage, HumanMessage
 
             # 创建辩论专用 LLM 实例（使用较低温度确保严谨）
+            # max_retries=0：重试/退避统一由 _invoke_llm_with_retry 控制，避免与 SDK 内置重试叠加
             debate_llm = ChatOpenAI(
                 model=os.getenv("REVIEW_MODEL", "deepseek-chat"),
                 api_key=os.getenv("OPENAI_API_KEY"),
@@ -587,40 +753,41 @@ class _AgentWrapper:
                 temperature=0.2,
                 max_tokens=2048,
                 timeout=180,  # 辩论需要三轮调用，给予更长超时
+                max_retries=0,
             )
 
             # Step 1: 风险关注方分析
             logger.info("辩论 Step 1/3: 风险关注方分析中...")
-            advocate_response = debate_llm.invoke([
+            advocate_response = _invoke_llm_with_retry(debate_llm, [
                 SystemMessage(content=ADVOCATE_SYSTEM_PROMPT),
                 HumanMessage(content=f"请审查以下审计风险分析报告的风险台账。\n\n风险台账数据：\n{risk_json[:6000]}"),
-            ])
+            ], label="辩论·风险关注方")
             advocate_text = advocate_response.content or ""
             logger.info(f"风险关注方分析完成（{len(advocate_text)}字）")
 
             # Step 2: 风险否定方反驳
             logger.info("辩论 Step 2/3: 风险否定方反驳中...")
-            skeptic_response = debate_llm.invoke([
+            skeptic_response = _invoke_llm_with_retry(debate_llm, [
                 SystemMessage(content=SKEPTIC_SYSTEM_PROMPT),
                 HumanMessage(content=(
                     f"请对风险关注方的意见进行逐条反驳。\n\n"
                     f"风险台账数据：\n{risk_json[:4000]}\n\n"
                     f"风险关注方意见：\n{advocate_text[:3000]}"
                 )),
-            ])
+            ], label="辩论·风险否定方")
             skeptic_text = skeptic_response.content or ""
             logger.info(f"风险否定方反驳完成（{len(skeptic_text)}字）")
 
             # Step 3: 裁判仲裁
             logger.info("辩论 Step 3/3: 裁判仲裁中...")
-            arbiter_response = debate_llm.invoke([
+            arbiter_response = _invoke_llm_with_retry(debate_llm, [
                 SystemMessage(content=ARBITER_SYSTEM_PROMPT),
                 HumanMessage(content=(
                     f"请综合双方辩论意见，对争议风险进行逐条裁定。\n\n"
                     f"风险关注方意见：\n{advocate_text[:2500]}\n\n"
                     f"风险否定方意见：\n{skeptic_text[:2500]}"
                 )),
-            ])
+            ], label="辩论·裁判仲裁")
             arbiter_text = arbiter_response.content or ""
             logger.info(f"裁判仲裁完成（{len(arbiter_text)}字）")
 
@@ -646,7 +813,7 @@ def build_agent(ctx=None):
     1. 读取 agent_llm_config.json 获取 LLM 参数（模型名、温度、top_p 等）
     2. 从环境变量获取 API Key 和 Base URL
     3. 创建 ChatOpenAI 实例（兼容 DeepSeek API）
-    4. 注册全部 11 个审计工具
+    4. 注册全部 13 个审计工具
     5. 通过 LangGraph create_react_agent 构建 ReAct 模式 Agent
     6. 用 _AgentWrapper 包装以提供兜底导出机制
 
@@ -669,6 +836,10 @@ def build_agent(ctx=None):
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com")
 
     # 创建 LLM 实例（ChatOpenAI 兼容 DeepSeek 等 OpenAI 协议的服务）
+    # max_retries：对唯一 LLM 依赖的最小可靠性恢复——主 Agent 的模型调用发生在
+    # LangGraph 图内部，无法逐次包裹，故采用 SDK 内置的有限次重试 + 指数退避应对
+    # 瞬时故障；重试全部耗尽后异常会沿 ainvoke/invoke 上抛，由 main.py 以可见错误
+    # 呈现给用户（SSE error / HTTP 错误），不静默。
     llm = ChatOpenAI(
         model=cfg['config'].get("model", "deepseek-chat"),
         api_key=api_key,
@@ -678,6 +849,7 @@ def build_agent(ctx=None):
         max_tokens=cfg['config'].get('max_completion_tokens', 32768),
         streaming=True,
         timeout=cfg['config'].get('timeout', 600),
+        max_retries=LLM_MAX_RETRIES,
         default_headers=default_headers(ctx) if ctx else {},
     )
 

@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional, List
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from langchain_core.runnables import RunnableConfig
@@ -33,9 +33,7 @@ from local_shims import (
     AsyncTaskRuntime, AsyncTaskStorageError, async_task_config,
     extract_biz_context, parse_deadline_sec, HEADER_X_RUN_ID,
 )
-from storage.database.db import get_session, get_engine
 from storage.memory.memory_saver import get_memory_saver
-from storage.database.shared.model import Base
 
 setup_logging(
     log_file=LOG_FILE,
@@ -51,15 +49,17 @@ TIMEOUT_SECONDS = 900
 
 TOOL_PIPELINE = [
     ("parse_pdf_report",                  "解析年报文件",     8),
-    ("calculate_financial_indicators",    "计算财务指标",    18),
-    ("validate_financial_data",           "校验财务数据",    28),
-    ("search_regulations",                "检索法规条文",    38),
-    ("compare_multi_year",               "多年数据对比",    48),
-    ("generate_risk_heatmap",             "生成风险热力图",  58),
-    ("generate_radar_chart",              "生成财务雷达图",  68),
-    ("generate_trend_chart",              "生成趋势折线图",  75),
-    ("export_pdf_report",                 "导出 PDF 报告",   85),
-    ("export_excel_report",               "导出 Excel 底稿", 93),
+    ("validate_financial_data",           "校验财务数据",    16),
+    ("calculate_financial_indicators",    "计算财务指标",    26),
+    ("check_disclosure_compliance",       "检查披露合规",    36),
+    ("search_regulations",                "检索法规条文",    46),
+    ("compare_multi_year",               "多年数据对比",    54),
+    ("calculate_comprehensive_score",     "综合风险评分",    64),
+    ("generate_risk_heatmap",             "生成风险热力图",  72),
+    ("generate_radar_chart",              "生成财务雷达图",  80),
+    ("generate_trend_chart",              "生成趋势折线图",  86),
+    ("export_pdf_report",                 "导出 PDF 报告",   92),
+    ("export_excel_report",               "导出 Excel 底稿", 97),
 ]
 
 TOOL_NAME_TO_STEP = {name: (label, pct) for name, label, pct in TOOL_PIPELINE}
@@ -279,13 +279,30 @@ os.makedirs(LOCAL_STORAGE, exist_ok=True)
 app.mount("/local_storage", StaticFiles(directory=LOCAL_STORAGE), name="local_storage")
 
 # ── CORS（允许前端跨域调用）──
+# 安全说明：按 CORS 规范，allow_credentials=True 与通配符 origins 互斥且危险。
+# 本服务为本地工具、前端同源调用，不依赖跨域凭证，故关闭 credentials 保留通配符；
+# 若未来需要凭证，必须将 allow_origins 改为显式白名单。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作接口强制校验 X-API-Key ──
+# 默认不配置即完全放行，保证本地演示零摩擦；对外暴露服务时在 .env 中设置。
+_PROTECTED_PREFIXES = ("/run", "/stream_run", "/upload", "/api/upload_kb", "/api/evaluate/run")
+
+
+@app.middleware("http")
+async def api_key_guard(request: Request, call_next):
+    """写操作接口的 X-API-Key 校验中间件（APP_API_KEY 未配置时直接放行）。"""
+    expected = os.getenv("APP_API_KEY", "")
+    if expected and request.url.path.startswith(_PROTECTED_PREFIXES):
+        if request.headers.get("X-API-Key") != expected:
+            return JSONResponse({"detail": "unauthorized: 缺少或错误的 X-API-Key"}, status_code=401)
+    return await call_next(request)
 
 UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "zhinengti_uploads")
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024
@@ -560,27 +577,41 @@ async def upload_files(files: List[UploadFile] = File(...)):
             })
             continue
 
-        unique_name = f"{uuid.uuid4().hex[:8]}_{f.filename}"
+        # 路径穿越防护：剥离路径成分并净化非法字符（与 /api/upload_kb 的净化逻辑对齐），
+        # 防止构造 "../../../evil" 之类文件名逃逸出 UPLOAD_DIR
+        import re as _re
+        safe_name = _re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(f.filename or "file"))
+        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
         save_path = os.path.join(UPLOAD_DIR, unique_name)
 
         try:
-            content = await f.read()
-            if len(content) > MAX_UPLOAD_SIZE:
+            # 流式落盘：分块读取边写边计数，内存峰值仅一个 chunk（1MB）；
+            # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM
+            size = 0
+            oversize = False
+            with open(save_path, "wb") as out:
+                while chunk := await f.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_SIZE:
+                        oversize = True
+                        break
+                    out.write(chunk)
+            if oversize:
+                os.remove(save_path)
                 results.append({
                     "filename": f.filename,
                     "status": "error",
-                    "error": f"文件大小 ({len(content)} bytes) 超过限制 100MB",
+                    "error": "文件大小超过限制 100MB（已中断接收并清理半成品文件）",
                 })
                 continue
 
-            with open(save_path, "wb") as out:
-                out.write(content)
-
             extracted_text = ""
+            page_count = None
             if ext == ".pdf":
                 try:
                     from pypdf import PdfReader
                     reader = PdfReader(save_path)
+                    page_count = len(reader.pages)
                     text_parts = []
                     for i, page in enumerate(reader.pages):
                         page_text = page.extract_text()
@@ -606,15 +637,17 @@ async def upload_files(files: List[UploadFile] = File(...)):
             elif ext in (".xlsx", ".xls", ".csv"):
                 # Excel/CSV 解析：使用 pandas 读取并转为文本
                 try:
-                    import io
                     import pandas as pd
                     if ext == ".csv":
                         import chardet
-                        detected = chardet.detect(content)
+                        # 编码探测仅取文件头 256KB 采样，避免整文件读入内存
+                        with open(save_path, "rb") as rf:
+                            sample = rf.read(256 * 1024)
+                        detected = chardet.detect(sample)
                         encoding = detected.get("encoding", "utf-8") or "utf-8"
-                        df = pd.read_csv(io.BytesIO(content), encoding=encoding)
+                        df = pd.read_csv(save_path, encoding=encoding)
                     else:
-                        df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
+                        df = pd.read_excel(save_path, engine="openpyxl")
                     lines = []
                     for _, row in df.iterrows():
                         parts = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip()]
@@ -628,11 +661,12 @@ async def upload_files(files: List[UploadFile] = File(...)):
             elif ext in (".html", ".htm"):
                 # HTML 解析：去除标签后提取纯文本
                 try:
-                    import re as _re
                     import chardet
-                    detected = chardet.detect(content)
+                    with open(save_path, "rb") as rf:
+                        raw_bytes = rf.read()
+                    detected = chardet.detect(raw_bytes[:256 * 1024])
                     encoding = detected.get("encoding", "utf-8") or "utf-8"
-                    raw_text = content.decode(encoding, errors="replace")
+                    raw_text = raw_bytes.decode(encoding, errors="replace")
                     extracted_text = _re.sub(r'<[^>]+>', ' ', raw_text)
                     extracted_text = _re.sub(r'\s+', ' ', extracted_text).strip()
                 except Exception as parse_err:
@@ -661,21 +695,24 @@ async def upload_files(files: List[UploadFile] = File(...)):
                 # 纯文本/Markdown：直接解码
                 try:
                     import chardet
-                    detected = chardet.detect(content)
+                    with open(save_path, "rb") as rf:
+                        raw_bytes = rf.read()
+                    detected = chardet.detect(raw_bytes[:256 * 1024])
                     encoding = detected.get("encoding", "utf-8") or "utf-8"
-                    extracted_text = content.decode(encoding, errors="replace")
-                except Exception as parse_err:
-                    extracted_text = content.decode("utf-8", errors="ignore")
+                    extracted_text = raw_bytes.decode(encoding, errors="replace")
+                except Exception:
+                    with open(save_path, "rb") as rf:
+                        extracted_text = rf.read().decode("utf-8", errors="ignore")
 
             results.append({
                 "filename": f.filename,
                 "saved_path": save_path,
                 "status": "ok",
-                "file_size": len(content),
+                "file_size": size,
                 "extracted_text": extracted_text,
-                "page_count": len(reader.pages) if ext == ".pdf" and 'reader' in dir() else None,
+                "page_count": page_count,
             })
-            logger.info(f"文件上传成功: {f.filename} → {save_path} ({len(content)} bytes)")
+            logger.info(f"文件上传成功: {f.filename} → {save_path} ({size} bytes)")
 
         except Exception as e:
             logger.error(f"文件上传失败: {f.filename}: {e}")
@@ -1024,8 +1061,9 @@ def start_http_server(port):
     logger.info(f"Start HTTP Server, Port: {port}, Reload: {reload}")
     # 白名单模式：只监控 .py 文件变化，避免 app.log/数据库/向量库写入触发热重载死循环
     # （HTML/CSS/JS 为每次请求实时读取，修改后无需重载即可生效）
+    # 安全收敛：默认仅监听本机回环地址；需局域网/容器访问时在 .env 设 HOST=0.0.0.0 显式放开
     uvicorn.run(
-        "main:app", host="0.0.0.0", port=port, reload=reload, workers=1,
+        "main:app", host=os.getenv("HOST", "127.0.0.1"), port=port, reload=reload, workers=1,
         reload_includes=["*.py"],
         reload_excludes=["*.log", ".chroma_db/*", "local_storage/*", "*.pyc", "__pycache__/*", "*.db"],
     )

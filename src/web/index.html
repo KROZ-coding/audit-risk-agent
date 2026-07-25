@@ -1252,6 +1252,21 @@ body.splash-active .main {
 // State & Config
 // ══════════════════════════════════════════════════════════
 const API_BASE = window.location.origin;
+
+// ── 鉴权头自动注入：后端配置 APP_API_KEY 时，在浏览器 localStorage 存入
+// audit_api_key 即可通过校验（控制台执行 localStorage.setItem('audit_api_key','...')）。
+// 包装同源 fetch 统一附加 X-API-Key，未设置 key 时行为与原生 fetch 完全一致。
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const key = localStorage.getItem('audit_api_key');
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (key && (url.startsWith('/') || url.startsWith(API_BASE))) {
+    init = init || {};
+    init.headers = Object.assign({}, init.headers, { 'X-API-Key': key });
+  }
+  return _nativeFetch(input, init);
+};
+
 let messages = [];
 let uploadedFiles = [];
 let isStreaming = false;
