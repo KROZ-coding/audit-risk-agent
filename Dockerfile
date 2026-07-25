@@ -22,13 +22,17 @@ COPY config/ ./config/
 COPY knowledge_base/ ./knowledge_base/
 COPY assets/ ./assets/
 COPY tests/ ./tests/
+# 安全提示：生产镜像建议删除下行，改用 docker run --env-file .env 注入密钥，
+# 避免将 API Key 烤进镜像层；赛期保留以简化一键部署。
 COPY .env ./
 
 # ChromaDB 持久化目录（可挂载外部卷）
 RUN mkdir -p /app/.chroma_db
 
-# 预下载嵌入模型（避免首次调用时下载超时）
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# 预热嵌入模型（避免首次检索时联网下载超时）
+# 注：chromadb 默认使用 ONNX 版 all-MiniLM-L6-v2，不依赖 sentence-transformers；
+# 必须用 uv run 执行（依赖装在 uv 虚拟环境内，系统 python 无 chromadb）
+RUN uv run python -c "from chromadb.utils import embedding_functions as ef; ef.DefaultEmbeddingFunction()(['warmup'])"
 
 EXPOSE 5000
 

@@ -1,0 +1,147 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险智能识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 25,
+    "overview": "该项目为编码 Agent 提供了少见的强 Harness 基座：AGENTS.md 精准路由、config 系统提示词权威化、domain_guard 工具顺序 fail-closed 门禁与成对导出兜底、CI 含集成门禁与覆盖率门禁；主要短板集中在唯一 LLM 依赖缺乏恢复路径、核心复核路径无测试且异常静默、以及日志缺乏运行关联标识。本次为 session-limited 评估（会话样本以自分析为主、无任务改动证据），行为类结论不作断言。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Workflows"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml"
+          ]
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ]
+    },
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 80,
+        "summary": "AGENTS.md 目录职责表 / 常见任务路径 / 高风险区 / when-to-load 路由均指向真实 owner，config 的 sp 为运行时权威；仅进度映射与既定顺序存在一处内部漂移。",
+        "findingRefs": [
+          "progress-map-contradicts-enforced-order"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 72,
+        "summary": "uv + Dockerfile + scripts + .env.example 提供可复现启动，domain_guard 对工具链顺序施加 fail-closed 强制门禁；但启动/权限边界未在会话中被观测执行。",
+        "findingRefs": []
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 70,
+        "summary": "CI 含 ruff 硬错误、pytest、pipeline 集成门禁（fail-closed）与 55% 覆盖率门禁，属较强校验；但多智能体复核路径无测试、日志缺乏关联标识削弱了故障诊断能力。",
+        "findingRefs": [
+          "debate-review-untested-silent-fail",
+          "pipeline-logs-not-correlatable"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 58,
+        "summary": "PDF+Excel 成对导出 fail-closed 门禁与降级可见提示，保障了本地交付物落盘的验收边界；但唯一 LLM 依赖缺乏重试/降级恢复路径。",
+        "findingRefs": [
+          "llm-no-recovery-path"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 45,
+        "summary": "会话窗口以自分析为主、无任务改动/校验/结果事件，且无可复用学习闭环或干预台账；无法建立重复工作识别与闭环有效性证据。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "llm-no-recovery-path",
+      "title": "唯一 LLM 依赖缺乏重试或降级恢复路径，瞬时故障会中断整次审计",
+      "severity": "Medium",
+      "reason": "事实：build_agent 与 _run_debate（src/agents/agent.py）直接实例化 ChatOpenAI，仅设置 timeout，未配置重试、熔断或降级模型；主链路依赖单一 LLM，辩论环节还串行发起三次调用。推断：LLM 瞬时不可用或超时会使整次分析失败，无法产出部分结论。owner：src/agents/agent.py。不确定性：竞赛/本地场景可能默认 LLM 恒可用，main.py 存在 900s 超时安全中止，但无重试/降级仍构成交付路径上的单点。本结论基于静态代码检查，未观测到真实运行时故障。",
+      "expectedOutput": [
+        "为唯一 LLM 依赖提供一次有界重试/降级恢复路径，失败时对用户可见而非静默中断。"
+      ],
+      "expectedArtifact": "Code",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为唯一 LLM 依赖增加最小可靠性恢复路径：在 src/agents/agent.py 的 build_agent 与 _run_debate 处，对 ChatOpenAI 调用增加有限次重试/退避，并在最终失败时向用户可见地降级（沿用现有『降级可见』模式，不静默）。保持现有工具链顺序门禁与成对导出兜底不变。\n\n## Validation\n\n- uv run pytest tests/test_pipeline_integration.py -v\n- uv run pytest -q",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "debate-review-untested-silent-fail",
+      "title": "多智能体复核路径无测试且异常静默，回归无法被 CI 拦截",
+      "severity": "Medium",
+      "reason": "事实：_run_debate（src/agents/agent.py，约 70 行的核心审计复核控制）对所有异常 except 后返回 None 并仅记 warning（『不影响主报告』）；tests/ 下所有涉及 _AgentWrapper 的用例（test_pipeline_integration.py、test_tool_ledger_window.py）均 monkeypatch REVIEW_ENABLED=False，55% 覆盖率门禁（src/agents+src/tools）不要求其执行。推断：破坏复核逻辑的回归不会导致 CI 变红，且复核意见会在报告中被静默丢弃。owner：tests/ 与 src/agents/agent.py。不确定性：复核为可选增强而非主链路，静默丢弃的业务影响取决于是否将复核视为交付必需项。",
+      "expectedOutput": [
+        "让核心复核路径拥有可执行的回归检查，并使其失败对读者可见而非静默丢弃。"
+      ],
+      "expectedArtifact": "Test",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为多智能体复核路径补充最小隔离测试：新增用例在 REVIEW_ENABLED=True 且 mock 掉 ChatOpenAI（避免真实 LLM 调用）的前提下，断言 _run_debate 正常时将三方意见拼接进最终 AIMessage；并针对 LLM 抛异常场景，明确断言当前『静默返回 None』行为，或改为在报告中追加可见的复核失败提示（与既有降级可见模式一致）。\n\n## Validation\n\n- uv run pytest tests/ -q\n- uv run pytest --cov=src/agents --cov=src/tools --cov-report=term-missing --cov-fail-under=55",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "pipeline-logs-not-correlatable",
+      "title": "核心流水线日志缺乏运行关联标识，失败运行难以在 app.log 中定位归因",
+      "severity": "Low",
+      "reason": "事实：src/local_shims.py 的 setup_logging 使用格式 '%(asctime)s [%(levelname)s] %(name)s - %(message)s'，不含 run_id；request_context 虽携带 run_id，但 agent.py/tools 中的 logger.info/warning 调用未注入该标识，全部并发运行的日志混写入同一 app.log。推断：对固定工具链这一核心链路，一次失败运行的日志无法可靠关联到具体 run，AI 调试的可关联性为 Partial。owner：src/local_shims.py（日志 formatter/filter）及调用点。不确定性：本地单用户场景下并发较少，影响有限。",
+      "expectedOutput": [
+        "让下一位排障者能够按运行标识关联核心工具链在 app.log 中的日志。"
+      ],
+      "expectedArtifact": "Code",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为核心流水线日志增加运行关联标识：在 src/local_shims.py 的 setup_logging 中引入基于 request_context 的 logging.Filter/LogRecord 工厂，将 run_id 注入日志格式（如 '%(asctime)s [%(levelname)s] [run=%(run_id)s] %(name)s - %(message)s'），使 app.log 中每条工具链日志可按 run 关联。避免改动业务逻辑与工具顺序。\n\n## Validation\n\n- uv run pytest -q\n- 触发一次分析后检查 app.log 中同一 run 的工具日志均带一致 run 标识",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "progress-map-contradicts-enforced-order",
+      "title": "进度映射与既定/强制的工具链顺序不一致，且遗漏两个强制步骤",
+      "severity": "Low",
+      "reason": "事实：src/main.py 的 TOOL_PIPELINE 将 calculate_financial_indicators(18%) 排在 validate_financial_data(28%) 之前，与 AGENTS.md 高风险区及 config sp 所声明并由 domain_guard 强制的『validate→calculate』顺序相反；同时完全不含 check_disclosure_compliance 与 calculate_comprehensive_score 两个强制步骤。推断：进度条会错序推进且不反映披露检查/综合评分阶段；AGENTS.md 明确要求新增工具时同步 TOOL_NAME_TO_STEP，而该映射自身已与既定顺序漂移，可能误导后续改动流水线的 Agent。owner：src/main.py（TOOL_PIPELINE）。不确定性：该映射仅驱动前端进度显示，不参与顺序强制，直接业务影响为展示层。",
+      "expectedOutput": [
+        "让进度映射与文档化并强制执行的工具链顺序保持一致，覆盖全部强制步骤。"
+      ],
+      "expectedArtifact": "Code",
+      "aiFixPrompt": "/better-harness fix this issue\n\n使 src/main.py 的 TOOL_PIPELINE 与既定/强制的工具链声明顺序一致：调整为 validate_financial_data 先于 calculate_financial_indicators，并补入 check_disclosure_compliance 与 calculate_comprehensive_score 两个阶段及其递增百分比，保持与 config sp、AGENTS.md 高风险区一致。不改动 domain_guard 的顺序强制逻辑。\n\n## Validation\n\n- uv run pytest tests/test_pipeline_integration.py -v\n- uv run pytest -q",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    }
+  ]
+}

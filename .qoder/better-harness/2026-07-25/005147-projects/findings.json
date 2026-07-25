@@ -1,0 +1,100 @@
+{
+  "summary": {
+    "projectName": "上市公司年报审计风险智能识别系统",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 25,
+    "overview": "项目的变更验证链路是最强项：CI 串联 ruff、pytest、集成功能门禁（fail-closed 工具顺序 + 成对导出兜底）与 55% 覆盖率门禁，并有真实驱动 _post_process 的集成测试。指引（AGENTS.md）与运行时约束（config 的 sp）清晰。当前证据边界为 session-limited：12 个会话均无规范化的变更/校验事件，任务级行为多为 Unobserved；交付验收与学习沉淀因缺少可比结果而偏弱。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Workflows"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml"
+          ]
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ]
+    },
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 72,
+        "summary": "AGENTS.md 的目录/任务路由、config 的 sp 强制规则与 README 共同界定了固定工具链任务的意图与范围；存在一处工具数量指引不一致（见 findings）。",
+        "findingRefs": [
+          "guidance-tool-count-drift"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 75,
+        "summary": "pyproject + uv.lock + scripts + .env.example 提供可复现启动，FastAPI 路由/CLI 与工具为受支持操作，LLM 重试、消息滑窗与 recursion_limit 构成有界运行边界；CI 实际执行依赖同步与测试。",
+        "findingRefs": []
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 78,
+        "summary": "最强维度：CI 定义并运行 lint/单测/功能门禁/覆盖率门禁，test_pipeline_integration 以 mock 驱动真实 _post_process 校验顺序门禁与成对导出兜底。后处理失败均带异常与自动注入的 run_id 记日志且对用户可见，诊断覆盖经复核为充分。CI 通过状态未由本次静态复核执行验证（UNVERIFIED）。",
+        "findingRefs": []
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 58,
+        "summary": "成对导出兜底与「降级可见」保障报告产物完整性；但真实交付验收（返回 URL 可访问、文件有效）为 AGENTS.md 记述的人工步骤，缺自动化验收，且除 LLM 有限重试外无业务级回滚。任务级交付未在会话证据中观察到，多为 Unobserved。",
+        "findingRefs": []
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 40,
+        "summary": "本轮为有界但受阻的学习沉淀复核：会话虽全覆盖，但 Episode 缺规范化变更/校验事件，无法判定重复工作或确认清洁窗口；无已行使的可复用改进闭环，也无历史干预台账。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "guidance-tool-count-drift",
+      "title": "Agent 指引中的审计工具数量与实际注册不一致（11 vs 13）",
+      "severity": "Low",
+      "reason": "事实：src/agents/agent.py 的 build_agent 实际注册 13 个工具，config/agent_llm_config.json 的 tools 列表同为 13 个，AGENTS.md 亦写作「13 个模块」；但同一函数的 docstring（第 706 行「注册全部 11 个审计工具」）与 README.md（「11 个核心审计工具」）仍描述为 11 个。推断：依赖 docstring/README 计数的 Agent 或贡献者可能少计工具，且 AGENTS.md 第 73 行的「新增/重命名工具须同步更新」清单未包含这两处计数说明，易再次漂移。归属 Relevant Context 的指引时效缺陷；owner 为 src/agents/agent.py 与 README.md。不确定性：未观察到该不一致已在真实任务中造成误导，故为 Low。",
+      "expectedOutput": [
+        "让下一位读者在 docstring、README 与 AGENTS.md 中看到与实际注册一致的工具数量，并有一处同步清单防止再次漂移。"
+      ],
+      "expectedArtifact": "Guidance",
+      "aiFixPrompt": "/better-harness fix this issue\n\n将 src/agents/agent.py 中 build_agent docstring 的「注册全部 11 个审计工具」与 README.md 项目结构中的「11 个核心审计工具」更新为实际注册数量（当前为 13，以 build_agent 的 tools 列表与 config/agent_llm_config.json 的 tools 为准）。同时在 AGENTS.md 第 73 行「新增/重命名工具须同步更新」清单中补上这两处计数说明，防止再次漂移。仅改文档描述，不改工具注册逻辑。\n\n## Validation\n\n- 核对 build_agent 的 tools 列表长度与 config/agent_llm_config.json 的 tools 数组长度是否一致\n- 确认 docstring、README、AGENTS.md 三处工具数量表述与实际注册数一致",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    }
+  ]
+}

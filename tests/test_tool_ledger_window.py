@@ -173,3 +173,97 @@ class TestPostProcessWithLedger:
         wrapper = _AgentWrapper(object())
         with pytest.raises(ToolCallOrderViolation):
             wrapper._post_process({"messages": windowed})
+
+
+class TestWindowPairingSafety:
+    """回归锁定（原 P0）：滑窗裁剪绝不得切断 tool_calls 配对。
+
+    OpenAI/DeepSeek 协议要求带 tool_calls 的 AIMessage 后必须紧跟 tool_call_id
+    匹配的 ToolMessage，否则返回 400。旧版 [-N:] 无脑切片可能产生孤儿
+    ToolMessage；本用例在多种切片奇偶性下验证配对安全不变量，防回退。
+    """
+
+    @staticmethod
+    def _build_paired_messages(filler_count):
+        """构造 >MAX_MESSAGES 条、含大量 (AIMessage+tool_calls, ToolMessage) 配对的序列。
+
+        filler_count 用于挡位偏移，使裁剪起点分别落在 AIMessage / ToolMessage 上，
+        覆盖不同奇偶性的边界场景。
+        """
+        msgs = [HumanMessage(content="开始分析")]
+        for _ in range(filler_count):
+            msgs.append(HumanMessage(content="填充消息"))
+        for i in range(30):
+            call_id = f"call_pair_{i}"
+            msgs.append(AIMessage(
+                content="",
+                tool_calls=[{"name": "search_regulations", "args": {"query": f"q{i}"}, "id": call_id}],
+            ))
+            msgs.append(ToolMessage(content=f"result_{i}", name="search_regulations", tool_call_id=call_id))
+        return msgs
+
+    def test_window_never_starts_with_orphan_tool_message(self):
+        for filler in range(4):  # 覆盖裁剪起点的四种偏移对齐
+            full = self._build_paired_messages(filler)
+            assert len(full) > MAX_MESSAGES
+            windowed = _windowed_messages([], full)
+            # 不变量①：窗口首条绝不是 ToolMessage（否则其 tool_calls 母消息已被切走）
+            assert not isinstance(windowed[0], ToolMessage), f"filler={filler} 时窗口以孤儿 ToolMessage 开头"
+
+    def test_every_tool_call_in_window_has_reply(self):
+        for filler in range(4):
+            windowed = _windowed_messages([], self._build_paired_messages(filler))
+            replied_ids = {m.tool_call_id for m in windowed if isinstance(m, ToolMessage)}
+            for m in windowed:
+                if isinstance(m, AIMessage) and m.tool_calls:
+                    for tc in m.tool_calls:
+                        # 不变量②：窗口内每个 tool_call 都有配对应答，协议层不会 400
+                        assert tc["id"] in replied_ids, f"filler={filler} 时 tool_call {tc['id']} 无应答"
+
+
+class TestAstreamPostProcess:
+    """回归锁定（原 P0）：/stream_run 路径必须补跑后处理，与 /run 行为一致。
+
+    旧版 _AgentWrapper 未定义 astream，经 __getattr__ 透传底层 agent 绕过
+    _post_process，导致流式用户丢失辩论复核/兑底导出/综合评分。
+    本用例验证：① 逐 chunk 透传不丢；② 流末追加 __post_processed__ 标记 chunk
+    且确实经过 _post_process。
+    """
+
+    def test_astream_appends_post_processed_chunk(self, monkeypatch):
+        import asyncio
+
+        ai_final = AIMessage(content="分析完成", id="ai_final")
+
+        class _FakeAgent:
+            async def astream(self, payload, config=None, **kw):
+                yield {"agent": {"messages": [AIMessage(content="思考中", id="ai_1")]}}
+                yield {"tools": {"messages": [ToolMessage(content="ok", name="validate_financial_data",
+                                                          tool_call_id="c1", id="tm_1")]}}
+                yield {"agent": {"messages": [ai_final]}}
+
+        wrapper = _AgentWrapper(_FakeAgent())
+        seen = {"called": False}
+
+        def _fake_post_process(result):
+            seen["called"] = True
+            # 模拟真实后处理：就地向最后一条 AI 消息追加内容
+            last_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+            last_ai.content += "\n<!--COMPREHENSIVE_SCORE-->"
+            return result
+
+        monkeypatch.setattr(wrapper, "_post_process", _fake_post_process)
+
+        async def _collect():
+            return [c async for c in wrapper.astream({"messages": []})]
+
+        chunks = asyncio.run(_collect())
+
+        # ① 原始三个 chunk 全部透传（前端进度追踪不受影响）
+        assert len(chunks) == 4
+        # ② 流末追加后处理标记 chunk，且 _post_process 确实被调用、修改对前端可见
+        final_chunk = chunks[-1]
+        assert final_chunk.get("__post_processed__") is True
+        assert seen["called"]
+        assert "<!--COMPREHENSIVE_SCORE-->" in ai_final.content
+
