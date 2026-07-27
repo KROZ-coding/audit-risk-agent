@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from tools.domain_guard import (
     check_tool_call_order,
     assert_tool_call_order,
+    assert_hard_order,
+    check_soft_order,
     check_disclaimer_present,
     assert_disclaimer_present,
     collect_flowable_texts,
@@ -126,6 +128,37 @@ class TestFullPipelineOrder:
             SEARCH_TOOL, SCORE_TOOL, EXPORT_EXCEL_TOOL, EXPORT_PDF_TOOL,
         ]
         ok, _ = check_tool_call_order(seq)
+        assert ok is True
+
+    def test_search_disclosure_parallel_rank(self):
+        """披露检查与法规检索共享 rank（无数据依赖）：互换顺序应通过。"""
+        seq = [VALIDATE_TOOL, CALCULATE_TOOL, SEARCH_TOOL,
+               DISCLOSURE_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        ok, _ = check_tool_call_order(seq)
+        assert ok is True
+        assert_tool_call_order(seq)  # 不应抛异常
+
+
+class TestTieredOrderGate:
+    """分级门禁接口：硬约束只拦「先校验后计算」，软约束只报告不抛。"""
+
+    def test_hard_order_only_blocks_validate_calculate(self):
+        """软违规序列（export 早于 score）：硬约束断言应放行不抛。"""
+        soft_broken = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                       SEARCH_TOOL, EXPORT_PDF_TOOL, SCORE_TOOL]
+        assert_hard_order(soft_broken)  # 不抛
+        ok, msg = check_soft_order(soft_broken)
+        assert ok is False and "工具链声明顺序" in msg
+
+    def test_hard_order_blocks_calculate_first(self):
+        """硬违规（calculate 早于 validate）：硬约束断言必须抛。"""
+        with pytest.raises(ToolCallOrderViolation):
+            assert_hard_order([CALCULATE_TOOL, VALIDATE_TOOL])
+
+    def test_soft_order_clean_sequence_passes(self):
+        """完全合规序列：软约束检查应通过。"""
+        ok, _ = check_soft_order([VALIDATE_TOOL, CALCULATE_TOOL, SEARCH_TOOL,
+                                  DISCLOSURE_TOOL, SCORE_TOOL, EXPORT_EXCEL_TOOL, EXPORT_PDF_TOOL])
         assert ok is True
 
 

@@ -156,21 +156,26 @@ def _build_messages(tool_order, final_text):
 @pytest.fixture
 def hermetic_env(monkeypatch):
     """隔离外部副作用：关闭多智能体辩论（避免真实 LLM 调用），
-    并用 mock 替换 PDF/Excel 导出工具（避免真实文件 I/O），返回两个 recorder。"""
+    并用 mock 替换 PDF/Excel 导出与图表工具（避免真实文件 I/O 与 matplotlib 绘图），
+    返回四个 recorder（pdf, excel, heatmap, radar）。"""
     monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
     pdf_mock = _RecordingExportTool("http://local/report.pdf")
     excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
+    heatmap_mock = _RecordingExportTool("/local_storage/charts/heatmap.png")
+    radar_mock = _RecordingExportTool("/local_storage/charts/radar.png")
     monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
     monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
-    return pdf_mock, excel_mock
+    monkeypatch.setattr(agent_module, "generate_risk_heatmap", heatmap_mock)
+    monkeypatch.setattr(agent_module, "generate_radar_chart", radar_mock)
+    return pdf_mock, excel_mock, heatmap_mock, radar_mock
 
 
 class TestToolOrderGate:
-    """工具调用顺序门禁在 Agent 运行时的 fail-closed 行为。"""
+    """分级顺序门禁：硬约束（先校验后计算）fail-closed，软约束降级可见警告。"""
 
     def test_full_correct_order_passes(self, hermetic_env):
         """完整声明链路正序 + 成对导出齐全：后处理应正常完成，不触发兜底导出。"""
-        pdf_mock, excel_mock = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd = hermetic_env
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(FULL_ORDER, "分析完成")))
         result = wrapper.invoke({"messages": []})
         assert result is not None
@@ -179,28 +184,134 @@ class TestToolOrderGate:
         assert excel_mock.calls == []
 
     def test_calculate_before_validate_raises(self, hermetic_env):
-        """先算后校验（calculate 早于 validate）应 fail-closed 抛顺序违规。"""
+        """硬约束：先算后校验（calculate 早于 validate）应 fail-closed 抛顺序违规。
+
+        本用例的消息里无 AIMessage.tool_calls 入参可供代跑补救，
+        因此补救不可行，必须维持 fail-closed。
+        """
         broken = [CALCULATE_TOOL, VALIDATE_TOOL, DISCLOSURE_TOOL,
                   SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(broken, "分析完成")))
         with pytest.raises(ToolCallOrderViolation):
             wrapper.invoke({"messages": []})
 
-    def test_export_before_score_raises(self, hermetic_env):
-        """导出早于综合评分（后置步骤前移）应 fail-closed 抛顺序违规。"""
-        broken = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
-                  SEARCH_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL, SCORE_TOOL]
-        wrapper = _AgentWrapper(_FakeAgent(_build_messages(broken, "分析完成")))
+    def test_missing_validate_backfilled_when_data_clean(self, hermetic_env):
+        """硬约束补救：LLM 漏调 validate 但 calculate 入参可取且勾稽平衡时，
+        系统代跑校验后应继续分析并附可见补救提示（用户不再白等零产出）。"""
+        clean_data = json.dumps({
+            "total_assets": 100, "total_liabilities": 60, "net_assets": 40,
+        })
+        # 构造带 tool_calls 入参的 AIMessage + 缺 validate 的工具序列
+        msgs = [HumanMessage(content="请分析年报")]
+        msgs.append(AIMessage(content="", tool_calls=[{
+            "name": CALCULATE_TOOL, "args": {"financial_data_json": clean_data}, "id": "c1",
+        }]))
+        msgs.extend(_tool_msgs([CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL,
+                                SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]))
+        msgs.append(AIMessage(content="分析完成"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        final_ai = next(m for m in reversed(result["messages"])
+                        if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None))
+        assert "数据校验补救提示" in final_ai.content
+
+    def test_missing_validate_still_raises_when_data_broken(self, hermetic_env):
+        """硬约束底线：代跑校验发现勾稽不平时，仍必须 fail-closed 中断（
+        绝不在校验不通过的数据上产出报告）。"""
+        broken_data = json.dumps({
+            "total_assets": 100, "total_liabilities": 60, "net_assets": 999,  # 资产≠负债+权益
+        })
+        msgs = [HumanMessage(content="请分析年报")]
+        msgs.append(AIMessage(content="", tool_calls=[{
+            "name": CALCULATE_TOOL, "args": {"financial_data_json": broken_data}, "id": "c1",
+        }]))
+        msgs.extend(_tool_msgs([CALCULATE_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]))
+        msgs.append(AIMessage(content="分析完成"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
         with pytest.raises(ToolCallOrderViolation):
             wrapper.invoke({"messages": []})
 
-    def test_search_before_disclosure_raises(self, hermetic_env):
-        """检索早于披露检查（次序颠倒）应 fail-closed 抛顺序违规。"""
-        broken = [VALIDATE_TOOL, CALCULATE_TOOL, SEARCH_TOOL,
-                  DISCLOSURE_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+    def test_export_before_score_warns_not_fails(self, hermetic_env):
+        """软约束：导出早于综合评分不再炸掉分析，而是附可见顺序提示后照常产出。
+
+        背景：旧版 fail-closed 会连带中断兜底导出导致零产出（实测事故）；
+        该次序属推荐顺序而非数据依赖，降级为警告。
+        """
+        broken = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                  SEARCH_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL, SCORE_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(broken, "分析完成")))
-        with pytest.raises(ToolCallOrderViolation):
-            wrapper.invoke({"messages": []})
+        result = wrapper.invoke({"messages": []})
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        # 降级可见：报告末尾附顺序提示，但分析不中断
+        assert "工具链顺序提示" in final_ai.content
+
+    def test_soft_warning_appended_after_risk_json(self, hermetic_env):
+        """软警告位置契约：只允许追加在正文末尾，不得插入台账 JSON 之前/之中，
+        且不得破坏风险 JSON 的可抽取性（下游历史落库/兜底导出都依赖它）。"""
+        from agents.agent import _extract_risk_json
+        broken = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                  SEARCH_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL, SCORE_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(broken, _RISK_JSON)))
+        result = wrapper.invoke({"messages": []})
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        text = str(final_ai.content)
+        warn_pos = text.find("工具链顺序提示")
+        json_pos = text.find('"company_info"')
+        assert warn_pos != -1 and json_pos != -1
+        # 警告必须在台账 JSON 之后（末尾追加）
+        assert warn_pos > json_pos
+        # 风险 JSON 仍可完整抽取（末尾中文提示不干扰括号配对）
+        assert _extract_risk_json(text) is not None
+
+    def test_search_disclosure_order_interchangeable(self, hermetic_env):
+        """披露检查与法规检索无数据依赖（共享 rank）：互换顺序应完全合规、无警告。"""
+        reordered = [VALIDATE_TOOL, CALCULATE_TOOL, SEARCH_TOOL,
+                     DISCLOSURE_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(reordered, "分析完成")))
+        result = wrapper.invoke({"messages": []})
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        assert "工具链顺序提示" not in final_ai.content
+
+
+class TestChartBackfill:
+    """图表兜底：图表已从 LLM 链路摘除，由 _post_process 并行补生（快速模式除外）。"""
+
+    def test_charts_backfilled_in_normal_mode(self, hermetic_env):
+        """普通模式：LLM 未调图表 → 热力图/雷达图各兜底补生一次，URL 追加到正文。"""
+        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
+        result = wrapper.invoke({"messages": []})
+        assert len(heatmap_mock.calls) == 1
+        assert len(radar_mock.calls) == 1
+        text = _last_ai_text(result)
+        assert "风险热力图" in text and "/local_storage/charts/heatmap.png" in text
+        assert "财务雷达图" in text and "/local_storage/charts/radar.png" in text
+
+    def test_charts_not_backfilled_in_fast_mode(self, hermetic_env):
+        """快速模式（消息含关键词）：保持零图表定位，不补图。"""
+        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        msgs = [HumanMessage(content="请分析年报\n\n（快速模式：速度优先）")]
+        msgs.extend(_tool_msgs(order))
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper.invoke({"messages": []})
+        assert heatmap_mock.calls == []
+        assert radar_mock.calls == []
+
+    def test_llm_called_charts_not_duplicated(self, hermetic_env):
+        """LLM 已自行调用图表（如多年趋势场景）：兜底不重复补生。"""
+        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL,
+                 SCORE_TOOL, "generate_risk_heatmap", "generate_radar_chart",
+                 EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
+        wrapper.invoke({"messages": []})
+        assert heatmap_mock.calls == []
+        assert radar_mock.calls == []
 
 
 class TestPairedExportGate:
@@ -208,7 +319,7 @@ class TestPairedExportGate:
 
     def test_missing_excel_is_backfilled(self, hermetic_env):
         """LLM 仅导出 PDF、遗漏 Excel：兜底应补调 Excel，PDF 不重复调用。"""
-        pdf_mock, excel_mock = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd = hermetic_env
         # 正序但缺 export_excel_report
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL]
@@ -221,7 +332,7 @@ class TestPairedExportGate:
 
     def test_missing_pdf_is_backfilled(self, hermetic_env):
         """LLM 仅导出 Excel、遗漏 PDF：兜底应补调 PDF，Excel 不重复调用。"""
-        pdf_mock, excel_mock = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_EXCEL_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
@@ -231,7 +342,7 @@ class TestPairedExportGate:
 
     def test_both_missing_are_backfilled(self, hermetic_env):
         """LLM 完全遗漏导出：兜底应同时补调 PDF 与 Excel，保证成对齐全。"""
-        pdf_mock, excel_mock = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL, SCORE_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
         wrapper.invoke({"messages": []})

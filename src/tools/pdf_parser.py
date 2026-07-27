@@ -11,10 +11,12 @@
 为防止 token 溢出，提取文本超过 MAX_TEXT_LENGTH（20 万字符）时自动截断。
 """
 import os
+import ipaddress
+import socket
 import logging
 import tempfile
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from langchain_core.tools import tool
 from pypdf import PdfReader
 
@@ -22,6 +24,32 @@ logger = logging.getLogger(__name__)
 
 # 文本提取最大长度（字符数），超过此长度自动截断，防止 LLM 上下文溢出
 MAX_TEXT_LENGTH = 200_000
+# 下载大小上限（100MB），防止超大远程文件耗尽磁盘/内存
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024
+
+
+def _assert_public_host(url: str) -> None:
+    """SSRF 防护：解析 URL 主机并拒绝内网/回环/链路本地/云元数据等非公网地址。
+
+    对主机名做 DNS 解析后逐个校验解出的 IP（兼顧 DNS 重绑定与多 A 记录），
+    任一解析结果落入私有/保留段即拒绝。
+
+    Raises:
+        ValueError: 主机为空、无法解析或解析到非公网地址时。
+    """
+    host = (urlparse(url).hostname or "").strip()
+    if not host:
+        raise ValueError("URL 缺失合法主机名")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"无法解析主机名: {host}") from e
+    for info in infos:
+        ip_str = info[4][0]
+        ip = ipaddress.ip_address(ip_str)
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError(f"拒绝访问非公网地址（SSRF 防护）: {host} -> {ip_str}")
 
 
 def _download_url_to_local(url: str) -> str:
@@ -47,12 +75,36 @@ def _download_url_to_local(url: str) -> str:
     # 创建临时文件（系统自动清理），保持原始扩展名
     fd, local_path = tempfile.mkstemp(suffix=ext)
     os.close(fd)
-    # 下载文件内容（超时 60 秒）
-    resp = requests.get(url, timeout=60)
+    # SSRF 防护 + 保留合法重定向：手动逐跳跟随（最多 3 跳），每跳都重新校验主机为公网地址
+    # （避免外部重定向绕过首跳校验指向内网/云元数据端点）；流式下载并强制大小上限
+    current = url
+    resp = None
+    for _ in range(4):   # 首请求 + 最多 3 次重定向
+        _assert_public_host(current)
+        resp = requests.get(current, timeout=60, allow_redirects=False, stream=True)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            loc = resp.headers.get("Location")
+            resp.close()
+            if not loc:
+                raise ValueError("远程返回重定向但缺少 Location 头")
+            current = urljoin(current, loc)   # 兼容相对重定向
+            continue
+        break
+    else:
+        raise ValueError("重定向层级过多，已拒绝（SSRF 防护）")
     resp.raise_for_status()   # 非 2xx 状态码时抛出异常
-    # 将下载内容写入临时文件
+    # 将下载内容分块写入临时文件，累计超限即中断
+    total = 0
     with open(local_path, "wb") as f:
-        f.write(resp.content)
+        for chunk in resp.iter_content(chunk_size=1024 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > MAX_DOWNLOAD_SIZE:
+                f.close()
+                os.remove(local_path)
+                raise ValueError(f"远程文件超过大小上限 {MAX_DOWNLOAD_SIZE // (1024*1024)}MB")
+            f.write(chunk)
     return local_path
 
 
@@ -73,12 +125,20 @@ def _resolve_file_path(file_path: str) -> str:
     # 情况1：URL 输入，下载到本地临时文件
     if file_path.startswith(("http://", "https://")):
         return _download_url_to_local(file_path)
-    # 情况2：相对路径，拼接工作目录
+    # 情况2：相对路径，拼接工作目录后做边界校验（防路径遍历）
     workspace = os.getenv("COZE_WORKSPACE_PATH", os.path.join(os.path.dirname(__file__), "..", ".."))
+    base = os.path.realpath(workspace)
     if not os.path.isabs(file_path):
-        file_path = os.path.join(workspace, file_path)
-    # 情况3：已经是绝对路径，直接返回
-    return file_path
+        candidate = os.path.realpath(os.path.join(base, file_path))
+        # 规范化后必须仍在工作目录内，否则拒绝（阻断 ../ 逆出）
+        if candidate != base and not candidate.startswith(base + os.sep):
+            raise ValueError(f"拒绝访问工作目录外的路径（路径遍历防护）: {file_path}")
+        return candidate
+    # 情况3：绝对路径——同样规范化并限定在工作目录内（防直接传绝对路径逆出）
+    real = os.path.realpath(file_path)
+    if real != base and not real.startswith(base + os.sep):
+        raise ValueError(f"拒绝访问工作目录外的路径（路径遍历防护）: {file_path}")
+    return real
 
 
 @tool
@@ -109,7 +169,11 @@ def parse_pdf_report(file_path: str) -> str:
         解析异常时：错误信息
     """
     # 第一步：路径归一化（URL 自动下载、相对路径拼接工作目录）
-    file_path = _resolve_file_path(file_path)
+    # SSRF/路径遍历防护拒绝时会抛 ValueError，转为友好错误提示而非崩溃
+    try:
+        file_path = _resolve_file_path(file_path)
+    except ValueError as e:
+        return f"错误：{e}"
 
     # 第二步：校验文件是否存在
     if not os.path.exists(file_path):

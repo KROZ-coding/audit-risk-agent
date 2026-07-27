@@ -14,7 +14,7 @@ import numpy as np
 from langchain_core.tools import tool
 from datetime import datetime
 
-from utils.filename import sanitize_filename
+from utils.filename import resolve_company_year, sanitize_filename
 
 
 def _build_file_prefix(data: dict) -> str:
@@ -27,8 +27,10 @@ def _build_file_prefix(data: dict) -> str:
         格式为 "YYYYMMDD_公司名_年份" 的安全文件名前缀
     """
     ci = data.get("company_info", {})
-    company = sanitize_filename(ci.get("company_name", "未知公司"))
-    year = sanitize_filename(ci.get("report_year", ""))
+    # 别名兼容：LLM 可能用 name/report_period 等键名，避免文件名变「未知公司_未知」
+    raw_company, raw_year = resolve_company_year(ci)
+    company = sanitize_filename(raw_company or "未知公司")
+    year = sanitize_filename(raw_year) if raw_year else ""
     date_str = datetime.now().strftime("%Y%m%d")
     if year:
         return f"{date_str}_{company}_{year}"
@@ -173,9 +175,9 @@ def _generate_risk_heatmap(risk_report_json: str, output_path: str) -> str:
     ax.set_yticks(range(len(dimensions_cn)))
     ax.set_xticklabels(levels, fontproperties=fp, fontsize=12)
     ax.set_yticklabels(dimensions_cn, fontproperties=fp, fontsize=11)
-    # 设置标题（公司名+年份）
-    company = data.get('company_info', {}).get('company_name', '未提供')
-    year = data.get('company_info', {}).get('report_year', '')
+    # 设置标题（公司名+年份，别名兼容）
+    company, year = resolve_company_year(data.get('company_info', {}))
+    company = company or '未提供'
     ax.set_title(f'{company}{year} 审计风险热力图\n格内:风险数(置信度加权)', fontproperties=fp, fontsize=13, pad=15)
     cbar = plt.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_label('风险强度(置信度加权)', fontproperties=fp, fontsize=10)
@@ -215,6 +217,8 @@ def _generate_radar_chart(risk_report_json: str, output_path: str) -> str:
     fp = _setup_chinese_font()
     data = json.loads(risk_report_json)
     ci = data.get('company_info', {})
+    # 别名兼容解析公司名/年度，供图例与标题使用
+    _company, _year = resolve_company_year(ci)
     indicators_data = data.get('calculated_indicators', {})
     industry = ci.get('industry', '制造业')
 
@@ -261,7 +265,7 @@ def _generate_radar_chart(risk_report_json: str, output_path: str) -> str:
 
     # 绘制雷达图
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
-    ax.fill(angles, company_vals, alpha=0.25, color='red', label=f'{ci.get("company_name", "公司")}实际值')
+    ax.fill(angles, company_vals, alpha=0.25, color='red', label=f'{_company or "公司"}实际值')
     ax.fill(angles, benchmark_vals, alpha=0.25, color='blue', label=f'{industry}基准')
     ax.plot(angles, company_vals, 'o-', color='red', linewidth=2, markersize=6)
     ax.plot(angles, benchmark_vals, 'o-', color='blue', linewidth=2, markersize=6)
@@ -274,7 +278,7 @@ def _generate_radar_chart(risk_report_json: str, output_path: str) -> str:
 
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels, fontproperties=fp, fontsize=10)
-    ax.set_title(f'{ci.get("company_name","未提供")}{ci.get("report_year","")} 财务指标雷达图\n({industry}行业基准对比)',
+    ax.set_title(f'{_company or "未提供"}{_year} 财务指标雷达图\n({industry}行业基准对比)',
                  fontproperties=fp, fontsize=13, pad=20)
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), prop=fp, fontsize=9)
     return _finalize(fig, output_path)

@@ -19,7 +19,9 @@
             --text-main: #e2e8f0;
             --text-muted: #94a3b8;
             --frost: rgba(59, 130, 246, 0.12);
+            --font-display: "Source Han Serif SC", "Noto Serif SC", "STZhongsong", "SimSun", serif;
         }
+        /* Hallmark · macrostructure: Long Document · genre: atmospheric-docs · design-system: docs/design.md */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Segoe UI', "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -36,23 +38,19 @@
             border: 1px solid rgba(59, 130, 246, 0.15);
             border-radius: 20px; padding: 36px 40px; margin-bottom: 32px;
             box-shadow: 0 4px 32px rgba(0, 100, 255, 0.06), inset 0 1px 0 rgba(255,255,255,0.04);
-            opacity: 0; transform: translateY(40px);
-            transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .glass-card.visible { opacity: 1; transform: translateY(0); }
+        /* 入场动效：仅首屏 hero 一次，其余内容静置（去除整页滚动渐入） */
+        @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
         /* ── Hero ── */
-        .hero { text-align: center; padding: 48px 0 20px; }
+        .hero { text-align: center; padding: 48px 0 20px; animation: rise 0.6s ease-out both; }
         .hero .main-icon {
             font-size: 72px; display: block; margin-bottom: 10px;
-            animation: float 3s ease-in-out infinite; filter: drop-shadow(0 0 24px rgba(59,130,246,0.4));
         }
-        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
         .hero h1 {
+            font-family: var(--font-display);
             font-size: 2.6rem; font-weight: 900;
-            background: linear-gradient(135deg, #60a5fa, #a5f3fc, #c084fc);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text; margin-bottom: 10px; letter-spacing: 2px;
+            color: #eef2f8; margin-bottom: 10px; letter-spacing: 2px;
         }
         .hero .version-tag {
             display: inline-block; background: var(--frost); border: 1px solid rgba(59,130,246,0.3);
@@ -64,12 +62,12 @@
             margin-top: 12px; user-select: none;
         }
 
-        h2 { font-size: 1.6rem; margin-bottom: 20px; display: flex; align-items: center; gap: 14px; color: #fff; }
+        h2 { font-family: var(--font-display); font-size: 1.6rem; margin-bottom: 20px; display: flex; align-items: center; gap: 14px; color: #fff; }
         h2 .icon {
             width: 40px; height: 40px; min-width: 40px;
             background: linear-gradient(135deg, var(--accent-light), var(--purple));
             border-radius: 12px; display: flex; align-items: center; justify-content: center;
-            font-size: 1.3rem; box-shadow: 0 0 18px rgba(59,130,246,0.3);
+            font-size: 1.3rem;
         }
         h3 {
             font-size: 1.15rem; color: var(--accent-glow); margin: 24px 0 12px;
@@ -81,19 +79,19 @@
             font-size: 0.8rem; font-family: 'Consolas', monospace;
         }
         p, li { margin-bottom: 12px; color: var(--text-main); font-size: 1.01rem; }
-        a { color: var(--accent-glow); text-decoration: none; border-bottom: 1px dashed var(--accent-light); transition: all 0.3s; }
-        a:hover { color: #fff; text-shadow: 0 0 10px var(--accent-light); border-bottom-style: solid; }
+        a { color: var(--accent-glow); text-decoration: none; border-bottom: 1px dashed var(--accent-light); transition: color 0.3s, border-color 0.3s; }
+        a:hover { color: #fff; border-bottom-style: solid; }
 
         /* ── Code Blocks ── */
         pre {
             background: rgba(5, 12, 24, 0.9); border: 1px solid rgba(59,130,246,0.2);
             border-radius: 12px; padding: 20px 22px; margin: 16px 0; position: relative;
             overflow-x: auto; font-family: 'Fira Code', 'Consolas', 'Courier New', monospace; font-size: 0.9rem;
-            box-shadow: 0 0 24px rgba(59,130,246,0.05), inset 0 0 40px rgba(0,0,0,0.5);
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
         }
         code { color: #e2e8f0; }
         .comment { color: #64748b; font-style: italic; }
-        .cmd { color: #4ade80; font-weight: bold; text-shadow: 0 0 6px rgba(74,222,128,0.2); }
+        .cmd { color: #4ade80; font-weight: bold; }
         .string { color: #f9a8d4; }
         .key { color: #60a5fa; }
         .copy-btn {
@@ -101,12 +99,12 @@
             background: rgba(59,130,246,0.08); border: 1px solid var(--accent-light);
             color: var(--accent-light); padding: 6px 12px; border-radius: 8px;
             cursor: pointer; font-size: 0.8rem; font-weight: bold;
-            transition: all 0.3s; backdrop-filter: blur(5px); z-index: 10;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s; backdrop-filter: blur(5px); z-index: 10;
         }
-        .copy-btn:hover { background: var(--accent-light); color: #000; box-shadow: 0 0 16px var(--accent-light); }
+        .copy-btn:hover { background: var(--accent-light); color: #000; }
 
         /* ── Alert Boxes ── */
-        .alert { padding: 16px 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid; position: relative; }
+        .alert { padding: 16px 20px; border-radius: 12px; margin: 20px 0; border: 1px solid; position: relative; }
         .alert-danger  { border-color: #f87171; background: rgba(248,113,113,0.08); color: #fca5a5; }
         .alert-warning { border-color: #fbbf24; background: rgba(251,191,36,0.08); color: #fde68a; }
         .alert-info    { border-color: var(--accent-light); background: rgba(59,130,246,0.07); color: #bae6fd; }
@@ -144,9 +142,9 @@
         .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 16px; }
         .module-card {
             background: var(--frost); border: 1px solid rgba(59,130,246,0.18); border-radius: 14px;
-            padding: 20px; text-align: center; transition: all 0.3s;
+            padding: 20px; text-align: center; transition: border-color 0.3s;
         }
-        .module-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(59,130,246,0.12); }
+        .module-card:hover { border-color: var(--accent-light); }
         .module-card .mc-icon { font-size: 2.2rem; display: block; margin-bottom: 8px; }
         .module-card .mc-title { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
         .module-card .mc-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
@@ -370,7 +368,7 @@
         </ul>
 
         <h3>⚡ Flash 快速模式</h3>
-        <p>点击顶部栏 <strong>⚡ 快速</strong> 按钮启用。启用后跳过多智能体辩论复核环节，直接输出风险分析结果，响应速度提升 2-3 倍。适用于快速预览和压力测试。</p>
+        <p>点击顶部栏 <strong>⚡ 快速</strong> 按钮启用。启用后跳过图表生成与多智能体辩论复核、法规检索合并为一次、仅输出前 3 条核心风险，目标响应时间 <strong>1 分钟以内</strong>，适用于快速预览和压力测试。普通模式为完整链路（热力图/雷达图 + 三方辩论复核 + 完整风险明细），目标 <strong>3 分钟以内</strong>；正式报告建议使用普通模式。PDF/Excel 报告两种模式下均由系统自动兜底导出。</p>
 
         <h3>🧠 多智能体辩论机制</h3>
         <p>系统内置三方辩论制衡（默认开启，快速模式下跳过）：</p>
@@ -380,6 +378,14 @@
             <li><strong style="color: #c4b5fd;">裁判仲裁</strong>：综合两方意见，给出最终裁定</li>
         </ol>
         <p>辩论结果以折叠面板形式呈现在分析报告末尾。</p>
+
+        <h3>🔐 多用户登录与分析历史</h3>
+        <p>侧边栏「账户」区点击 <strong>🔐 登录 / 注册</strong>：注册后自动登录，每次分析完成会自动保存到你的专属历史（公司名称、综合评分、风险等级、分析模式、报告/图表下载链接），点击 <strong>📜 历史分析</strong> 随时回溯。</p>
+        <ul>
+            <li><strong>数据隔离</strong>：历史按账户严格隔离，不同用户互不可见；口令以 PBKDF2 加盐哈希存储，不存明文</li>
+            <li><strong>游客模式</strong>：不登录也可正常分析（演示零门槛），仅不保存历史</li>
+            <li><strong>存储位置</strong>：默认项目目录下 local_data.db（SQLite），配置 PGDATABASE_URL 可切 PostgreSQL</li>
+        </ul>
     </div>
 
     <!-- ═══ 章节4：效果评估与测试 ═══ -->
@@ -532,8 +538,8 @@ uv --version</span></pre>
         <div class="feature-grid">
             <div class="feature-chip">
                 <span class="feat-icon">🧠</span>
-                <strong>LLM：DeepSeek-Chat</strong><br>
-                <small style="color:var(--text-muted)">国产大模型，OpenAI 兼容<br>高性价比，18 元/百万 Token</small>
+                <strong>LLM：DeepSeek-V4</strong><br>
+                <small style="color:var(--text-muted)">全链路 v4-flash 速度优先<br>OpenAI 兼容，config 可切 v4-pro</small>
             </div>
             <div class="feature-chip">
                 <span class="feat-icon">🔗</span>
@@ -621,18 +627,7 @@ uv --version</span></pre>
     draw();
 })();
 
-// ── 滚动渐入动画 ──
-(function() {
-    const observer = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-                observer.unobserve(entry.target);
-            }
-        }
-    }, { threshold: 0.08 });
-    document.querySelectorAll('.glass-card').forEach(el => observer.observe(el));
-})();
+// （滚动渐入已移除：内容静置，入场动效仅保留首屏 hero 一次）
 
 // ── 复制按钮 ──
 (function() {

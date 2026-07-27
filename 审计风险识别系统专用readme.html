@@ -16,7 +16,9 @@
             --text-muted: #94a3b8;
             --card-border: rgba(59, 130, 246, 0.15);
             --card-bg: rgba(30, 41, 59, 0.55);
+            --font-display: "Source Han Serif SC", "Noto Serif SC", "STZhongsong", "SimSun", serif;
         }
+        /* Hallmark · macrostructure: Long Document · genre: atmospheric-docs · design-system: docs/design.md */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Segoe UI', "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -41,22 +43,20 @@
             border: 1px solid var(--card-border);
             border-radius: 20px; padding: 36px 38px; margin-bottom: 32px;
             box-shadow: 0 4px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.03);
-            opacity: 0; transform: translateY(40px);
-            transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .glass-card.visible { opacity: 1; transform: translateY(0); }
+        /* 入场动效：仅首屏 hero 一次，其余内容静置（去除整页滚动渐入） */
+        @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        .hero { animation: rise 0.6s ease-out both; }
 
         /* ── Hero ── */
         .hero { text-align: center; padding: 50px 0 20px; }
         .hero .logo-icon {
             font-size: 64px; display: block; margin-bottom: 8px;
-            filter: drop-shadow(0 0 20px var(--accent-glow));
         }
         .hero h1 {
+            font-family: var(--font-display);
             font-size: 2.4rem; font-weight: 800;
-            background: linear-gradient(135deg, #60a5fa, #818cf8);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text; margin-bottom: 12px; letter-spacing: 2px;
+            color: #eef2f8; margin-bottom: 12px; letter-spacing: 2px;
         }
         .hero .version-tag {
             display: inline-block; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3);
@@ -64,12 +64,12 @@
             color: var(--accent-light); letter-spacing: 2px; margin-bottom: 20px;
         }
 
-        h2 { font-size: 1.7rem; margin-bottom: 24px; display: flex; align-items: center; gap: 14px; color: #fff; }
+        h2 { font-family: var(--font-display); font-size: 1.7rem; margin-bottom: 24px; display: flex; align-items: center; gap: 14px; color: #fff; }
         h2 .icon {
             width: 42px; height: 42px; min-width: 42px;
             background: linear-gradient(135deg, var(--accent), #6366f1);
             border-radius: 12px; display: flex; align-items: center; justify-content: center;
-            font-size: 1.4rem; box-shadow: 0 0 18px var(--accent-glow);
+            font-size: 1.4rem;
         }
         h3 {
             font-size: 1.2rem; color: var(--accent-light); margin: 28px 0 12px;
@@ -81,8 +81,8 @@
             font-size: 0.85rem; font-family: 'Consolas', monospace;
         }
         p, li { margin-bottom: 13px; color: var(--text-main); font-size: 1.02rem; }
-        a { color: var(--accent-light); text-decoration: none; border-bottom: 1px dashed var(--accent); transition: all 0.3s; }
-        a:hover { color: #fff; text-shadow: 0 0 12px var(--accent-light); border-bottom-style: solid; }
+        a { color: var(--accent-light); text-decoration: none; border-bottom: 1px dashed var(--accent); transition: color 0.3s, border-color 0.3s; }
+        a:hover { color: #fff; border-bottom-style: solid; }
 
         pre {
             background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(59,130,246,0.18);
@@ -100,11 +100,11 @@
             background: rgba(59,130,246,0.08); border: 1px solid var(--accent);
             color: var(--accent-light); padding: 7px 14px; border-radius: 8px;
             cursor: pointer; font-size: 0.82rem; font-weight: bold;
-            transition: all 0.3s; backdrop-filter: blur(5px); z-index: 10;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s; backdrop-filter: blur(5px); z-index: 10;
         }
-        .copy-btn:hover { background: var(--accent); color: #fff; box-shadow: 0 0 16px var(--accent-glow); }
+        .copy-btn:hover { background: var(--accent); color: #fff; }
 
-        .alert { padding: 18px 20px; border-radius: 12px; margin: 22px 0; border-left: 4px solid; position: relative; }
+        .alert { padding: 18px 20px; border-radius: 12px; margin: 22px 0; border: 1px solid; position: relative; }
         .alert-danger  { border-color: #ef4444; background: rgba(239,68,68,0.08); color: #fca5a5; }
         .alert-warning { border-color: #f59e0b; background: rgba(245,158,11,0.08); color: #fde68a; }
         .alert-info    { border-color: var(--accent); background: rgba(59,130,246,0.07); color: #bae6fd; }
@@ -306,11 +306,7 @@
 </div>
 
 <script>
-    // 滚动渐入动画
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-    }, { threshold: 0.08 });
-    document.querySelectorAll('.glass-card').forEach(c => observer.observe(c));
+    // （滚动渐入已移除：内容静置，入场动效仅保留首屏 hero 一次）
 
     // 代码块复制按钮
     document.querySelectorAll('pre').forEach(pre => {

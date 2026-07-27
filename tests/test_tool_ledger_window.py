@@ -142,8 +142,11 @@ class TestPostProcessWithLedger:
     """_post_process 端到端：>40 条消息 + 台账场景下不误判且综合评分读到真实结果。"""
 
     def test_post_process_no_false_violation_and_reads_real_results(self, monkeypatch):
-        # 关闭多智能体辩论，避免触发 LLM 网络调用
+        # 关闭多智能体辩论，避免触发 LLM 网络调用；图表 mock 掉避免真实绘图落盘
         monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", False)
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(agent_mod, "generate_risk_heatmap", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/h.png")))
+        monkeypatch.setattr(agent_mod, "generate_radar_chart", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/r.png")))
 
         full = _build_full_messages()
         ledger = _build_ledger(full)
@@ -259,8 +262,9 @@ class TestAstreamPostProcess:
 
         chunks = asyncio.run(_collect())
 
-        # ① 原始三个 chunk 全部透传（前端进度追踪不受影响）
-        assert len(chunks) == 4
+        # ① 原始三个 chunk 全部透传 + 流末两个标记 chunk（post_processing / post_processed）
+        assert len(chunks) == 5
+        assert chunks[-2].get("__post_processing__") is True  # 后处理开始标记（供进度条更新）
         # ② 流末追加后处理标记 chunk，且 _post_process 确实被调用、修改对前端可见
         final_chunk = chunks[-1]
         assert final_chunk.get("__post_processed__") is True

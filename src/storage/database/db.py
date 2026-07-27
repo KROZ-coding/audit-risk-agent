@@ -1,10 +1,10 @@
 """数据库连接管理与会话工厂
 
-【当前定位】预留基础设施（非死代码）：业务主流程当前不落库——报告/图表存文件，
-会话检查点由 memory_saver.py 独立持久化到 checkpoints.sqlite（两库刻意分离，
-生命周期不同）。本模块保持可用状态并由 tests/test_db_smoke.py 冒烟测试保活，
-启用路径：配置 PGDATABASE_URL（或默认 SQLite）后直接 get_session() 接入业务落库
-（如分析历史记录表），无需改动本模块。
+【当前定位】已正式接线的业务库：承载多用户登录与分析历史三张表
+（users / session_tokens / analysis_history，见 shared/model.py 与 user_service.py），
+服务启动时由 main.py lifespan 幂等建表。会话检查点仍由 memory_saver.py 独立
+持久化到 checkpoints.sqlite（两库刻意分离，生命周期不同）；配置 PGDATABASE_URL
+可无缝切换 PostgreSQL，缺省使用零配置的本地 SQLite（local_data.db）。
 
 本模块提供 SQLAlchemy 数据库连接的集中管理，支持以下功能：
 1. 自动检测数据库 URL（优先从环境变量读取，本地开发默认使用 SQLite）

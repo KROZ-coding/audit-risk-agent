@@ -3,9 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2.5' stroke-linecap='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/></svg>">
 <title>审计风险识别系统 | AI Agent</title>
 <style>
+/* Hallmark · component: card-system (toast/file/score/debate) · genre: modern-minimal
+ * theme: existing dark tokens · studied-DNA: card best-practices (StanVision/M3, 2026-07)
+ * 卡片统一语言：outlined + 微抬升；语义色 footprint ≤5%（色条/图标）；禁整卡泼色
+ * states: default · hover(描边+抬升) · focus-visible · toast: auto-dismiss 5s + hover 暂停
+ * audit-fix 2026-07-25：渐变清零（仅留输入区功能性 scrim + 雷达图蓝系填充）；
+ * 紫色驱逐；无限循环动画仅留加载语义（spinner/indeterminate/loading dot）；
+ * 双灰阶收编 token；tabular-nums 上表格与评分；tooltip 触屏可达；z-index 命名化 */
 /* ── Modern Dark Theme & Variables ─────────────────── */
 :root {
   --bg-base: #0b0f19;
@@ -16,7 +23,8 @@
 
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #8b98ab;   /* 提亮至 ≥4.5:1 对比度（原 #64748b 仅 3.4:1） */
+  --text-code: #93c5fd;    /* 行内代码色，归入蓝色主调（原粉色 #f472b6 脱离色系） */
 
   --accent: #3b82f6;
   --accent-glow: rgba(59, 130, 246, 0.4);
@@ -25,24 +33,40 @@
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
+  /* 暗底可读的语义亮色（统一收编散装字面值） */
+  --success-lite: #34d399;
+  --warning-lite: #fbbf24;
+  --danger-lite: #f87171;
+
+  /* 命名层级（替代散装 z-index:9999） */
+  --z-toast: 50;
+  --z-tooltip: 60;
+  --z-overlay: 100;
 
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  /* 卡片系统统一令牌：全站卡片共用同一圆角/阴影，区分手法统一为 outlined+微抬升 */
+  --card-radius: 12px;
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
 
   --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 具体属性过渡（替代 transition:all 反模式）：margin-left 供侧边栏折叠使用 */
+  --transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg-base); color: var(--text-primary); overflow: hidden; }
 body { display: flex; }
 
+/* 内联 SVG 图标：随字号缩放、随文字色继承，垂直对齐基线 */
+.ico { vertical-align: -0.125em; flex-shrink: 0; }
+button .ico, .quick-btn .ico { margin-right: 2px; }
+
 /* ── Sidebar (Glassmorphism) ───────────────────────── */
 .sidebar {
   width: 280px; min-width: 280px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(16px);
+  background: var(--bg-surface);
   border-right: 1px solid var(--glass-border);
   display: flex; flex-direction: column;
   transition: var(--transition);
@@ -54,9 +78,9 @@ body { display: flex; }
 .logo-wrap { display: flex; align-items: center; gap: 12px; }
 .logo {
   width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  background: var(--accent);
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px; box-shadow: var(--shadow-glow);
+  font-size: 18px;
 }
 .sidebar-header h1 { font-size: 16px; font-weight: 600; }
 .sidebar-header p { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
@@ -71,20 +95,20 @@ body { display: flex; }
   border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px;
   display: flex; align-items: center; gap: 12px; transition: var(--transition);
 }
-.status-card:hover { background: rgba(255,255,255,0.06); transform: translateX(4px); }
+.status-card:hover { background: rgba(255,255,255,0.06); }
 
 /* Status Tooltip */
 .status-card { position: relative; cursor: default; }
 .status-tooltip {
   position: fixed;
-  z-index: 9999;
-  background: rgb(17, 24, 39);
-  border: 1px solid rgb(55, 65, 81);
-  border-radius: 12px;
+  z-index: var(--z-tooltip);
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   padding: 16px 20px;
   min-width: 280px;
   max-width: 360px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-card);
   pointer-events: none;
   opacity: 0;
   transform: translateX(8px);
@@ -98,10 +122,10 @@ body { display: flex; }
 .tooltip-title {
   font-size: 13px;
   font-weight: 600;
-  color: rgb(243, 244, 246);
+  color: var(--text-primary);
   margin-bottom: 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgb(55, 65, 81);
+  border-bottom: 1px solid var(--glass-border);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -114,29 +138,29 @@ body { display: flex; }
   font-size: 12px;
   gap: 12px;
 }
-.tooltip-key { color: rgb(156, 163, 175); white-space: nowrap; flex-shrink: 0; }
-.tooltip-val { color: rgb(229, 231, 235); text-align: right; word-break: break-all; }
-.tooltip-val.ok { color: rgb(52, 211, 153); }
-.tooltip-val.warn { color: rgb(251, 191, 36); }
-.tooltip-val.err { color: rgb(248, 113, 113); }
+.tooltip-key { color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
+.tooltip-val { color: var(--text-primary); text-align: right; word-break: break-all; font-variant-numeric: tabular-nums; }
+.tooltip-val.ok { color: var(--success-lite); }
+.tooltip-val.warn { color: var(--warning-lite); }
+.tooltip-val.err { color: var(--danger-lite); }
 .tooltip-files {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgb(55, 65, 81);
+  border-top: 1px solid var(--glass-border);
   font-size: 11px;
-  color: rgb(156, 163, 175);
+  color: var(--text-secondary);
   line-height: 1.6;
   max-height: 120px;
   overflow-y: auto;
 }
 .tooltip-file-item { padding: 1px 0; }
-.tooltip-file-item::before { content: '📄 '; }
+.tooltip-file-item::before { content: '· '; color: var(--accent); font-weight: 700; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite; }
-.dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-.dot.warn { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
-.dot.loading { background: var(--text-muted); animation: pulse 1s infinite; }
+.dot.ok { background: var(--success); }
+.dot.err { background: var(--danger); }
+.dot.warn { background: var(--warning); }
+.dot.loading { background: var(--text-muted); animation: pulse 1s infinite; } /* 仅加载态保留动画（有语义） */
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
@@ -149,8 +173,7 @@ body { display: flex; }
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 
 .topbar {
-  height: 64px; background: rgba(19, 25, 38, 0.8);
-  backdrop-filter: blur(12px);
+  height: 64px; background: var(--bg-surface);
   border-bottom: 1px solid var(--glass-border);
   display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: 10;
 }
@@ -173,6 +196,8 @@ body { display: flex; }
 .chat-area::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
 
 .msg { max-width: 80%; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+/* 助手气泡恒定宽度：块级占满到上限，展开/收起思维链不再引起气泡宽度跳变 */
+.msg.assistant { width: 100%; max-width: 960px; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
 .msg.user { align-self: flex-end; }
@@ -184,8 +209,8 @@ body { display: flex; }
   word-break: break-word; position: relative;
 }
 .msg.user .bubble {
-  background: linear-gradient(135deg, var(--accent), #2563eb); color: #fff;
-  border-bottom-right-radius: 4px; box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 4px;
 }
 .msg.assistant .bubble {
   background: var(--bg-elevated); color: var(--text-primary);
@@ -232,14 +257,14 @@ body { display: flex; }
 
 /* Thinking Card */
 .thinking-card {
-  background: rgb(17, 24, 39);
-  border: 1px solid rgb(55, 65, 81);
-  border-radius: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   padding: 28px 32px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-card);
 }
 .thinking-header {
   display: flex;
@@ -252,53 +277,42 @@ body { display: flex; }
   height: 48px;
   flex-shrink: 0;
 }
-.thinking-icon-ring {
-  position: absolute;
-  inset: -4px;
-  border-radius: 16px;
-  border: 2px solid transparent;
-  border-image: linear-gradient(135deg, rgb(99, 102, 241), rgb(168, 85, 247), rgb(236, 72, 153)) 1;
-  animation: ringRotate 3s linear infinite;
+/* 思考中图案：六角冰晶雪花缓旋（六重对称，一根主枝定义 + 6 次旋转引用）；
+   旋转为「分析进行中」状态语义，卡片移除即停 */
+.thinking-snowflake {
+  position: absolute; inset: 0;
+  color: var(--accent);
+  animation: snowSpin 10s linear infinite;
 }
-@keyframes ringRotate {
+.thinking-snowflake svg { width: 100%; height: 100%; display: block; }
+@keyframes snowSpin {
   to { transform: rotate(360deg); }
-}
-.thinking-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgb(79, 70, 229), rgb(147, 51, 234));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
 }
 .thinking-info { flex: 1; }
 .thinking-title {
   font-size: 16px;
   font-weight: 600;
-  color: rgb(243, 244, 246);
+  color: var(--text-primary);
   letter-spacing: 0.3px;
 }
 .thinking-sub {
   font-size: 13px;
-  color: rgb(156, 163, 175);
+  color: var(--text-secondary);
   margin-top: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .thinking-step-text {
-  color: rgb(167, 139, 250);
+  color: var(--accent);
   font-weight: 500;
 }
 
-/* Progress Bar */
+/* Progress Bar —— 单色细线，宽度变化本身就是反馈（原三色流光+扫光双循环动画已移除） */
 .progress-track {
   width: 100%;
   height: 8px;
-  background: rgb(31, 41, 55);
+  background: var(--bg-elevated);
   border-radius: 99px;
   overflow: hidden;
   position: relative;
@@ -306,35 +320,10 @@ body { display: flex; }
 .progress-fill {
   height: 100%;
   border-radius: 99px;
-  background: linear-gradient(90deg, rgb(79, 70, 229), rgb(147, 51, 234), rgb(236, 72, 153));
-  background-size: 200% 100%;
-  animation: gradientShift 2s ease infinite;
+  background: var(--accent);
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   min-width: 4px;
-}
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.15) 50%,
-    transparent 100%
-  );
-  animation: shimmer 1.8s ease-in-out infinite;
-}
-@keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
 }
 
 /* Completed Steps List */
@@ -350,23 +339,23 @@ body { display: flex; }
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 500;
-  color: rgb(148, 163, 184);
-  border-left: 2px solid rgb(51, 65, 85);
+  color: var(--text-secondary);
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
   opacity: 0;
   transform: translateX(-6px);
   animation: tagIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .vstep.done {
-  color: rgb(52, 211, 153);
+  color: var(--success-lite);
   border-left-color: rgba(16, 185, 129, 0.4);
 }
 .vstep.active {
-  color: rgb(165, 180, 252);
-  border-left-color: rgba(99, 102, 241, 0.6);
-  background: rgba(99, 102, 241, 0.06);
+  color: var(--accent);
+  border-left-color: var(--accent-glow);
+  background: rgba(59, 130, 246, 0.06);
 }
 .vstep-icon { font-size: 11px; width: 14px; text-align: center; }
 .vstep-label { flex: 1; }
@@ -415,16 +404,43 @@ body { display: flex; }
   display: flex; align-items: center; gap: 6px;
 }
 
-/* File Download Card */
+/* 工具调用链专业化展示：序号胶囊 + 箭头连接 + 总调用计数 */
+.tool-chain-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-bottom: 12px; padding: 10px 14px;
+  background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15);
+  border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted);
+}
+.tool-chain-bar .tc-title { color: var(--accent); font-weight: 700; margin-right: 4px; }
+.tc-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 14px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.tc-chip b {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: rgba(59,130,246,0.18); color: var(--accent);
+  font-size: 10px; font-weight: 700;
+}
+.tc-chip .tc-x { color: var(--accent); font-weight: 700; }
+.tc-arrow { color: var(--text-muted); }
+.tc-count { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* File Download Card —— 卡体统一深色 surface，accent 只做图标/动作/hover 描边 */
 .file-download-card {
   display: flex; align-items: center; gap: 12px;
-  background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: var(--radius-md); padding: 14px 18px; margin: 8px 0;
+  background: var(--bg-elevated); border: 1px solid var(--glass-border);
+  border-radius: var(--card-radius); padding: 14px 18px; margin: 8px 0;
   transition: var(--transition); cursor: pointer;
 }
 .file-download-card:hover {
-  background: rgba(59, 130, 246, 0.15); border-color: var(--accent);
-  transform: translateY(-1px); box-shadow: var(--shadow-glow);
+  border-color: var(--accent);
+  transform: translateY(-1px); box-shadow: var(--shadow-card);
+}
+.file-download-card:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
 .file-download-card .file-icon { font-size: 28px; }
 .file-download-card .file-info { flex: 1; }
@@ -435,27 +451,23 @@ body { display: flex; }
 /* Welcome */
 .welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
 .welcome-icon {
-  width: 80px; height: 80px; border-radius: 24px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  width: 80px; height: 80px; border-radius: var(--radius-lg);
+  background: var(--accent);
   display: flex; align-items: center; justify-content: center;
   font-size: 36px; margin-bottom: 24px; color: #fff;
-  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
-  animation: float 6s ease-in-out infinite;
 }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
-.welcome h2 { font-size: 28px; font-weight: 700; margin-bottom: 12px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.welcome h2 { font-size: 28px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary); }
 .welcome p { font-size: 15px; color: var(--text-secondary); max-width: 480px; line-height: 1.6; margin-bottom: 32px; }
 
 .quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; max-width: 600px; }
 .quick-btn {
   padding: 16px; border-radius: var(--radius-md); font-size: 14px; font-weight: 500;
-  border: 1px solid var(--glass-border); background: var(--glass-bg);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-border); background: var(--bg-surface);
   cursor: pointer; color: var(--text-primary); transition: var(--transition);
   text-align: left; display: flex; align-items: center; gap: 12px;
 }
-.quick-btn:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); transform: translateY(-2px); box-shadow: var(--shadow-glow); }
+.quick-btn:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); transform: translateY(-1px); }
 .quick-btn .icon { font-size: 20px; }
 .quick-grid .quick-btn:last-child:nth-child(odd) { grid-column: 1 / -1; justify-content: center; }
 
@@ -494,10 +506,10 @@ body { display: flex; }
 }
 .btn-upload { background: transparent; color: var(--text-muted); }
 .btn-upload:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
-.btn-send { background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
-.btn-send:hover { background: var(--accent-hover); transform: scale(1.05); }
-.btn-send:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; transform: none; }
-.btn-stop { background: var(--danger); color: #fff; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+.btn-send { background: var(--accent); color: #fff; }
+.btn-send:hover { background: var(--accent-hover); }
+.btn-send:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; }
+.btn-stop { background: var(--danger); color: #fff; }
 
 /* ── Markdown ──────────────────────────────────────── */
 .bubble h1, .bubble h2, .bubble h3 { margin: 16px 0 8px; font-weight: 600; color: #fff; }
@@ -509,30 +521,48 @@ body { display: flex; }
 .bubble li { margin: 4px 0; }
 .bubble code {
   background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;
-  font-size: 13px; font-family: 'JetBrains Mono', monospace; color: #f472b6;
+  font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--text-code);
 }
 .bubble pre {
   background: #0f172a; border: 1px solid var(--glass-border);
   padding: 16px; border-radius: var(--radius-sm); overflow-x: auto; margin: 12px 0;
 }
 .bubble pre code { background: none; padding: 0; color: #e2e8f0; font-size: 13px; }
-.bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px; }
+.bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
 .bubble th, .bubble td { border: 1px solid var(--glass-border); padding: 10px; text-align: left; }
 .bubble th { background: rgba(255,255,255,0.05); font-weight: 600; }
 .bubble a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--accent); }
 .bubble a:hover { border-bottom-style: solid; }
-.bubble blockquote { border-left: 3px solid var(--accent); padding-left: 16px; margin: 12px 0; color: var(--text-secondary); font-style: italic; }
+.bubble blockquote { border-left: 3px solid var(--accent); padding-left: 16px; margin: 12px 0; color: var(--text-secondary); }
 
 .risk-major { color: #fff; background: var(--danger); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
 .risk-important { color: #fff; background: var(--warning); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
 .risk-general { color: #fff; background: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
+/* 有益/有害着色：低风险绿、高/极高风险红 */
+.risk-good { color: #fff; background: var(--success); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
+.risk-bad { color: #fff; background: var(--danger); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
+
+/* ── 长代码块折叠 ── */
+.code-fold { margin: 12px 0; }
+.code-fold > summary {
+  cursor: pointer; user-select: none;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2);
+  font-size: 13px; color: #a5b4fc; font-weight: 600;
+  list-style: none;
+}
+.code-fold > summary::-webkit-details-marker { display: none; }
+.code-fold > summary::before { content: '▶ '; font-size: 10px; }
+.code-fold[open] > summary::before { content: '▼ '; }
+.code-fold[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.code-fold > pre { margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0; }
 
 /* ── 多智能体辩论复核意见卡片 ─────────────────────── */
 .review-card {
   margin-top: 20px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--card-radius);
   padding: 20px 24px;
   position: relative;
   overflow: hidden;
@@ -541,8 +571,8 @@ body { display: flex; }
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #8b5cf6, #3b82f6, #06b6d4);
+  height: 2px;
+  background: var(--accent);
 }
 .review-card-header {
   display: flex;
@@ -550,22 +580,20 @@ body { display: flex; }
   gap: 10px;
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+  border-bottom: 1px solid var(--glass-border);
 }
 .review-card-icon {
   width: 36px; height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
   display: flex; align-items: center; justify-content: center;
   font-size: 18px;
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.3);
 }
 .review-card-title {
   font-size: 15px;
   font-weight: 700;
-  background: linear-gradient(135deg, #c4b5fd, #93c5fd);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
 }
 .review-card-subtitle {
   font-size: 11px;
@@ -579,8 +607,8 @@ body { display: flex; }
   display: inline-block;
   font-size: 12px;
   font-weight: 600;
-  color: #c4b5fd;
-  background: rgba(139, 92, 246, 0.12);
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.12);
   padding: 3px 10px;
   border-radius: 4px;
   margin-bottom: 6px;
@@ -604,9 +632,27 @@ body { display: flex; }
 .review-verdict.redo { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
 /* ── 辩论三段式折叠面板 ───────────────────── */
+/* 辩论可视化摘要条：三方流程 chip + 仲裁徽章 + 调整计数 */
+.debate-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 12px; padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border); border-radius: var(--card-radius);
+}
+.debate-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.04);
+  font-size: 12px; color: var(--text-secondary);
+}
+.debate-chip b { font-size: 13px; }
+.debate-flow-arrow { color: var(--text-muted); font-size: 12px; }
+/* 辩论三方身份色点（替代 🟥🟦🟪 色块 emoji） */
+.debate-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; }
 .debate-section {
   border: 1px solid var(--glass-border);
-  border-radius: 10px;
+  border-radius: var(--card-radius);
   margin-bottom: 8px;
   overflow: hidden;
 }
@@ -619,7 +665,7 @@ body { display: flex; }
   user-select: none;
 }
 .debate-section-header:hover { background: rgba(255,255,255,0.04); }
-.debate-section-header .arrow { transition: transform 0.2s; font-size: 10px; }
+.debate-section-header .arrow { transition: transform 0.2s; font-size: 10px; display: inline-block; }
 .debate-section.open .debate-section-header .arrow { transform: rotate(90deg); }
 .debate-section-body {
   display: none;
@@ -651,7 +697,7 @@ body { display: flex; }
   font-size: 13px; font-weight: 600; color: #a5b4fc;
   user-select: none;
 }
-.reasoning-chain-header .arrow { transition: transform 0.2s; font-size: 10px; }
+.reasoning-chain-header .arrow { transition: transform 0.2s; font-size: 10px; display: inline-block; }
 .reasoning-chain.open .reasoning-chain-header .arrow { transform: rotate(90deg); }
 .reasoning-chain-body { display: none; padding: 12px 16px; }
 .reasoning-chain.open .reasoning-chain-body { display: block; }
@@ -670,8 +716,8 @@ body { display: flex; }
 
 /* ── 模块入口二选一弹窗 ───────────────────── */
 .module-choice-overlay {
-  position: fixed; inset: 0; z-index: 99999;
-  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  position: fixed; inset: 0; z-index: var(--z-overlay);
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); /* 遮罩盖在内容上，blur 有功能语义，保留 */
   display: flex; align-items: center; justify-content: center;
   animation: fadeIn 0.2s ease;
 }
@@ -710,9 +756,9 @@ body { display: flex; }
 .score-card {
   margin-bottom: 16px;
   padding: 20px 24px;
-  background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9));
+  background: var(--bg-elevated);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--card-radius);
   display: flex;
   align-items: center;
   gap: 20px;
@@ -725,6 +771,7 @@ body { display: flex; }
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 800; color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
 }
 .score-info { flex: 1; }
 .score-level {
@@ -748,7 +795,7 @@ body { display: flex; }
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 9999;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
@@ -756,33 +803,47 @@ body { display: flex; }
   pointer-events: none;
 }
 .toast-card {
-  background: linear-gradient(135deg, #065f46, #047857);
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  border-radius: 12px;
-  padding: 14px 20px;
-  color: #ecfdf5;
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-left: 4px solid var(--success);
+  border-radius: var(--card-radius);
+  padding: 12px 16px;
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 12px rgba(16, 185, 129, 0.2);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 240px;
+  width: 300px;
+  position: relative;
+  overflow: hidden;
   pointer-events: auto;
   animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transition: transform 0.3s ease, opacity 0.3s ease;
   cursor: pointer;
 }
 .toast-card .toast-icon {
-  width: 28px; height: 28px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 8px;
+  width: 28px; height: 28px; flex-shrink: 0;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
 }
-.toast-card .toast-body { flex: 1; }
-.toast-card .toast-title { font-weight: 700; font-size: 13px; }
-.toast-card .toast-sub { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+.toast-card .toast-body { flex: 1; min-width: 0; }
+.toast-card .toast-title { font-weight: 700; font-size: 13px; color: var(--text-primary); }
+.toast-card .toast-sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 自动消退进度线：动画结束驱动删卡；hover 暂停 = 悬停期间不消失 */
+.toast-card .toast-timer {
+  position: absolute; bottom: 0; left: 0; height: 2px;
+  background: var(--success); width: 100%;
+  animation: toastTimer 5s linear forwards;
+}
+.toast-card:hover .toast-timer { animation-play-state: paused; }
 /* 堆叠效果：非最新卡片缩小并上移，露出边缘 */
 .toast-card.stacked {
   transform: scale(0.95) translateY(-8px);
@@ -795,6 +856,10 @@ body { display: flex; }
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(40px) scale(0.9); }
   to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes toastTimer {
+  from { width: 100%; }
+  to { width: 0; }
 }
 
 @media (max-width: 768px) {
@@ -832,7 +897,7 @@ body { display: flex; }
 .splash-overlay {
   position: fixed;
   inset: 0;
-  z-index: 99999;                    /* 位于所有元素之上 */
+  z-index: var(--z-overlay);         /* 位于所有元素之上 */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -908,62 +973,32 @@ body { display: flex; }
   }
 }
 
-/* ── 开屏图标（带旋转光环） ── */
+/* ── 开屏图案（简约版）：蓝色圆角方块+放大镜，静态柔光，无外圈装饰；
+   动效只靠 splashIn 入场与底部加载三点，图案本体静止 */
 .splash-icon-wrap {
   position: relative;
   width: 100px;
   height: 100px;
   margin-bottom: 8px;
 }
-
-.splash-icon-ring {
-  position: absolute;
-  inset: -8px;
-  border-radius: 30px;
-  border: 2px solid transparent;
-  border-image: conic-gradient(from 0deg,
-    rgba(59, 130, 246, 0.8),
-    rgba(139, 92, 246, 0.8),
-    rgba(236, 72, 153, 0.8),
-    rgba(59, 130, 246, 0.8)
-  ) 1 / 2px;
-  animation: ringSpin 2s linear infinite;
-}
-
-@keyframes ringSpin {
-  to { transform: rotate(360deg); }
-}
-
 .splash-icon {
   width: 100px;
   height: 100px;
   border-radius: 28px;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+  background: var(--accent);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48px;
-  box-shadow:
-    0 0 30px rgba(59, 130, 246, 0.4),
-    0 0 60px rgba(139, 92, 246, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  animation: iconPulse 2s ease-in-out infinite;
+  box-shadow: 0 10px 40px rgba(59, 130, 246, 0.35);
 }
 
-@keyframes iconPulse {
-  0%, 100% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.4), 0 0 60px rgba(139, 92, 246, 0.2); }
-  50% { box-shadow: 0 0 50px rgba(59, 130, 246, 0.6), 0 0 80px rgba(139, 92, 246, 0.3); }
-}
-
-/* ── 系统标题（渐变色文字） ── */
+/* ── 系统标题 ── */
 .splash-title {
   font-size: 32px;
   font-weight: 800;
   letter-spacing: 2px;
-  background: linear-gradient(135deg, #f1f5f9 0%, #94a3b8 50%, #60a5fa 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
+  color: var(--text-primary);
 }
 
 /* ── 副标题 ── */
@@ -1041,7 +1076,7 @@ body.splash-active .main {
 .eval-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--glass-border); }
 .eval-header h2 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0; }
 .eval-metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.eval-metric-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 16px 20px; text-align: center; backdrop-filter: blur(8px); }
+.eval-metric-card { background: var(--bg-surface); border: 1px solid var(--glass-border); border-radius: var(--card-radius); padding: 16px 20px; text-align: center; }
 .eval-metric-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
 .eval-metric-card .value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
 .eval-metric-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
@@ -1073,10 +1108,8 @@ body.splash-active .main {
   <!-- 主内容 -->
   <div class="splash-content">
     <div class="splash-icon-wrap">
-      <!-- 旋转渐变光环 -->
-      <div class="splash-icon-ring"></div>
-      <!-- 系统图标 -->
-      <div class="splash-icon">🔍</div>
+      <!-- 蓝色圆角方块+放大镜（简约版，内联 SVG 第一帧可见） -->
+      <div class="splash-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
     </div>
     <div class="splash-title">审计风险识别系统</div>
     <div class="splash-subtitle">AI Agent · 智能审计分析平台</div>
@@ -1087,7 +1120,7 @@ body.splash-active .main {
     <div class="splash-loading">
       <span></span><span></span><span></span>
     </div>
-    <div class="splash-version">v4.0.0 · 载入中...</div>
+    <div class="splash-version">v4.2.6beta · 载入中...</div>
   </div>
 </div>
 
@@ -1095,7 +1128,7 @@ body.splash-active .main {
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="logo-wrap">
-      <div class="logo">🔍</div>
+      <div class="logo" data-ico="search" data-ico-size="18"></div>
       <div>
         <h1>审计风险识别</h1>
         <p>AI Agent 智能分析平台</p>
@@ -1104,6 +1137,10 @@ body.splash-active .main {
   </div>
 
   <div class="status-section">
+    <div class="section-title">账户</div>
+    <div id="accountSection" style="margin-bottom:18px">
+      <!-- 由 renderAccount() 动态渲染：游客态显示登录入口，登录态显示用户名/历史/登出 -->
+    </div>
     <div class="section-title">系统状态</div>
     <div class="status-card" id="status-server">
       <span class="dot loading"></span>
@@ -1143,10 +1180,10 @@ body.splash-active .main {
 
     <div class="sidebar-footer">
     <div>本地模式 · LangGraph + DeepSeek</div>
-    <div style="margin-top:4px">v4.0.0 · © 2026</div>
+    <div style="margin-top:4px">v4.2.6beta · © 2026</div>
     <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
-      <button onclick="triggerKBUpload()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）">📥 添加知识库</button>
-      <button onclick="reloadKB(this)" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="重新加载知识库文件">🔄 重载知识库</button>
+      <button onclick="triggerKBUpload()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）" data-ico="paperclip"> 添加知识库</button>
+      <button onclick="reloadKB(this)" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="重新加载知识库文件" data-ico="refresh"> 重载知识库</button>
     </div>
     <input type="file" id="kbFileInput" accept=".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.json,.xml,.html,.htm,.log" multiple style="display:none" onchange="uploadKBFiles(this.files)">
   </div>
@@ -1158,34 +1195,34 @@ body.splash-active .main {
     <button class="menu-btn" onclick="toggleSidebar()" title="切换侧栏">☰</button>
     <span class="topbar-title" id="topbar-title">新建会话</span>
     <div class="btn-group">
-      <button class="btn-sm active" id="panelBtnChat" onclick="togglePanel('chat')">💬 对话</button>
-      <button class="btn-sm" id="panelBtnEval" onclick="togglePanel('eval')">📊 效果评估</button>
-      <button class="btn-sm" onclick="clearChat()" title="清空对话">🗑️ 新会话</button>
-      <button class="btn-sm" onclick="exportChat()" title="导出对话记录">💾 导出</button>
-      <button class="btn-sm" id="flashToggle" onclick="toggleFlashMode()" title="快速模式：跳过辩论复核，加快响应速度">⚡ 快速</button>
+      <button class="btn-sm active" id="panelBtnChat" onclick="togglePanel('chat')" data-ico="message"> 对话</button>
+      <button class="btn-sm" id="panelBtnEval" onclick="togglePanel('eval')" data-ico="chart"> 效果评估</button>
+      <button class="btn-sm" onclick="clearChat()" title="清空对话" data-ico="trash"> 新会话</button>
+      <button class="btn-sm" onclick="exportChat()" title="导出对话记录" data-ico="download"> 导出</button>
+      <button class="btn-sm" id="flashToggle" onclick="toggleFlashMode()" title="快速模式：跳过图表与辩论复核、只出核心风险，目标 1 分钟内；普通模式为完整链路（图表+三方辩论复核）" data-ico="zap"> 快速</button>
     </div>
   </div>
 
   <div class="chat-area" id="chatArea">
     <div class="welcome" id="welcomeScreen">
-      <div class="welcome-icon">📊</div>
+      <div class="welcome-icon" data-ico="chart" data-ico-size="36"></div>
       <h2>上市公司年报审计风险识别</h2>
       <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告（PDF + Excel）。</p>
       <div class="quick-grid">
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','📊 财务指标分析')">
-          <span class="icon">📊</span> <span>财务指标分析</span>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','财务指标分析')">
+          <span class="icon" data-ico="chart" data-ico-size="20"></span> <span>财务指标分析</span>
         </button>
-        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','📝 披露规范性检查')">
-          <span class="icon">📝</span> <span>披露规范性检查</span>
+        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','披露规范性检查')">
+          <span class="icon" data-ico="clipboard" data-ico-size="20"></span> <span>披露规范性检查</span>
         </button>
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','🎯 综合风险评估')">
-          <span class="icon">🎯</span> <span>综合风险评估</span>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','综合风险评估')">
+          <span class="icon" data-ico="target" data-ico-size="20"></span> <span>综合风险评估</span>
         </button>
         <button class="quick-btn" onclick="searchPenalty()">
-          <span class="icon">⚖️</span> <span>监管处罚检索</span>
+          <span class="icon" data-ico="scale" data-ico-size="20"></span> <span>监管处罚检索</span>
         </button>
         <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件">
-          <span class="icon">📦</span> <span>批量上传年报</span>
+          <span class="icon" data-ico="package" data-ico-size="20"></span> <span>批量上传年报</span>
         </button>
       </div>
       <p style="font-size:11px;color:var(--text-muted);margin-top:8px;opacity:0.6">数据来源：巨潮资讯网上市公司公开年报、证监会近五年行政处罚决定书、上交所/深交所问询函、中国审计准则及会计准则电子版。所有数据均为合法公开信息。</p>
@@ -1195,7 +1232,7 @@ body.splash-active .main {
   <!-- ═══ 效果评估面板 ═══ -->
   <div class="eval-panel" id="evalPanel">
     <div class="eval-header">
-      <h2>📊 系统效果量化评估</h2>
+      <h2 data-ico="chart"> 系统效果量化评估</h2>
       <div style="display:flex;gap:8px">
         <button class="eval-btn" id="btnRunEval" onclick="runEvaluationTool()">▶ 运行工具评估</button>
       </div>
@@ -1206,22 +1243,22 @@ body.splash-active .main {
       <div class="eval-metrics-grid" id="evalMetrics"></div>
       <!-- 五维能力雷达图 -->
       <div class="eval-section" id="evalRadar" style="margin-top:16px">
-        <h3>🕸️ 分维度识别能力雷达图</h3>
+        <h3 data-ico="radar"> 分维度识别能力雷达图</h3>
         <div id="evalRadarContent" style="display:flex;justify-content:center;padding:12px 0"></div>
       </div>
       <!-- 基线对比 -->
       <div class="eval-section" id="evalBaseline" style="margin-top:16px">
-        <h3>📈 基线方案对比</h3>
+        <h3 data-ico="trend"> 基线方案对比</h3>
         <div id="evalBaselineContent"></div>
       </div>
       <!-- 分维度指标 -->
       <div class="eval-section" id="evalDimension" style="margin-top:16px">
-        <h3>📋 分维度识别能力</h3>
+        <h3 data-ico="clipboard"> 分维度识别能力</h3>
         <div id="evalDimensionContent"></div>
       </div>
       <!-- 逐用例明细 -->
       <div class="eval-section" id="evalCases" style="margin-top:16px">
-        <h3>🔍 逐用例评估明细</h3>
+        <h3 data-ico="search"> 逐用例评估明细</h3>
         <div id="evalCasesContent"></div>
       </div>
     </div>
@@ -1234,9 +1271,9 @@ body.splash-active .main {
         <div class="input-box">
           <textarea id="msgInput" rows="1" placeholder="输入分析需求，如：请分析某公司年报的审计风险..."
                     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-          <button class="btn-icon btn-upload" onclick="triggerUpload()" title="上传 PDF 年报">📎</button>
+          <button class="btn-icon btn-upload" onclick="triggerUpload()" title="上传 PDF 年报" data-ico="paperclip" data-ico-size="18"></button>
         </div>
-        <button class="btn-icon btn-send" id="sendBtn" onclick="sendMessage()" title="发送">➤</button>
+        <button class="btn-icon btn-send" id="sendBtn" onclick="sendMessage()" title="发送" data-ico="send" data-ico-size="18"></button>
       </div>
     </div>
     <div class="ai-disclaimer">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。</div>
@@ -1253,16 +1290,72 @@ body.splash-active .main {
 // ══════════════════════════════════════════════════════════
 const API_BASE = window.location.origin;
 
+// ── 内联 SVG 图标集（手绘，Lucide 开源体系画法：24 viewBox / 2px 圆头描边 /
+// currentColor 继承文字色）——替代 UI chrome 层的 emoji，跨平台渲染一致。
+// 正文内容层（LLM 输出）与思维链分类色块不在替换范围。
+const ICONS = {
+  'search':     '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  'chart':      '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  'file-text':  '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+  'clipboard':  '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/>',
+  'target':     '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  'scale':      '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  'package':    '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/>',
+  'message':    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  'trash':      '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  'download':   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  'zap':        '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/>',
+  'refresh':    '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
+  'paperclip':  '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  'send':       '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  'check-circle':'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  'alert':      '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  'x-circle':   '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+  'pie':        '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
+  'trend':      '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  'branch':     '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  'user':       '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  'clock':      '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  'bot':        '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  'pencil':     '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  'square':     '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+  'folder':     '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  'lock':       '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  'radar':      '<path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62a10 10 0 1 0 19.02-1.27"/><path d="M16.24 7.76a6 6 0 1 0-8.01 8.91"/><path d="M12 18h.01"/><path d="M17.99 11.66a6 6 0 0 1-2.22 4.58"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/>',
+};
+
+/** 生成内联 SVG 图标（name 取自 ICONS；size 默认 1em 随字号缩放） */
+function icon(name, size) {
+  const paths = ICONS[name];
+  if (!paths) return '';
+  const s = size || '1em';
+  return `<svg class="ico" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+// 静态 HTML 与动态重建片段中的 data-ico 占位符统一注入（可重入：已注入的跳过）
+function hydrateIcons(root) {
+  (root || document).querySelectorAll('[data-ico]').forEach(el => {
+    if (el.querySelector('.ico')) return;
+    el.insertAdjacentHTML('afterbegin', icon(el.dataset.ico, el.dataset.icoSize));
+  });
+}
+document.addEventListener('DOMContentLoaded', () => hydrateIcons());
+
 // ── 鉴权头自动注入：后端配置 APP_API_KEY 时，在浏览器 localStorage 存入
 // audit_api_key 即可通过校验（控制台执行 localStorage.setItem('audit_api_key','...')）。
 // 包装同源 fetch 统一附加 X-API-Key，未设置 key 时行为与原生 fetch 完全一致。
+// 同时自动附加 X-Auth-Token 登录令牌（多用户历史功能），未登录时不加。
 const _nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   const key = localStorage.getItem('audit_api_key');
+  const authToken = localStorage.getItem('audit_auth_token');
   const url = typeof input === 'string' ? input : (input && input.url) || '';
-  if (key && (url.startsWith('/') || url.startsWith(API_BASE))) {
+  if (url.startsWith('/') || url.startsWith(API_BASE)) {
     init = init || {};
-    init.headers = Object.assign({}, init.headers, { 'X-API-Key': key });
+    const extra = {};
+    if (key) extra['X-API-Key'] = key;
+    if (authToken) extra['X-Auth-Token'] = authToken;
+    if (Object.keys(extra).length) init.headers = Object.assign({}, init.headers, extra);
   }
   return _nativeFetch(input, init);
 };
@@ -1303,8 +1396,7 @@ function showThinkingCard() {
     <div class="thinking-card">
       <div class="thinking-header">
         <div class="thinking-icon-wrap">
-          <div class="thinking-icon-ring"></div>
-          <div class="thinking-icon">🧠</div>
+          <div class="thinking-snowflake"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><defs><g id="sfB"><path d="M24 22V5"/><path d="m24 9-3.5-3.5"/><path d="m24 9 3.5-3.5"/><path d="m24 14-4-3.5"/><path d="m24 14 4-3.5"/><path d="m24 19-3-2.5"/><path d="m24 19 3-2.5"/></g></defs><use href="#sfB"/><use href="#sfB" transform="rotate(60 24 24)"/><use href="#sfB" transform="rotate(120 24 24)"/><use href="#sfB" transform="rotate(180 24 24)"/><use href="#sfB" transform="rotate(240 24 24)"/><use href="#sfB" transform="rotate(300 24 24)"/><circle cx="24" cy="24" r="1.8" fill="currentColor" stroke="none"/></svg></div>
         </div>
         <div class="thinking-info">
           <div class="thinking-title">AI 正在深度分析中</div>
@@ -1399,25 +1491,41 @@ function renderFinalReport(report) {
   removeThinkingCard();
   removeTypingIndicator();
 
-  let html = '';
+  // 分三段构建：头部（工具链/评分卡/饼图）、markdown 正文、附件（图表/文件），
+  // 渲染时各自独立容器，防止 markdown 中未闭合标签把附件卡片“吞”进表格单元格
+  let headHtml = '';
+  let mdHtml = '';
+  let attachHtml = '';
 
-  // 工具调用链可视化：展示本次分析实际调用的工具序列
+  // 工具调用链可视化：序号胶囊 + 连续重复合并（如 法规检索 ×3）+ 总调用计数
   if (report.tool_results && report.tool_results.length > 0) {
     const toolNames = report.tool_results.map(t => t.name);
     const toolLabels = {
-      'validate_financial_data': '✅ 数据校验',
-      'calculate_financial_indicators': '📊 指标计算',
-      'search_regulations': '📜 法规检索',
-      'compare_multi_year': '📈 多年对比',
-      'generate_risk_heatmap': '🟥 热力图',
-      'generate_radar_chart': '📡 雷达图',
-      'generate_trend_chart': '📉 趋势图',
-      'export_pdf_report': '📄 PDF导出',
-      'export_excel_report': '📊 Excel导出',
-      'parse_pdf_report': '📖 PDF解析',
+      'parse_pdf_report': 'PDF解析',
+      'validate_financial_data': '数据校验',
+      'calculate_financial_indicators': '指标计算',
+      'check_disclosure_compliance': '披露合规检查',
+      'search_regulations': '法规检索',
+      'compare_multi_year': '多年对比',
+      'calculate_comprehensive_score': '综合风险评分',
+      'generate_risk_heatmap': '风险热力图',
+      'generate_radar_chart': '财务雷达图',
+      'generate_trend_chart': '趋势图',
+      'export_pdf_report': 'PDF报告导出',
+      'export_excel_report': 'Excel底稿导出',
+      'batch_analyze_companies': '批量公司分析',
     };
-    const chain = toolNames.map(n => toolLabels[n] || n).join(' → ');
-    html += `<div style="margin-bottom:12px;padding:8px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px;font-size:12px;color:var(--text-muted)"><b style="color:#a5b4fc">🔗 工具调用链：</b>${chain}</div>`;
+    // 连续重复合并：法规检索 → 法规检索 → 法规检索 展示为 法规检索 ×3
+    const seq = [];
+    for (const n of toolNames) {
+      const label = toolLabels[n] || n;
+      if (seq.length && seq[seq.length - 1].label === label) seq[seq.length - 1].count++;
+      else seq.push({ label, count: 1 });
+    }
+    const chips = seq.map((s, i) =>
+      `<span class="tc-chip"><b>${i + 1}</b>${escapeHtml(s.label)}${s.count > 1 ? `<span class="tc-x">×${s.count}</span>` : ''}</span>`
+    ).join('<span class="tc-arrow">→</span>');
+    headHtml += `<div class="tool-chain-bar">${icon('branch')} <span class="tc-title">工具调用链</span>${chips}<span class="tc-count">共 ${toolNames.length} 次调用</span></div>`;
   }
 
   // 综合评分卡片：检测 AI 回复中的 comprehensive_score JSON
@@ -1430,7 +1538,7 @@ function renderFinalReport(report) {
       const offset = circumference * (1 - s / 100);
       const colors = { low: '#34d399', medium: '#60a5fa', high: '#fbbf24', critical: '#f87171' };
       const color = colors[levelKey] || '#60a5fa';
-      html += `<div class="score-card">
+      headHtml += `<div class="score-card">
         <div class="score-ring">
           <svg width="80" height="80" viewBox="0 0 80 80">
             <circle cx="40" cy="40" r="34" fill="none" stroke="rgb(30,41,59)" stroke-width="7"/>
@@ -1451,36 +1559,84 @@ function renderFinalReport(report) {
     }
   }
 
+  // 风险等级分布饼图：从风险台账的 risk_summary 提取重大/重要/一般计数，
+  // 以 SVG 环形图直观展示占比（与「风险统计总览」表格互补）
   if (report.ai_text) {
-    html += renderMarkdown(report.ai_text);
+    const mMajor = report.ai_text.match(/"major_risks"\s*:\s*(\d+)/);
+    const mImportant = report.ai_text.match(/"important_risks"\s*:\s*(\d+)/);
+    const mGeneral = report.ai_text.match(/"general_risks"\s*:\s*(\d+)/);
+    const major = mMajor ? parseInt(mMajor[1]) : 0;
+    const important = mImportant ? parseInt(mImportant[1]) : 0;
+    const general = mGeneral ? parseInt(mGeneral[1]) : 0;
+    const total = major + important + general;
+    if (total > 0) {
+      const C = 2 * Math.PI * 30;
+      const segs = [
+        { label: '重大', count: major, color: '#f87171' },
+        { label: '重要', count: important, color: '#fbbf24' },
+        { label: '一般', count: general, color: '#60a5fa' },
+      ];
+      let arcs = '', acc = 0, legend = '';
+      for (const s of segs) {
+        if (s.count > 0) {
+          const len = (s.count / total) * C;
+          arcs += `<circle cx="40" cy="40" r="30" fill="none" stroke="${s.color}" stroke-width="12" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`;
+          acc += len;
+        }
+        const pct = ((s.count / total) * 100).toFixed(1);
+        legend += `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)"><span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block"></span>${s.label}风险 <b style="color:var(--text-primary)">${s.count}</b> 条（${pct}%）</div>`;
+      }
+      headHtml += `<div class="score-card" style="gap:24px">
+        <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg);flex-shrink:0">
+          <circle cx="40" cy="40" r="30" fill="none" stroke="rgb(30,41,59)" stroke-width="12"/>${arcs}
+        </svg>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">风险等级分布（共 ${total} 条）</div>
+          ${legend}
+        </div>
+      </div>`;
+    }
+  }
+
+  if (report.ai_text) {
+    // 兜底追加的产物链接行（📊/📎 前缀）与下方附件卡片重复：卡片已完整呈现，
+    // 从正文移除对应行（仅当该路径确实已进 files/images，否则保留兜险入口）
+    const knownPaths = new Set([...(report.files || []), ...(report.images || [])].map(f => f.path));
+    const cleaned = report.ai_text.split('\n').filter(line => {
+      const t = line.trim();
+      if (!/^(📊|📎)/.test(t)) return true;
+      const m = t.match(/(\/local_storage\/[^\s）)\]，,]+\.(?:pdf|xlsx|png))/);
+      return !(m && knownPaths.has(m[1]));
+    }).join('\n');
+    mdHtml = renderMarkdown(cleaned);
   }
 
   if (report.images && report.images.length > 0) {
-    html += '<div style="margin-top:16px">';
+    attachHtml += '<div style="margin-top:16px">';
     for (const img of report.images) {
       const relPath = img.path.replace(/^.*?local_storage[\/\\]?/, '');
       const imgUrl = `/local_storage/${relPath}`;
       const fileName = img.path.split(/[\/\\]/).pop();
-      html += `<div class="chart-preview" style="position:relative">
+      attachHtml += `<div class="chart-preview" style="position:relative">
         <img src="${imgUrl}" alt="${escapeHtml(fileName)}" onclick="window.open(this.src)">
-        <div class="chart-label">📊 ${escapeHtml(fileName)}
-          <span style="margin-left:8px;cursor:pointer;color:var(--accent);font-size:11px" onclick="event.stopPropagation();downloadFile('${imgUrl}','${escapeHtml(fileName)}')">💾 下载</span>
+        <div class="chart-label">${icon('chart')} ${escapeHtml(fileName)}
+          <span class="download-link" data-url="${escapeHtml(imgUrl)}" data-name="${escapeHtml(fileName)}" style="margin-left:8px;cursor:pointer;color:var(--accent);font-size:11px">${icon('download')} 下载</span>
         </div>
       </div>`;
     }
-    html += '</div>';
+    attachHtml += '</div>';
   }
 
   if (report.files && report.files.length > 0) {
-    html += '<div style="margin-top:12px; display:flex; flex-direction:column; gap:8px">';
+    attachHtml += '<div style="margin-top:12px; display:flex; flex-direction:column; gap:8px">';
     for (const f of report.files) {
       const relPath = f.path.replace(/^.*?local_storage[\/\\]?/, '');
       const fileUrl = `/local_storage/${relPath}`;
       const fileName = f.path.split(/[\/\\]/).pop();
-      const icon = fileName.endsWith('.pdf') ? '📄' : '📊';
+      const fIcon = icon(fileName.endsWith('.pdf') ? 'file-text' : 'chart', '26');
       const ext = fileName.split('.').pop().toUpperCase();
-      html += `<div class="file-download-card" onclick="downloadFile('${escapeHtml(fileUrl)}','${escapeHtml(fileName)}')" data-url="${escapeHtml(fileUrl)}">
-        <span class="file-icon">${icon}</span>
+      attachHtml += `<div class="file-download-card" tabindex="0" role="button" onkeydown="if(event.key==='Enter')this.click()" data-url="${escapeHtml(fileUrl)}" data-name="${escapeHtml(fileName)}">
+        <span class="file-icon" style="color:var(--accent)">${fIcon}</span>
         <div class="file-info">
           <div class="file-name">${escapeHtml(fileName)}</div>
           <div class="file-meta">${ext} 文件 · 点击下载</div>
@@ -1488,11 +1644,11 @@ function renderFinalReport(report) {
         <span class="file-action">下载 ↓</span>
       </div>`;
     }
-    html += '</div>';
+    attachHtml += '</div>';
   }
 
-  if (!html) {
-    html = renderMarkdown('✅ 分析完成，但未生成有效内容。');
+  if (!headHtml && !mdHtml && !attachHtml) {
+    mdHtml = renderMarkdown('✅ 分析完成，但未生成有效内容。');
   }
 
   const area = document.getElementById('chatArea');
@@ -1500,13 +1656,20 @@ function renderFinalReport(report) {
   div.className = 'msg assistant';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = html;
+  // 分容器渲染：markdown 区独立容器，其内部未闭合标签被浏览器限制在容器内自动闭合，
+  // 不会再把后续图表/文件卡片嵌进表格单元格（修复排版事故）
+  for (const seg of [headHtml, mdHtml, attachHtml]) {
+    if (!seg) continue;
+    const zone = document.createElement('div');
+    zone.innerHTML = seg;
+    bubble.appendChild(zone);
+  }
   div.appendChild(bubble);
 
   const metaDiv = document.createElement('div');
   metaDiv.className = 'meta';
   const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  metaDiv.innerHTML = `<span>🤖</span><span>AI 审计专家</span><span>${timeStr}</span>`;
+  metaDiv.innerHTML = `<span style="color:var(--accent)">${icon('bot')}</span><span>AI 审计专家</span><span>${timeStr}</span>`;
   div.appendChild(metaDiv);
 
   area.appendChild(div);
@@ -1627,8 +1790,7 @@ async function sendMessage(presetPrompt) {
       const instruction = text || '请对该文件进行全方位审计风险分析';
       const fileUserContent = `${instruction}\n\n（分析以下文件，第 ${i + 1}/${parsedFiles.length} 份）：\n\n📄 **文件: ${fileInfo.filename}**\n\n${fileInfo.extracted_text}`;
 
-      showThinkingCard();
-      addTypingIndicator();
+      showThinkingCard();  // 思考卡已完整承担状态展示，不再另挂空的 typing 气泡
 
       const payload = {
         messages: [
@@ -1672,8 +1834,7 @@ async function sendMessage(presetPrompt) {
     updateSendButton(true);
   }
 
-  showThinkingCard();
-  addTypingIndicator();
+  showThinkingCard();  // 思考卡已完整承担状态展示，不再另挂空的 typing 气泡
 
   const payload = {
     messages: [
@@ -1683,7 +1844,7 @@ async function sendMessage(presetPrompt) {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.content
         })),
-      { role: 'user', content: flashMode ? `${userText}\n\n（快速模式，跳过辩论复核）` : userText }
+      { role: 'user', content: flashMode ? `${userText}\n\n（快速模式：跳过图表与辩论复核，仅输出前3条核心风险，各章节从简，速度优先）` : userText }
     ]
   };
 
@@ -1710,11 +1871,11 @@ async function sendMessage(presetPrompt) {
 function updateSendButton(streaming) {
   const btn = document.getElementById('sendBtn');
   if (streaming) {
-    btn.innerHTML = '⏹';
+    btn.innerHTML = icon('square', '18');
     btn.className = 'btn-icon btn-stop';
     btn.title = '停止生成';
   } else {
-    btn.innerHTML = '➤';
+    btn.innerHTML = icon('send', '18');
     btn.className = 'btn-icon btn-send';
     btn.title = '发送';
   }
@@ -1747,7 +1908,7 @@ function renderMessage(role, content, meta) {
     const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     metaDiv.innerHTML = role === 'user'
       ? `<span>${timeStr}</span><span>你</span>`
-      : `<span>🤖</span><span>AI 审计专家</span><span>${timeStr}</span>`;
+      : `<span style="color:var(--accent)">${icon('bot')}</span><span>AI 审计专家</span><span>${timeStr}</span>`;
     div.appendChild(metaDiv);
   }
 
@@ -1785,9 +1946,10 @@ function handleFiles(files) {
     const preview = document.getElementById('filePreview');
     const tag = document.createElement('div');
     tag.className = 'file-tag';
-    const icon = file.name.endsWith('.pdf') ? '📄' : '📊';
+    // 图标用 SVG（insertAdjacentHTML），文件名用 textContent 防注入
+    tag.insertAdjacentHTML('afterbegin', icon(file.name.endsWith('.pdf') ? 'file-text' : 'chart'));
     const nameSpan = document.createElement('span');
-    nameSpan.textContent = `${icon} ${file.name}`;
+    nameSpan.textContent = ` ${file.name}`;
     tag.appendChild(nameSpan);
     const removeBtn = document.createElement('span');
     removeBtn.className = 'remove';
@@ -1832,12 +1994,12 @@ function moduleAction(promptText, modeTitle) {
       <div class="module-choice-title">${modeTitle ? modeTitle + ' · 选择数据输入方式' : '选择数据输入方式'}</div>
       <div class="module-choice-btns">
         <div class="module-choice-btn" id="mcUpload">
-          <span class="mc-icon">📂</span>
+          <span class="mc-icon">${icon('folder', '22')}</span>
           <span class="mc-label">上传文件</span>
           <span class="mc-sub">PDF / Word / Excel / HTML</span>
         </div>
         <div class="module-choice-btn" id="mcInput">
-          <span class="mc-icon">✏️</span>
+          <span class="mc-icon">${icon('pencil', '22')}</span>
           <span class="mc-label">手动输入</span>
           <span class="mc-sub">粘贴数据或输入公司名</span>
         </div>
@@ -1890,17 +2052,18 @@ function clearChat() {
   toolCallCount = 0;
   document.getElementById('chatArea').innerHTML = `
     <div class="welcome" id="welcomeScreen">
-      <div class="welcome-icon">📊</div>
+      <div class="welcome-icon" data-ico="chart" data-ico-size="36"></div>
       <h2>上市公司年报审计风险识别</h2>
       <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告。</p>
       <div class="quick-grid">
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','📊 财务指标分析')"><span class="icon">📊</span> <span>财务指标分析</span></button>
-        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','📝 披露规范性检查')"><span class="icon">📝</span> <span>披露规范性检查</span></button>
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','🎯 综合风险评估')"><span class="icon">🎯</span> <span>综合风险评估</span></button>
-        <button class="quick-btn" onclick="searchPenalty()"><span class="icon">⚖️</span> <span>监管处罚检索</span></button>
-        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件"><span class="icon">📦</span> <span>批量上传年报</span></button>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','财务指标分析')"><span class="icon" data-ico="chart" data-ico-size="20"></span> <span>财务指标分析</span></button>
+        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','披露规范性检查')"><span class="icon" data-ico="clipboard" data-ico-size="20"></span> <span>披露规范性检查</span></button>
+        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','综合风险评估')"><span class="icon" data-ico="target" data-ico-size="20"></span> <span>综合风险评估</span></button>
+        <button class="quick-btn" onclick="searchPenalty()"><span class="icon" data-ico="scale" data-ico-size="20"></span> <span>监管处罚检索</span></button>
+        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件"><span class="icon" data-ico="package" data-ico-size="20"></span> <span>批量上传年报</span></button>
       </div>
     </div>`;
+  hydrateIcons(document.getElementById('chatArea'));
   updateSessionInfo();
 }
 
@@ -1918,9 +2081,11 @@ function exportChat() {
   a.click();
 }
 async function downloadFile(url, fileName, evt) {
-  // 兼容不同调用方式：卡片 onclick / 图表 span / markdown 链接
+  // 兼容不同调用方式：事件委托 / 卡片 click() / 直接调用；
+  // 用 ev.target（总是元素）而非 currentTarget（委托时是 document，无 closest）
   const ev = evt || window.event;
-  const card = ev ? ev.currentTarget.closest('.file-download-card') : null;
+  const srcEl = ev && ev.target && ev.target.closest ? ev.target : null;
+  const card = srcEl ? srcEl.closest('.file-download-card') : null;
   const actionEl = card ? card.querySelector('.file-action') : null;
   const metaEl = card ? card.querySelector('.file-meta') : null;
   const origAction = actionEl ? actionEl.textContent : '';
@@ -1941,10 +2106,10 @@ async function downloadFile(url, fileName, evt) {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    if (actionEl) actionEl.textContent = '✅ 已下载';
+    if (actionEl) actionEl.textContent = '✓ 已下载';
     if (metaEl) metaEl.textContent = origMeta.replace('点击下载', '下载完成');
   } catch (e) {
-    if (actionEl) actionEl.textContent = '❌ 失败';
+    if (actionEl) actionEl.textContent = '✕ 失败';
     if (metaEl) metaEl.textContent = `下载失败: ${e.message}`;
   } finally {
     if (card) { card.style.pointerEvents = ''; card.style.opacity = ''; }
@@ -1957,37 +2122,60 @@ async function downloadFile(url, fileName, evt) {
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
+// ── 下载统一事件委托：链接/卡片不再内联拼接 JS 参数（消除 &#39; 解码后单引号
+// 炸字符串的语法错误与注入面）；URL 白名单只放行本地产物与 http(s)
+function _safeDownloadUrl(u) {
+  return typeof u === 'string' && /^(\/local_storage\/|https?:\/\/)/.test(u);
+}
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.download-link');
+  if (link) {
+    e.preventDefault();
+    e.stopPropagation();  // 图表卡内的下载钮不触发图片预览
+    const url = link.dataset.url;
+    if (_safeDownloadUrl(url)) downloadFile(url, link.dataset.name || 'download', e);
+    return;
+  }
+  const card = e.target.closest('.file-download-card');
+  if (card && card.dataset.url) {
+    if (_safeDownloadUrl(card.dataset.url)) downloadFile(card.dataset.url, card.dataset.name || 'download', e);
+  }
+});
+
 // ── Flash 快速模式开关 ──
 let flashMode = false;
 function toggleFlashMode() {
   flashMode = !flashMode;
   const btn = document.getElementById('flashToggle');
+  // 用 innerHTML 重建图标+文本（textContent 会抹掉已注入的 SVG 图标）
   if (flashMode) {
     btn.classList.add('active');
-    btn.textContent = '⚡ 快速(开)';
+    btn.innerHTML = `${icon('zap')} 快速(开)`;
   } else {
     btn.classList.remove('active');
-    btn.textContent = '⚡ 快速';
+    btn.innerHTML = `${icon('zap')} 快速`;
   }
 }
 
 async function reloadKB(btn) {
-  btn.textContent = '⏳ 重载中...';
+  // innerHTML 重建图标+文本，避免 textContent 抹掉 SVG；状态用文本符号保持跨平台一致
+  const idle = `${icon('refresh')} 重载知识库`;
+  btn.innerHTML = `${icon('clock')} 重载中...`;
   btn.disabled = true;
   try {
     const resp = await fetch(`${API_BASE}/api/reload_kb`);
     const data = await resp.json();
     if (data.status === 'ok') {
-      btn.textContent = `✅ ${data.message}`;
-      setTimeout(() => { btn.textContent = '🔄 重载知识库'; btn.disabled = false; }, 3000);
+      btn.innerHTML = `✓ ${escapeHtml(data.message)}`;
+      setTimeout(() => { btn.innerHTML = idle; btn.disabled = false; }, 3000);
       checkSystemStatus();
     } else {
-      btn.textContent = `❌ ${data.message}`;
-      setTimeout(() => { btn.textContent = '🔄 重载知识库'; btn.disabled = false; }, 3000);
+      btn.innerHTML = `✕ ${escapeHtml(data.message)}`;
+      setTimeout(() => { btn.innerHTML = idle; btn.disabled = false; }, 3000);
     }
   } catch (e) {
-    btn.textContent = '❌ 请求失败';
-    setTimeout(() => { btn.textContent = '🔄 重载知识库'; btn.disabled = false; }, 3000);
+    btn.innerHTML = '✕ 请求失败';
+    setTimeout(() => { btn.innerHTML = idle; btn.disabled = false; }, 3000);
   }
 }
 
@@ -2067,14 +2255,14 @@ function showFileToast(index, total, filename) {
     else card.classList.add('stacked-2');
   });
 
-  // 创建新卡片
+  // 创建新卡片（语义色只在左侧色条+图标，文件名超长由 CSS ellipsis 截断）
   const toast = document.createElement('div');
   toast.className = 'toast-card';
   toast.innerHTML = `
-    <div class="toast-icon">✅</div>
+    <div class="toast-icon">✓</div>
     <div class="toast-body">
       <div class="toast-title">年报 ${index}/${total} 分析完成</div>
-      <div class="toast-sub">${filename}</div>
+      <div class="toast-sub" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>
     </div>`;
   toast.onclick = () => { toast.style.opacity = '0'; toast.style.transform = 'translateX(40px)'; setTimeout(() => toast.remove(), 300); };
   stack.appendChild(toast);
@@ -2084,15 +2272,20 @@ function showFileToast(index, total, filename) {
     stack.children[0].remove();
   }
 
-  // 全部完成后 5 秒自动消失
+  // 全部完成后：每张卡插入 5s 消退进度线，动画结束驱动删卡
+  // （hover 暂停动画 = 悬停期间不消失，移开后继续倒计时）
   if (index === total) {
-    setTimeout(() => {
-      stack.querySelectorAll('.toast-card').forEach(c => {
+    stack.querySelectorAll('.toast-card').forEach(c => {
+      if (c.querySelector('.toast-timer')) return;
+      const timer = document.createElement('div');
+      timer.className = 'toast-timer';
+      timer.addEventListener('animationend', () => {
         c.style.opacity = '0';
         c.style.transform = 'translateX(40px)';
+        setTimeout(() => c.remove(), 300);
       });
-      setTimeout(() => { stack.innerHTML = ''; }, 400);
-    }, 5000);
+      c.appendChild(timer);
+    });
   }
 }
 
@@ -2108,7 +2301,7 @@ function updateSessionInfo() {
   const titleEl = document.getElementById('topbar-title');
   if (messages.length > 0) {
     titleEl.textContent = '审计分析会话';
-    titleEl.title = '当前会话中，点击 🗑️ 新会话 按钮开始新会话';
+    titleEl.title = '当前会话中，点击「新会话」按钮开始新会话';
   } else {
     titleEl.textContent = '新建会话';
     titleEl.title = '等待输入… 发送消息或选择快捷功能开始分析';
@@ -2138,9 +2331,20 @@ function renderMarkdown(text) {
 
   let html = escapeHtml(mainText);
 
-  // Code blocks (FIXED REGEX)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code class="language-${lang}">${code.trim()}</code></pre>`);
+  // 隐藏综合评分原始 JSON 段（评分已由独立评分卡可视化，避免重复展示原文）
+  html = html.replace(/&lt;!--COMPREHENSIVE_SCORE--&gt;[\s\S]*?(?=\n\n|$)/, '');
+
+  // Code blocks：超过 12 行的长代码块（如风险台账 JSON）自动折叠，点击展开
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const trimmed = code.trim();
+    const lineCount = trimmed.split('\n').length;
+    const pre = `<pre><code class="language-${lang}">${trimmed}</code></pre>`;
+    if (lineCount > 12) {
+      const label = lang === 'json' ? '结构化风险台账 JSON' : '代码';
+      return `<details class="code-fold"><summary>${icon('file-text')} ${label}（${lineCount} 行，点击展开/收起）</summary>${pre}</details>`;
+    }
+    return pre;
+  });
 
   // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -2165,22 +2369,22 @@ function renderMarkdown(text) {
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
     if (href.includes('/local_storage/') || href.match(/\.(pdf|xlsx|png|jpg|csv)$/i)) {
       const fname = href.split('/').pop();
-      return `<a href="javascript:void(0)" onclick="downloadFile('${href}','${fname}')" style="cursor:pointer">${text} 💾</a>`;
+      return `<a href="javascript:void(0)" class="download-link" data-url="${href}" data-name="${fname}" style="cursor:pointer">${text} ${icon('download')}</a>`;
     }
     return `<a href="${href}" target="_blank">${text}</a>`;
   });
   // 裸露的 URL（非 href 内的）
-  html = html.replace(/(?<!href=")(?<!onclick=")(https?:\/\/[^\s<]+)/g, (url) => {
+  html = html.replace(/(?<!href=")(?<!data-url=")(https?:\/\/[^\s<]+)/g, (url) => {
     if (url.includes('/local_storage/')) {
       const fname = url.split('/').pop();
-      return `<a href="javascript:void(0)" onclick="downloadFile('${url}','${fname}')" style="cursor:pointer">${url} 💾</a>`;
+      return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
     }
     return `<a href="${url}" target="_blank">${url}</a>`;
   });
   // 裸露的 /local_storage/ 相对路径
-  html = html.replace(/(?<!href=")(?<!onclick=")(\/local_storage\/[^\s<>"]+)/g, (url) => {
+  html = html.replace(/(?<!href=")(?<!data-url=")(\/local_storage\/[^\s<>"]+)/g, (url) => {
     const fname = url.split('/').pop();
-    return `<a href="javascript:void(0)" onclick="downloadFile('${url}','${fname}')" style="cursor:pointer">${url} 💾</a>`;
+    return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
   });
 
   // Tables
@@ -2194,26 +2398,43 @@ function renderMarkdown(text) {
   });
 
   // Risk badges (use negative lookahead to avoid replacing inside HTML tags)
+  // 风险等级影响度着色：有害标红（重大/极高/高风险），中性橙/蓝，有益标绿（低风险）
   html = html.replace(/重大(?![^<]*>)/g, '<span class="risk-major">重大</span>');
   html = html.replace(/重要(?![^<]*>)/g, '<span class="risk-important">重要</span>');
   html = html.replace(/一般(?![^<]*>)/g, '<span class="risk-general">一般</span>');
+  html = html.replace(/极高风险(?![^<]*>)/g, '<span class="risk-bad">极高风险</span>');
+  html = html.replace(/(?<!极)高风险(?![^<]*>)/g, '<span class="risk-bad">高风险</span>');
+  html = html.replace(/中等风险(?![^<]*>)/g, '<span class="risk-general">中等风险</span>');
+  html = html.replace(/低风险(?![^<]*>)/g, '<span class="risk-good">低风险</span>');
 
-  // 思维链五步卡片：检测【数据发现】...【风险判定】模式并渲染为可折叠组件
+  // 思维链五步卡片：检测【数据发现】...【风险判定】模式并渲染为可折叠组件。
+  // 注意：此时 html 已经过 escapeHtml + 粗体/风险着色替换，捕获段里的 <strong>/<span>
+  // 是管线自己注入的安全 HTML，绝不能再次 escapeHtml（否则标签变字面量泄漏——实测事故）。
+  // LLM 常输出「2. **【指标异常】**：」形态，bold 替换后序号与半截 <strong>/</strong>
+  // 残留在段首段尾，需清理。
+  const _cleanStep = (s) => s.trim()
+    .replace(/^(?:<\/strong>)?\s*[:：]?\s*/, '')          // 段首残留的 </strong>：
+    .replace(/\s*\d+\.\s*(?:<strong>)?\s*$/, '')          // 段尾下一步的序号与半截 <strong>
+    .trim();
   html = html.replace(/【数据发现】([\s\S]*?)【指标异常】([\s\S]*?)【法规依据】([\s\S]*?)【案例对照】([\s\S]*?)【风险判定】([\s\S]*?)(?=【数据发现】|$)/g,
-    (_, s1, s2, s3, s4, s5) => {
+    (m0, s1, s2, s3, s4, s5) => {
+      // LLM 偶尔把思维链输出为 Markdown 表格；表格在本正则之前已转为 <table> HTML，
+      // 此时跨单元格抓取会撕裂表格结构（实测事故：列错位/卡片嵌进单元格）——
+      // 捕获段含表格标签时放弃卡片化，保持表格原样（表格本身也可读）
+      if (/<\/?t(?:able|head|body|r|d|h)\b/.test(m0)) return m0;
       const steps = [
-        { icon: '📊', bg: '#3b82f6', label: '数据发现', detail: s1.trim() },
-        { icon: '📈', bg: '#f59e0b', label: '指标异常', detail: s2.trim() },
-        { icon: '📜', bg: '#10b981', label: '法规依据', detail: s3.trim() },
-        { icon: '⚖️', bg: '#8b5cf6', label: '案例对照', detail: s4.trim() },
-        { icon: '🎯', bg: '#ef4444', label: '风险判定', detail: s5.trim() },
+        { icon: '📊', bg: '#3b82f6', label: '数据发现', detail: _cleanStep(s1) },
+        { icon: '📈', bg: '#f59e0b', label: '指标异常', detail: _cleanStep(s2) },
+        { icon: '📜', bg: '#10b981', label: '法规依据', detail: _cleanStep(s3) },
+        { icon: '⚖️', bg: '#8b5cf6', label: '案例对照', detail: _cleanStep(s4) },
+        { icon: '🎯', bg: '#ef4444', label: '风险判定', detail: _cleanStep(s5) },
       ];
       let rc = `<div class="reasoning-chain" onclick="this.classList.toggle('open')">`;
-      rc += `<div class="reasoning-chain-header"><span class="arrow">▶</span> 🧠 思维链推理过程（5步）</div>`;
+      rc += `<div class="reasoning-chain-header"><span class="arrow">▶</span> ${icon('branch')} 思维链推理过程（5步）</div>`;
       rc += `<div class="reasoning-chain-body">`;
       for (const st of steps) {
         rc += `<div class="rc-step"><div class="rc-step-icon" style="background:${st.bg}">${st.icon}</div>`;
-        rc += `<div class="rc-step-content"><div class="rc-step-label">${st.label}</div>${escapeHtml(st.detail)}</div></div>`;
+        rc += `<div class="rc-step-content"><div class="rc-step-label">${st.label}</div>${st.detail}</div></div>`;
       }
       rc += `</div></div>`;
       return rc;
@@ -2238,9 +2459,9 @@ function renderMarkdown(text) {
 function renderReviewCard(reviewText) {
   // 解析三段式辩论结果：【风险关注方】/【风险否定方】/【裁判仲裁】
   const debateSections = [
-    { key: 'advocate', label: '【风险关注方】', title: '🟥 风险关注方意见', cls: 'debate-advocate' },
-    { key: 'skeptic', label: '【风险否定方】', title: '🟦 风险否定方反驳', cls: 'debate-skeptic' },
-    { key: 'arbiter', label: '【裁判仲裁】', title: '🟪 裁判仲裁结论', cls: 'debate-arbiter' },
+    { key: 'advocate', label: '【风险关注方】', title: '<span class="debate-dot" style="background:#f87171"></span> 风险关注方意见', cls: 'debate-advocate' },
+    { key: 'skeptic', label: '【风险否定方】', title: '<span class="debate-dot" style="background:#60a5fa"></span> 风险否定方反驳', cls: 'debate-skeptic' },
+    { key: 'arbiter', label: '【裁判仲裁】', title: '<span class="debate-dot" style="background:#c4b5fd"></span> 裁判仲裁结论', cls: 'debate-arbiter' },
   ];
 
   const parsed = {};
@@ -2262,19 +2483,57 @@ function renderReviewCard(reviewText) {
     return renderReviewCardLegacy(reviewText);
   }
 
+  // ── 可视化简略摘要：三方要点数 + 仲裁结论徽章 + 等级调整计数 ──
+  // 要点数：统计各方意见中序号/列表/【段落】起始行，粗略但直观
+  const countPoints = (text) => (text ? (text.match(/^\s*(?:\d+[\.、)]|[-•]|【)/gm) || []).length : 0);
+
+  // 仲裁结论（通过/需补充/需重新分析）→ 绿/橙/红徽章
+  let verdict = '';
+  const vm = (parsed.arbiter || '').match(/【仲裁结论】[:：]?\s*([^\n【]+)/);
+  if (vm) verdict = vm[1].trim();
+  const verdictCls = verdict.includes('通过') ? 'pass' : (verdict.includes('重新') ? 'redo' : (verdict ? 'supplement' : ''));
+
+  // 【裁定JSON】：系统已解析回写风险台账，原始 JSON 不再示人，
+  // 仅提取调整条数展示在摘要条，并从仲裁展示文本中剥离
+  let adjustCount = 0;
+  if (parsed.arbiter && parsed.arbiter.includes('【裁定JSON】')) {
+    const jsonPart = parsed.arbiter.slice(parsed.arbiter.indexOf('【裁定JSON】'));
+    adjustCount = (jsonPart.match(/"risk_id"/g) || []).length;
+    parsed.arbiter = parsed.arbiter.slice(0, parsed.arbiter.indexOf('【裁定JSON】')).trim();
+    if (adjustCount > 0) {
+      parsed.arbiter += `\n\n（系统已按裁定自动回写 ${adjustCount} 条风险的等级/备注）`;
+    }
+  }
+
+  const flowChips = [
+    { icon: '<span class="debate-dot" style="background:#f87171"></span>', name: '关注方', color: '#f87171', n: countPoints(parsed.advocate) },
+    { icon: '<span class="debate-dot" style="background:#60a5fa"></span>', name: '否定方', color: '#60a5fa', n: countPoints(parsed.skeptic) },
+    { icon: '<span class="debate-dot" style="background:#c4b5fd"></span>', name: '仲裁', color: '#c4b5fd', n: countPoints(parsed.arbiter) },
+  ];
+
   let html = `<div class="review-card">`;
   html += `<div class="review-card-header">`;
-  html += `<div class="review-card-icon">⚖️</div>`;
+  html += `<div class="review-card-icon">${icon('scale', '18')}</div>`;
   html += `<div><div class="review-card-title">多智能体辩论复核</div>`;
   html += `<div class="review-card-subtitle">风险关注方 → 风险否定方 → 裁判仲裁 · 三方制衡</div></div>`;
+  html += `</div>`;
+
+  // 摘要条：三方流程 chip + 仲裁结论徽章 + 调整计数
+  html += `<div class="debate-summary">`;
+  html += flowChips.map(c =>
+    `<span class="debate-chip" style="border-color:${c.color}55"><span>${c.icon}</span>${c.name}<b style="color:${c.color}">${c.n}</b>条要点</span>`
+  ).join(`<span class="debate-flow-arrow">→</span>`);
+  if (verdict) {
+    html += `<span class="review-verdict ${verdictCls}">仲裁：${escapeHtml(verdict)}</span>`;
+  }
+  html += `<span class="debate-chip" style="border-color:rgba(139,92,246,.35)">${icon('scale')} 等级调整 <b style="color:${adjustCount > 0 ? 'var(--warning-lite)' : 'var(--success-lite)'}">${adjustCount}</b> 条</span>`;
   html += `</div>`;
 
   for (const s of debateSections) {
     const content = parsed[s.key];
     if (!content) continue;
-    // 裁判仲裁默认展开，其余折叠
-    const isOpen = s.key === 'arbiter' ? ' open' : '';
-    html += `<div class="debate-section ${s.cls}${isOpen}" onclick="this.classList.toggle('open')">`;
+    // 三段均默认折叠（摘要条已承担结论速览，详情按需展开）
+    html += `<div class="debate-section ${s.cls}" onclick="this.classList.toggle('open')">`;
     html += `<div class="debate-section-header"><span class="arrow">▶</span> ${s.title}</div>`;
     html += `<div class="debate-section-body">${escapeHtml(content)}</div>`;
     html += `</div>`;
@@ -2313,7 +2572,7 @@ function renderReviewCardLegacy(reviewText) {
 
   let html = `<div class="review-card">`;
   html += `<div class="review-card-header">`;
-  html += `<div class="review-card-icon">🔍</div>`;
+  html += `<div class="review-card-icon">${icon('search', '18')}</div>`;
   html += `<div><div class="review-card-title">审计合伙人复核意见</div>`;
   html += `<div class="review-card-subtitle">多智能体辩论 · 三方制衡复核机制</div></div>`;
   html += `</div>`;
@@ -2399,8 +2658,147 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── 原有状态检测逻辑 ──
   checkSystemStatus();
   setInterval(checkSystemStatus, 30000);
+  initAccount();
   document.getElementById('msgInput').focus();
 });
+
+// ══════════════════════════════════════════════════════
+// 多用户登录与分析历史
+// token 存 localStorage(audit_auth_token)，由 fetch 包装自动附加 X-Auth-Token；
+// 未登录不影响分析，仅无法记录/查看历史。
+// ══════════════════════════════════════════════════════
+let currentUser = null;
+
+async function initAccount() {
+  // 启动时校验本地 token 是否仍有效（过期/被登出则清理）
+  if (localStorage.getItem('audit_auth_token')) {
+    try {
+      const data = await (await fetch(`${API_BASE}/api/auth/me`)).json();
+      if (data.status === 'ok') currentUser = { username: data.username, user_id: data.user_id };
+      else localStorage.removeItem('audit_auth_token');
+    } catch (e) { /* 后端未就绪时保持游客态 */ }
+  }
+  renderAccount();
+}
+
+function renderAccount() {
+  const box = document.getElementById('accountSection');
+  if (!box) return;
+  const btnStyle = "padding:6px 12px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer";
+  if (currentUser) {
+    box.innerHTML = `
+      <div class="status-card" style="justify-content:space-between">
+        <span class="status-label">${icon('user')} ${escapeHtml(currentUser.username)}</span>
+        <span class="status-value" style="color:var(--success)">已登录</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button style="${btnStyle};flex:1" onclick="showHistoryModal()">${icon('clock')} 历史分析</button>
+        <button style="${btnStyle}" onclick="doLogout()">登出</button>
+      </div>`;
+  } else {
+    box.innerHTML = `
+      <div class="status-card" style="justify-content:space-between">
+        <span class="status-label">${icon('user')} 游客模式</span>
+        <span class="status-value" style="color:var(--text-muted)">历史不保存</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button style="${btnStyle};flex:1" onclick="showAuthModal()">${icon('lock')} 登录 / 注册</button>
+      </div>`;
+  }
+}
+
+function showAuthModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'module-choice-overlay';
+  overlay.id = 'authOverlay';
+  overlay.innerHTML = `
+    <div class="module-choice-box" onclick="event.stopPropagation()" style="min-width:360px;text-align:left">
+      <div class="module-choice-title" style="text-align:center">${icon('lock')} 登录 / 注册后保存专属分析历史</div>
+      <input id="authUser" placeholder="用户名（2-32 位中英文/数字/下划线）" style="width:100%;margin-bottom:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--glass-border);background:var(--bg-elevated);color:var(--text-primary);font-size:13px;outline:none">
+      <input id="authPass" type="password" placeholder="口令（至少 6 位）" style="width:100%;margin-bottom:6px;padding:10px 12px;border-radius:8px;border:1px solid var(--glass-border);background:var(--bg-elevated);color:var(--text-primary);font-size:13px;outline:none">
+      <div id="authMsg" style="font-size:12px;color:var(--danger);min-height:18px;margin-bottom:6px"></div>
+      <div style="display:flex;gap:10px">
+        <button class="module-choice-btn" style="padding:12px" onclick="doAuth('login')"><span class="mc-label">登录</span></button>
+        <button class="module-choice-btn" style="padding:12px" onclick="doAuth('register')"><span class="mc-label">注册并登录</span></button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+  document.getElementById('authUser').focus();
+}
+
+async function doAuth(kind) {
+  const username = document.getElementById('authUser').value.trim();
+  const password = document.getElementById('authPass').value;
+  const msgEl = document.getElementById('authMsg');
+  if (!username || !password) { msgEl.textContent = '请填写用户名和口令'; return; }
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/${kind}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await resp.json();
+    if (data.status === 'ok') {
+      localStorage.setItem('audit_auth_token', data.token);
+      currentUser = { username: data.username, user_id: data.user_id };
+      document.getElementById('authOverlay').remove();
+      renderAccount();
+      addMessage('system', `🔐 欢迎，${data.username}！后续分析将自动保存到你的专属历史。`);
+    } else {
+      msgEl.textContent = data.message || '操作失败';
+    }
+  } catch (e) {
+    msgEl.textContent = '请求失败，请确认服务已启动';
+  }
+}
+
+async function doLogout() {
+  try { await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' }); } catch (e) { /* 幂等，忽略 */ }
+  localStorage.removeItem('audit_auth_token');
+  currentUser = null;
+  renderAccount();
+}
+
+async function showHistoryModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'module-choice-overlay';
+  overlay.innerHTML = `
+    <div class="module-choice-box" onclick="event.stopPropagation()" style="min-width:560px;max-width:720px;max-height:80vh;overflow-y:auto;text-align:left">
+      <div class="module-choice-title">${icon('clock')} ${escapeHtml(currentUser ? currentUser.username : '')} 的分析历史</div>
+      <div id="historyBody" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
+    </div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+
+  const body = overlay.querySelector('#historyBody');
+  try {
+    const resp = await fetch(`${API_BASE}/api/history`);
+    const data = await resp.json();
+    if (data.status !== 'ok') { body.textContent = data.message || '加载失败'; return; }
+    if (!data.records.length) { body.textContent = '暂无历史记录，完成一次分析后自动保存。'; return; }
+    const levelColors = { '低风险': '#34d399', '中等风险': '#60a5fa', '高风险': '#fbbf24', '极高风险': '#f87171' };
+    body.innerHTML = data.records.map(r => {
+      const color = levelColors[r.risk_level] || 'var(--text-muted)';
+      const files = (r.files || []).map(p => {
+        const name = p.split(/[\/\\]/).pop();
+        return `<a href="${escapeHtml(p)}" target="_blank" style="margin-right:10px">${escapeHtml(name)}</a>`;
+      }).join('') || '<span style="color:var(--text-muted)">无文件</span>';
+      return `
+        <div style="border:1px solid var(--glass-border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <b style="color:var(--text-primary)">${escapeHtml(r.company_name || '未识别公司')} ${escapeHtml(r.report_year || '')}</b>
+            <span style="color:${color};font-weight:700">${r.score != null ? r.score + ' 分' : ''} ${escapeHtml(r.risk_level || '')}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin:4px 0">${escapeHtml(r.created_at)} · ${r.mode === 'flash' ? '快速模式' : '普通模式'} · run_id: ${escapeHtml(r.run_id.slice(0, 8))}</div>
+          ${r.summary ? `<div style="font-size:12px;margin:4px 0">${escapeHtml(r.summary)}</div>` : ''}
+          <div style="font-size:12px;margin-top:6px">${files}</div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    body.textContent = '历史加载失败：' + e.message;
+  }
+}
 
 async function checkSystemStatus() {
   try {
@@ -2463,6 +2861,13 @@ document.addEventListener('mouseout', (e) => {
   }
 });
 
+// 触屏可达：点击状态卡也能唤出详情（hover-only 是可达性反模式，触屏设备无 mouseover）
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('.status-card');
+  if (!card || !card._tooltipDetail) { hideTooltip(); return; }
+  showTooltip(card);
+});
+
 function showTooltip(card) {
   hideTooltip();
 
@@ -2504,7 +2909,7 @@ function buildTooltipHtml(d, state) {
   let rows = '';
 
   if (d.name) {
-    rows += `<div class="tooltip-title">${state === 'ok' ? '✅' : state === 'warn' ? '⚠️' : '❌'} ${escapeHtml(d.name)}</div>`;
+    rows += `<div class="tooltip-title"><span style="color:${state === 'ok' ? 'var(--success-lite)' : state === 'warn' ? 'var(--warning-lite)' : 'var(--danger-lite)'}">${icon(state === 'ok' ? 'check-circle' : state === 'warn' ? 'alert' : 'x-circle')}</span> ${escapeHtml(d.name)}</div>`;
   }
 
   const skip = new Set(['name', 'files', 'subdirs', 'error']);
@@ -2661,11 +3066,11 @@ function renderDimensionRadar(dims) {
     regulatory_penalty: '监管处罚',
   };
   const dimIcons = {
-    financial_misstatement: '📊',
-    related_party: '🔗',
-    disclosure_compliance: '📋',
-    going_concern: '💹',
-    regulatory_penalty: '⚖️',
+    financial_misstatement: icon('chart'),
+    related_party: icon('branch'),
+    disclosure_compliance: icon('clipboard'),
+    going_concern: icon('trend'),
+    regulatory_penalty: icon('scale'),
   };
 
   const keys = Object.keys(dimNames);
@@ -2686,7 +3091,7 @@ function renderDimensionRadar(dims) {
     <defs>
       <linearGradient id="radarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.4"/>
-        <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.2"/>
       </linearGradient>
       <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
         <feGaussianBlur stdDeviation="3" result="blur"/>
@@ -2881,10 +3286,12 @@ function renderEvalResults(data) {
   for (const c of cases) {
     const isNormal = c.expected === '无风险';
     const passed = isNormal ? c.correct : (c.f1 || 0) >= 0.5;
-    const icon = passed ? '✅' : '❌';
+    const passIcon = passed
+      ? `<span style="color:var(--success-lite)">${icon('check-circle')}</span>`
+      : `<span style="color:var(--danger-lite)">${icon('x-circle')}</span>`;
     caseRows += `
       <tr>
-        <td>${icon}</td>
+        <td>${passIcon}</td>
         <td>${c.name}</td>
         <td>${isNormal ? '无风险' : (c.expected || []).join(', ')}</td>
         <td>${isNormal ? (c.correct ? '正确（无告警）' : '误报 ' + c.actual_count + ' 条') : (c.alert_count || 0) + '条告警'}</td>

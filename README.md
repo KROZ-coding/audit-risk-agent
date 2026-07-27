@@ -6,7 +6,7 @@
 本系统是基于 Multi-Agent 架构的上市公司年报审计风险智能识别平台。用户上传年报 PDF 或输入公司名称，系统自动完成财务指标计算、法规检索、风险识别与评估，并生成结构化的 PDF 审计报告和 Excel 审计底稿。
 
 ## 🏗️ 技术架构
-- **LLM**: DeepSeek-Chat（国产大模型，OpenAI 兼容协议，高性价比）
+- **LLM**: DeepSeek-V4（全链路 deepseek-v4-flash 速度优先，OpenAI 兼容协议；config 可切 v4-pro 提升推理深度）
 - **Agent 框架**: LangGraph（ReAct 模式） + LangChain
 - **知识库**: ChromaDB 向量语义检索（内置审计准则、证监会法规、典型案例；不可用时自动回退 TF-IDF）
 - **Web 后端**: FastAPI + SSE 流式输出
@@ -42,6 +42,7 @@ flowchart LR
 9. **报告一键导出**：PDF 风险报告 + Excel 审计底稿（均含 AI 生成免责声明）。
 10. **多公司批量分析**：支持线程池并行处理与行业横向对比。
 11. **量化效果评估**：80+ 单元测试 + 合成集/盲测集双轨 Precision/Recall/F1 评估报告。
+12. **多用户登录与分析历史**：PBKDF2 加盐口令 + 会话令牌，每个用户拥有独立的分析历史（公司/评分/报告文件可回溯）；游客模式不影响分析，仅不保存历史。
 
 ## 🛠️ 快速启动
 
@@ -105,7 +106,7 @@ projects/
 │   │   ├── excel_export.py           # Excel 审计底稿导出
 │   │   ├── multi_year_comparison.py  # 多年财务对比分析
 │   │   └── batch_processor.py        # 多公司批量分析
-│   ├── storage/                   # 存储层（SQLite/S3/内存）
+│   ├── storage/                   # 存储层（SQLite/S3/内存；含用户认证与分析历史 user_service）
 │   ├── web/index.html             # Web 可视化交互界面
 │   └── main.py                    # FastAPI 服务入口
 ├── tests/                         # 测试与效果评估

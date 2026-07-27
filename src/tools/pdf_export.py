@@ -16,7 +16,7 @@ import logging
 import tempfile
 from datetime import datetime
 
-from utils.filename import sanitize_filename
+from utils.filename import resolve_company_year, sanitize_filename
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -175,8 +175,10 @@ def _build_file_prefix(report: dict) -> str:
         格式为 "YYYYMMDD_公司名_年份" 的安全文件名前缀
     """
     ci = report.get("company_info", {})
-    company = sanitize_filename(ci.get("company_name", "未知公司"))
-    year = sanitize_filename(ci.get("report_year", ""))
+    # 别名兼容：LLM 可能用 name/report_period 等键名，避免文件名变「未知公司_未知」
+    raw_company, raw_year = resolve_company_year(ci)
+    company = sanitize_filename(raw_company or "未知公司")
+    year = sanitize_filename(raw_year) if raw_year else ""
     date_str = datetime.now().strftime("%Y%m%d")
     if year:
         return f"{date_str}_{company}_{year}"
