@@ -218,11 +218,13 @@ class TestArbiterWriteback:
         ]
         monkeypatch.setattr(agent_mod, "ChatOpenAI", lambda **kw: fake)
 
-        # 捕获兜底导出收到的 risk_report_json
+        # 捕获兜底导出收到的 risk_report_json；图表也 mock 掉避免真实 matplotlib 绘图落盘
         pdf_mock = MagicMock(); pdf_mock.invoke.return_value = "/local_storage/reports/x.pdf"
         excel_mock = MagicMock(); excel_mock.invoke.return_value = "/local_storage/reports/x.xlsx"
         monkeypatch.setattr(agent_mod, "export_pdf_report", pdf_mock)
         monkeypatch.setattr(agent_mod, "export_excel_report", excel_mock)
+        monkeypatch.setattr(agent_mod, "generate_risk_heatmap", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/h.png")))
+        monkeypatch.setattr(agent_mod, "generate_radar_chart", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/r.png")))
 
         # 构造未导出的合法链路（触发兜底导出），最后 AI 消息携带含 risk_id 的台账
         messages = [

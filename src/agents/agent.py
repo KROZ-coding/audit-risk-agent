@@ -11,6 +11,7 @@ import os
 import json
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
@@ -31,7 +32,8 @@ from tools.visualizer import generate_risk_heatmap, generate_radar_chart, genera
 from tools.batch_processor import batch_analyze_companies
 from tools.disclosure_checker import check_disclosure_compliance
 from tools.risk_scorer import calculate_comprehensive_score
-from tools.domain_guard import assert_tool_call_order, ToolCallOrderViolation
+from tools.domain_guard import ToolCallOrderViolation, assert_hard_order, check_soft_order
+from utils.llm import thinking_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -522,6 +524,9 @@ class _AgentWrapper:
         if not messages:
             return
         try:
+            # 先推一个「后处理开始」标记：辩论三轮 + 兜底导出可能耗时 30-60s，
+            # 上游据此更新进度文案，避免前端进度条长时间静止让用户以为卡死
+            yield {"__post_processing__": True}
             self._post_process({"messages": messages})
             # messages 已被 _post_process 就地补充（最后 AIMessage 含导出链接+辩论+评分）
             yield {"__post_processed__": True, "messages": messages}
@@ -556,11 +561,14 @@ class _AgentWrapper:
         # 两个来源合并出工具链记账，供顺序门禁与综合评分兜底读取。
         called_seq, tool_results, called = self._gather_tool_bookkeeping(result, messages)
 
-        # ─── 领域约束强制门禁：工具调用顺序必须符合完整声明链路（fail-closed）───
-        # 在评分 / 导出兜底路径之前先行拦截：一旦工具调用顺序违反声明链路，立即以
-        # 清晰错误中断，绝不在依据不足 / 次序错乱的前提下继续产出并导出报告。
-        # 采用 tool_ledger 的完整序列而非裁剪后的 messages，避免因早期消息被丢弃而误判。
-        self._enforce_tool_call_order(called_seq)
+        # ─── 领域约束分级门禁：硬约束 fail-closed（含系统代跑补救），软约束降级可见警告 ───
+        # 硬约束「先校验后计算」：LLM 漏调 validate 时不再直接炸掉全场（用户白等），
+        # 而是系统用 calculate 的同一份入参代跑校验：通过→附提示继续；
+        # 校验不通过或无法代跑→仍 fail-closed（底线：绝不在未校验数据上出报告）。
+        # 其余链路次序（disclosure/search/score/export）属推荐顺序非数据依赖，
+        # 乱序仅在报告末尾附可见提示。
+        # 采用 tool_ledger 的完整序列而非裁剪后的 messages，避免早期消息被丢弃后误判。
+        soft_order_warn = self._enforce_tool_call_order(called_seq, messages)
 
         need_pdf = "export_pdf_report" not in called
         need_excel = "export_excel_report" not in called
@@ -575,6 +583,12 @@ class _AgentWrapper:
         if not risk_json:
             # 无法提取风险 JSON 时，若导出工具也未被调用则直接返回
             if not need_pdf and not need_excel:
+                # 早退路径同样要保证软约束顺序提示可见（降级可见原则）
+                if soft_order_warn:
+                    if isinstance(last_ai.content, str):
+                        last_ai.content += soft_order_warn
+                    else:
+                        last_ai.content.append(soft_order_warn)
                 return result
             # 否则尝试用 AI 文本作为兜底输入
             risk_json = json.dumps({"company_info": {}, "risk_details": [], "overall_assessment": str(last_ai.content)[:2000]}, ensure_ascii=False)
@@ -615,22 +629,58 @@ class _AgentWrapper:
                     "⚠️ 多智能体复核未能完成，本次结论未经过复核环节，请结合人工判断审慎采信（详见服务日志）。"
                 )
 
-        # 第六步：补调遗漏的导出工具（使用仲裁回写后的台账），并将下载链接追加到回复中
-        # 降级可见原则：兜底导出失败时不再静默吞掉——除写日志外，还须在返回给用户的
-        # 报告文本中追加醒目失败提示，避免「分析看似成功、报告实则缺失」的静默断裂。
-        links = ""
+        # 第六步：并行兜底缺失产物——图表（热力图/雷达图）+ PDF/Excel 导出，
+        # 均使用仲裁回写后的台账。图表已从 LLM 链路摘除（每张图省一次 LLM 往返
+        # 约 5-15s），与导出同为本地任务且互无依赖，线程并行后总耗时≈最慢单项。
+        # 快速模式（与跳辩论同一信号）保持零图表定位，不补图。
+        # 降级可见原则：任一产物失败都在报告文本中附醒目提示，不静默吞掉。
+        need_heatmap = "generate_risk_heatmap" not in called and not skip_debate
+        need_radar = "generate_radar_chart" not in called and not skip_debate
+
+        def _backfill_chart(tool_obj, label):
+            """图表兜底：成功返回展示文本（提 URL），失败降级为可见警告。"""
+            try:
+                raw = str(tool_obj.invoke({"risk_report_json": risk_json}))
+                url = raw
+                try:
+                    url = json.loads(raw).get("download_url") or raw
+                except Exception:
+                    pass
+                return f"\n\n📊 {label}: {url}"
+            except Exception as e:
+                logger.warning(f"{label}兜底生成失败: {e}")
+                return f"\n\n⚠️ {label}生成失败，本次报告未附该图表（详见服务日志）。"
+
+        def _backfill_export(tool_obj, prefix, fail_text):
+            """导出兜底：保持原有文案与失败提示格式。"""
+            try:
+                return f"\n\n{prefix}{tool_obj.invoke({'risk_report_json': risk_json})}"
+            except Exception as e:
+                logger.warning(f"{prefix.strip()}兜底导出失败: {e}")
+                return fail_text
+
+        jobs = {}
+        if need_heatmap:
+            jobs["heatmap"] = lambda: _backfill_chart(generate_risk_heatmap, "风险热力图")
+        if need_radar:
+            jobs["radar"] = lambda: _backfill_chart(generate_radar_chart, "财务雷达图")
         if need_pdf:
-            try:
-                links += f"\n\n📎 PDF报告: {export_pdf_report.invoke({'risk_report_json': risk_json})}"
-            except Exception as e:
-                logger.warning(f"PDF兜底导出失败: {e}")
-                links += "\n\n⚠️ PDF报告导出失败，本次结论未生成可下载的 PDF 报告，请重试或联系维护者（详见服务日志）。"
+            jobs["pdf"] = lambda: _backfill_export(
+                export_pdf_report, "📎 PDF报告: ",
+                "\n\n⚠️ PDF报告导出失败，本次结论未生成可下载的 PDF 报告，请重试或联系维护者（详见服务日志）。")
         if need_excel:
-            try:
-                links += f"\n\n📊 Excel底稿: {export_excel_report.invoke({'risk_report_json': risk_json})}"
-            except Exception as e:
-                logger.warning(f"Excel兜底导出失败: {e}")
-                links += "\n\n⚠️ Excel底稿导出失败，本次结论未生成可下载的 Excel 底稿，请重试或联系维护者（详见服务日志）。"
+            jobs["excel"] = lambda: _backfill_export(
+                export_excel_report, "📊 Excel底稿: ",
+                "\n\n⚠️ Excel底稿导出失败，本次结论未生成可下载的 Excel 底稿，请重试或联系维护者（详见服务日志）。")
+
+        links = ""
+        if jobs:
+            with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+                futures = {name: pool.submit(fn) for name, fn in jobs.items()}
+                outputs = {name: fut.result() for name, fut in futures.items()}
+            # 展示顺序固定：图表在前、报告文件在后（与阅读动线一致）
+            for key in ("heatmap", "radar", "pdf", "excel"):
+                links += outputs.get(key, "")
 
         if links:
             if isinstance(last_ai.content, str):
@@ -672,6 +722,13 @@ class _AgentWrapper:
             else:
                 last_ai.content.append(fail_text)
 
+        # 软约束顺序提示（如有）：附在报告末尾供人工复核（降级可见，不中断产出）
+        if soft_order_warn:
+            if isinstance(last_ai.content, str):
+                last_ai.content += soft_order_warn
+            else:
+                last_ai.content.append(soft_order_warn)
+
         return result
 
     @staticmethod
@@ -710,22 +767,79 @@ class _AgentWrapper:
         return called_seq, results, called
 
     @staticmethod
-    def _enforce_tool_call_order(called_seq):
-        """强制门禁：复用会抛异常的 assert_tool_call_order 覆盖完整声明链路。
+    def _try_backfill_validation(messages):
+        """硬约束补救：LLM 漏调 validate 时，系统用 calculate 的同一份入参代跑校验。
 
-        与旧版「仅追加警告」不同，此处 fail-closed：一旦检测到工具调用顺序违反
-        声明链路（如未先校验就计算、后置步骤早于前置步骤），立即抛出
-        ToolCallOrderViolation，阻断后续评分 / 导出兜底，避免产出无依据的报告。
+        从消息中的 AIMessage.tool_calls 找到 calculate_financial_indicators 的
+        financial_data_json 入参，直接喂给 validate_financial_data（该工具对缺失
+        字段容错：缺什么跳过什么，不会误报）。
+
+        Returns:
+            (ok, note)
+            - ok=True：代跑校验完成且未发现勾稽不平，note 为附入报告的提示文本；
+            - ok=False：拿不到入参 / 校验未通过 / 代跑异常，note 为原因（调用方应维持 fail-closed）。
+        """
+        calc_args = None
+        for m in messages:
+            for tc in (getattr(m, "tool_calls", None) or []):
+                if tc.get("name") == "calculate_financial_indicators":
+                    calc_args = (tc.get("args") or {}).get("financial_data_json")
+        if not calc_args:
+            return False, "无法从对话中取得计算工具的财务数据入参，无法代跑校验"
+        try:
+            raw = validate_financial_data.invoke({"financial_data_json": calc_args})
+            parsed = json.loads(raw)
+            dv = parsed.get("data_validation", {})
+            if dv.get("failed_checks", 0) > 0:
+                return False, f"系统代跑校验发现 {dv['failed_checks']} 项勾稽不平（{dv.get('validation_result')}）"
+            return True, (
+                "\n\n⚠️ 数据校验补救提示：本次分析中模型未主动执行财务数据校验，"
+                f"系统已用同一份数据代为补跑（{dv.get('passed_checks', 0)} 项通过、"
+                f"{dv.get('skipped_checks', 0)} 项因字段缺失跳过，未发现勾稽不平），"
+                "分析继续。请结合人工判断复核数据可靠性。"
+            )
+        except Exception as e:  # noqa: BLE001 — 代跑失败必须回退 fail-closed，不得静默放行
+            return False, f"代跑校验异常：{e}"
+
+    def _enforce_tool_call_order(self, called_seq, messages=None):
+        """分级门禁：硬约束 fail-closed（含代跑补救），软约束返回可见警告文本。
+
+        - 硬约束（先 validate 后 calculate）：违反时先尝试系统代跑校验——
+          代跑通过则降级为可见提示继续分析（用户不白等）；代跑不可行或
+          校验不通过才抛 ToolCallOrderViolation（底线：数据必须经过校验）；
+        - 软约束（链路其余相对次序）：违反不中断，返回警告文本由调用方
+          附入报告（降级可见）。
 
         Args:
             called_seq: 按实际调用先后顺序排列的工具名称序列。
+            messages: 完整消息列表（代跑补救时用于提取 calculate 入参）。
+
+        Returns:
+            软约束违规/补救提示文本；完全合规时返回 None。
 
         Raises:
-            ToolCallOrderViolation: 当工具调用顺序违反声明链路时。
+            ToolCallOrderViolation: 硬约束违反且代跑补救失败时。
         """
-        order_msg = assert_tool_call_order(called_seq)
-        logger.info(f"工具调用顺序门禁通过: {order_msg}")
-        return order_msg
+        backfill_note = None
+        try:
+            hard_msg = assert_hard_order(called_seq)
+            logger.info(f"硬约束门禁通过: {hard_msg}")
+        except ToolCallOrderViolation as violation:
+            ok, note = self._try_backfill_validation(messages or [])
+            if not ok:
+                logger.error(f"硬约束违规且代跑补救失败（{note}），维持 fail-closed")
+                raise violation
+            logger.warning(f"硬约束违规已由系统代跑校验补救：{note.strip()}")
+            backfill_note = note
+        soft_ok, soft_msg = check_soft_order(called_seq)
+        if soft_ok:
+            return backfill_note
+        logger.warning(f"工具链软约束顺序提示（不中断）: {soft_msg}")
+        soft_text = (
+            "\n\n⚠️ 工具链顺序提示：本次分析的部分工具调用次序与推荐链路不一致"
+            f"（{soft_msg}）。结论与报告已完整产出，请结合人工判断复核该环节。"
+        )
+        return (backfill_note or "") + soft_text if backfill_note else soft_text
 
     def _run_debate(self, risk_json: str) -> str | None:
         """多智能体辩论机制：风险关注方 -> 风险否定方 -> 裁判仲裁。
@@ -744,16 +858,18 @@ class _AgentWrapper:
         try:
             from langchain_core.messages import SystemMessage, HumanMessage
 
-            # 创建辩论专用 LLM 实例（使用较低温度确保严谨）
+            # 创建辩论专用 LLM 实例（较低温度确保严谨；max_tokens 限 1200 压缩三轮串行耗时，
+            # 辩论意见重在结论而非篇幅）
             # max_retries=0：重试/退避统一由 _invoke_llm_with_retry 控制，避免与 SDK 内置重试叠加
             debate_llm = ChatOpenAI(
-                model=os.getenv("REVIEW_MODEL", "deepseek-chat"),
+                model=os.getenv("REVIEW_MODEL", "deepseek-v4-flash"),
                 api_key=os.getenv("OPENAI_API_KEY"),
                 base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
                 temperature=0.2,
-                max_tokens=2048,
-                timeout=180,  # 辩论需要三轮调用，给予更长超时
+                max_tokens=1200,
+                timeout=90,   # flash 单轮通常 <15s，90s 足以覆盖慢轮
                 max_retries=0,
+                extra_body=thinking_extra_body(),  # 仅 DeepSeek 禁用思考模式（辩论提速），其它 provider 不下发私有字段
             )
 
             # Step 1: 风险关注方分析
@@ -806,7 +922,7 @@ class _AgentWrapper:
         return getattr(self._agent, name)
 
 
-def build_agent(ctx=None):
+def build_agent(ctx=None, model_override=None):
     """构建审计风险分析 Agent。
 
     完整流程：
@@ -819,6 +935,9 @@ def build_agent(ctx=None):
 
     Args:
         ctx: 可选的请求上下文对象，用于传递请求头等信息
+        model_override: 可选的主分析模型名覆盖（快速模式传入 FAST_MODEL；缺省时用 config
+            中的 model，当前全链路 deepseek-v4-flash。普通/快速模式的差异现在主要
+            在链路（图表+辩论复核 vs 精简）而非模型）
 
     Returns:
         _AgentWrapper 包装后的 agent 实例
@@ -840,8 +959,12 @@ def build_agent(ctx=None):
     # LangGraph 图内部，无法逐次包裹，故采用 SDK 内置的有限次重试 + 指数退避应对
     # 瞬时故障；重试全部耗尽后异常会沿 ainvoke/invoke 上抛，由 main.py 以可见错误
     # 呈现给用户（SSE error / HTTP 错误），不静默。
+    # thinking disabled：DeepSeek v4 默认开思考模式，会：① 要求历史 assistant 消息
+    # 原样回传 reasoning_content（预处理注入的合成轨迹无该字段 → 400）；
+    # ② 每轮额外生成大量 reasoning token 拖慢响应。审计思维链已由 sp 的结构化
+    # reasoning_chain 承担，模型内部思考属重复劳动，统一禁用。
     llm = ChatOpenAI(
-        model=cfg['config'].get("model", "deepseek-chat"),
+        model=model_override or cfg['config'].get("model", "deepseek-v4-pro"),
         api_key=api_key,
         base_url=base_url,
         temperature=cfg['config'].get('temperature', 0.3),
@@ -851,6 +974,7 @@ def build_agent(ctx=None):
         timeout=cfg['config'].get('timeout', 600),
         max_retries=LLM_MAX_RETRIES,
         default_headers=default_headers(ctx) if ctx else {},
+        extra_body=thinking_extra_body(),
     )
 
     # 注册全部审计工具列表（顺序不影响执行，Agent 自主决定调用顺序）

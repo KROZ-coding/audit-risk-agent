@@ -11,7 +11,9 @@
     --accent:#4dd0e1; --accent2:#7c6cff; --q:#ffb454; --a:#5ee6a8;
     --p0:#ff5470; --p1:#ff9f43; --p2:#54c7ff; --p3:#9b8cff;
     --shadow:0 8px 32px rgba(0,0,0,.45);
+    --font-display:"Source Han Serif SC","Noto Serif SC","STZhongsong","SimSun",serif;
   }
+  /* Hallmark · macrostructure: Long Document · genre: atmospheric-docs · design-system: docs/design.md */
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{
@@ -52,7 +54,7 @@
   main{padding:34px 44px 120px; max-width:1000px}
   header.hero{margin-bottom:28px}
   .hero .kicker{color:var(--accent);font-size:13px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
-  .hero h1{font-size:30px;margin:8px 0 6px;background:linear-gradient(90deg,#fff,#9fd8ff 60%,#b9adff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .hero h1{font-family:var(--font-display);font-size:30px;margin:8px 0 6px;color:#f2f6ff}
   .hero p.sub{color:var(--muted);font-size:14.5px}
   .meta-chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
   .chip{font-size:12px;padding:4px 12px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-border);color:var(--muted)}
@@ -98,11 +100,11 @@
   .fixsec{scroll-margin-top:80px}
   .fixsec h3{font-size:22px;margin:10px 0 4px}
   .fix{
-    background:var(--glass);border:1px solid var(--glass-border);border-left-width:4px;
+    background:var(--glass);border:1px solid var(--glass-border);
     border-radius:14px;padding:16px 20px;margin-bottom:14px;box-shadow:var(--shadow);
   }
-  .fix.p0{border-left-color:var(--p0)} .fix.p1{border-left-color:var(--p1)}
-  .fix.p2{border-left-color:var(--p2)} .fix.p3{border-left-color:var(--p3)}
+  .fix.p0{border-color:color-mix(in srgb, var(--p0) 40%, transparent)} .fix.p1{border-color:color-mix(in srgb, var(--p1) 40%, transparent)}
+  .fix.p2{border-color:color-mix(in srgb, var(--p2) 40%, transparent)} .fix.p3{border-color:color-mix(in srgb, var(--p3) 40%, transparent)}
   .fix .head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px}
   .fix .tag{font-size:11px;font-weight:800;padding:3px 10px;border-radius:6px;letter-spacing:.5px}
   .fix.p0 .tag{background:rgba(255,84,112,.18);color:#ff8fa3}

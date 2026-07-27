@@ -3,6 +3,7 @@
 在本地 Windows 环境下提供最小可运行的替代实现。
 """
 import os
+import re
 import uuid
 import logging
 import threading
@@ -13,6 +14,10 @@ from dataclasses import dataclass, field
 from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
+
+# 合法 run_id 格式：16-64 位十六进制字符或连字符（覆盖 uuid4.hex 与带连字符 UUID），
+# 用于校验客户端 x-run-id，拒绝可推测/畸形值防会话固定劫持
+_re_runid = re.compile(r"[0-9a-fA-F-]{16,64}")
 
 
 # ─────────────────────────────────────────────────────────
@@ -30,9 +35,22 @@ class Context:
             self.run_id = uuid.uuid4().hex
 
 
+def normalize_run_id(raw: str) -> str:
+    """校验客户端 run_id：合法（强格式）则原样返回，否则服务端重新生成。
+
+    供 HTTP 入口与 new_context 共用，避免入口层直接信任原始头部而绕过校验（会话固定防护）。
+    """
+    raw = (raw or "").strip()
+    return raw if _re_runid.fullmatch(raw) else uuid.uuid4().hex
+
+
 def new_context(method: str = "", headers: Any = None) -> Context:
     hdrs = dict(headers) if headers else {}
-    run_id = hdrs.get("x-run-id", "") or uuid.uuid4().hex
+    # 会话固定/劫持防护：客户端 x-run-id 会被直接用作 LangGraph checkpointer 的
+    # thread_id（会话隔离边界）。仅接受强格式的 run_id（16-64 位十六进制/连字符），
+    # 拒绝可推测或畸形值（如他人知晓的短字串），不合法则服务端重新生成，
+    # 避免攻击者伪造 thread_id 读取或注入他人会话（用户级隔离由上层登录体系叠加）。
+    run_id = normalize_run_id(hdrs.get("x-run-id", ""))
     return Context(run_id=run_id, method=method, headers=hdrs)
 
 
@@ -177,7 +195,8 @@ async def agent_stream_handler(payload, ctx, run_id, stream_sse_func, sse_event_
                 yield event
         except Exception as e:
             logger.error(f"agent_stream_handler error: {e}")
-            yield sse_event_func({"error": str(e)})
+            # 不向客户端回传原始异常文本（可能含内部路径/密钥片段），只回通用提示
+            yield sse_event_func({"error": "内部处理错误，请稍后重试（详见服务日志）"})
     return _gen()
 
 
@@ -189,7 +208,8 @@ async def workflow_stream_handler(payload, ctx, run_id, stream_sse_func, sse_eve
                 yield event
         except Exception as e:
             logger.error(f"workflow_stream_handler error: {e}")
-            yield sse_event_func({"error": str(e)})
+            # 同 agent_stream_handler：异常详情仅入服务端日志，客户端只得通用提示
+            yield sse_event_func({"error": "内部处理错误，请稍后重试（详见服务日志）"})
     return _gen()
 
 
@@ -203,10 +223,11 @@ class graph_helper:
         return True  # 本项目固定为 agent 模式
 
     @staticmethod
-    def get_agent_instance(module_path: str, ctx=None):
+    def get_agent_instance(module_path: str, ctx=None, **build_kwargs):
+        # 透传额外构建参数（如 model_override）给 build_agent，保持无参调用向后兼容
         import importlib
         mod = importlib.import_module(module_path)
-        return mod.build_agent(ctx)
+        return mod.build_agent(ctx, **build_kwargs)
 
     @staticmethod
     def get_graph_instance(module_path: str):

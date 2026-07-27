@@ -368,7 +368,24 @@ switch ($Mode) {
         Write-Host ""
 
         if (-not $NoBrowser) {
-            Start-Process "http://localhost:$Port"
+            # 独立隐藏进程轮询健康检查，服务就绪后再开浏览器。
+            # 不用 Start-Job：Job 会话里 Start-Process 打 URL 常静默失败；
+            # 探测用 127.0.0.1 而非 localhost，避免 Windows 上 localhost 优先解析
+            # IPv6 ::1 而 uvicorn 只绑 IPv4 导致探不通。
+            $watcherPath = Join-Path $env:TEMP "zhinengti_open_browser.ps1"
+            @"
+for (`$i = 0; `$i -lt 240; `$i++) {
+    try {
+        `$r = Invoke-WebRequest -Uri 'http://127.0.0.1:$Port/health' -UseBasicParsing -TimeoutSec 2
+        if (`$r.StatusCode -eq 200) { Start-Process 'http://localhost:$Port'; exit }
+    } catch { }
+    Start-Sleep -Milliseconds 500
+}
+"@ | Set-Content $watcherPath -Encoding UTF8
+            Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$watcherPath -WindowStyle Hidden | Out-Null
+            Write-Host "  ⏳ 服务初始化中（首次约 10-30 秒），就绪后将自动打开浏览器..." -ForegroundColor Yellow
+            Write-Host "  💡 若未自动弹出，请手动访问: http://localhost:$Port" -ForegroundColor Gray
+            Write-Host ""
         }
     }
     "http" {

@@ -84,6 +84,12 @@ audit-ai_v*.tar.gz
 checkpoints.sqlite
 *.sqlite
 *.sqlite3
+# 业务库（用户口令哈希/会话令牌/分析历史）：绝不入库
+local_data.db
+*.db
+checkpoints.sqlite*
+.coverage
+.coverage.*
 # 临时截图
 _screenshot_*.png
 

@@ -548,14 +548,16 @@ def run_zero_shot_baseline(case: dict) -> dict:
     try:
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import SystemMessage, HumanMessage
+        from utils.llm import thinking_extra_body
 
         llm = ChatOpenAI(
-            model=os.getenv("REVIEW_MODEL", "deepseek-chat"),
+            model=os.getenv("REVIEW_MODEL", "deepseek-v4-flash"),
             api_key=api_key,
             base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
             temperature=0.1,
             max_tokens=1024,
             timeout=60,
+            extra_body=thinking_extra_body(),  # 与主链路一致：仅 DeepSeek 禁用思考模式
         )
 
         data_json = json.dumps(case["data"], ensure_ascii=False)

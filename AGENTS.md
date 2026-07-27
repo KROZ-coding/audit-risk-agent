@@ -9,7 +9,7 @@
 的 Multi-Agent 系统。用户上传年报（PDF/Excel 等），系统按固定工具链完成财务校验、指标计算、
 披露合规检查、法规检索、综合评分，并生成 PDF 报告、Excel 底稿与可视化图表。
 
-- 技术栈：Python ≥3.10、FastAPI、LangGraph、`langchain-openai`（DeepSeek `deepseek-chat`）、
+- 技术栈：Python ≥3.10、FastAPI、LangGraph、`langchain-openai`（DeepSeek 全链路 `deepseek-v4-flash`，config 可切 `deepseek-v4-pro`）、
   ChromaDB（向量检索，回退 TF-IDF）、matplotlib、reportlab、openpyxl。
 - 入口：`src/main.py`（FastAPI app + CLI）。核心 Agent：`src/agents/agent.py`。
 
@@ -60,14 +60,19 @@ uv run python -m main         # 启动服务（默认 :5000），或 uvicorn mai
 
 ## ⚠️ 高风险区（改动前务必阅读）
 
-### 1. 工具执行顺序（不可颠倒）
+### 1. 工具执行顺序（分级门禁）
 
-Agent 强制按固定链路调用工具，顺序错误会导致结论无依据或校验缺失：
+Agent 按推荐链路调用工具，顺序约束分两级（见 `src/tools/domain_guard.py`）：
 
 ```
-validate_financial_data → calculate_financial_indicators → check_disclosure_compliance
-→ search_regulations → calculate_comprehensive_score → export_pdf_report + export_excel_report
+validate_financial_data → calculate_financial_indicators
+→ (check_disclosure_compliance ∥ search_regulations 并行)
+→ calculate_comprehensive_score → 导出（由系统兜底，LLM 可不调用）
 ```
+
+- **硬约束（fail-closed）**：「先 validate 后 calculate」，违反即中断分析；
+- **软约束（可见警告）**：其余相对次序属推荐顺序非数据依赖，违反时不中断，
+  在报告末尾附「工具链顺序提示」供人工复核（兜底导出照常执行）。
 
 - 顺序与规则由 `config/agent_llm_config.json` 的 `sp` 字段约束，进度映射在 `src/main.py` 的 `TOOL_PIPELINE`。
 - 新增/重命名工具时，须同步更新：`src/agents/agent.py`（注册）、`config` 的 `tools` 列表、`main.py` 的 `TOOL_NAME_TO_STEP`；同时同步工具计数表述——`src/agents/agent.py` 中 `build_agent` docstring 与 `README.md` 项目结构里的「N 个核心审计工具」（当前为 13，须与 `build_agent` 的 `tools` 列表长度、`config` 的 `tools` 数组长度一致）。

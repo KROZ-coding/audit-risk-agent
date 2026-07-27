@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import traceback
 import logging
 import uuid
@@ -14,6 +15,7 @@ import tempfile
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Dict, Optional, List
 
 import uvicorn
@@ -31,7 +33,7 @@ from local_shims import (
     init_run_config, init_agent_config, extract_core_stack,
     cozeloop, OpenAIChatHandler,
     AsyncTaskRuntime, AsyncTaskStorageError, async_task_config,
-    extract_biz_context, parse_deadline_sec, HEADER_X_RUN_ID,
+    extract_biz_context, parse_deadline_sec, HEADER_X_RUN_ID, normalize_run_id,
 )
 from storage.memory.memory_saver import get_memory_saver
 
@@ -49,20 +51,120 @@ TIMEOUT_SECONDS = 900
 
 TOOL_PIPELINE = [
     ("parse_pdf_report",                  "解析年报文件",     8),
-    ("validate_financial_data",           "校验财务数据",    16),
-    ("calculate_financial_indicators",    "计算财务指标",    26),
-    ("check_disclosure_compliance",       "检查披露合规",    36),
-    ("search_regulations",                "检索法规条文",    46),
-    ("compare_multi_year",               "多年数据对比",    54),
-    ("calculate_comprehensive_score",     "综合风险评分",    64),
-    ("generate_risk_heatmap",             "生成风险热力图",  72),
-    ("generate_radar_chart",              "生成财务雷达图",  80),
-    ("generate_trend_chart",              "生成趋势折线图",  86),
+    ("validate_financial_data",           "校验财务数据",    18),
+    ("calculate_financial_indicators",    "计算财务指标",    30),
+    ("check_disclosure_compliance",       "检查披露合规",    42),
+    ("search_regulations",                "检索法规条文",    55),
+    ("compare_multi_year",               "多年数据对比",    60),
+    ("calculate_comprehensive_score",     "综合风险评分",    68),
+    ("generate_risk_heatmap",             "生成风险热力图",  76),
+    ("generate_radar_chart",              "生成财务雷达图",  84),
+    ("generate_trend_chart",              "生成趋势折线图",  87),
     ("export_pdf_report",                 "导出 PDF 报告",   92),
-    ("export_excel_report",               "导出 Excel 底稿", 97),
+    ("export_excel_report",               "导出 Excel 底稿", 95),
 ]
 
 TOOL_NAME_TO_STEP = {name: (label, pct) for name, label, pct in TOOL_PIPELINE}
+
+# ── 分级提速：全接口均用 deepseek-v4-flash（config 主模型）。普通模式跑完整链路
+# （图表 + 三方辩论复核，目标 ≤3 分钟）；快速模式（前端 ⚡ 开关在用户消息末尾
+# 追加“快速模式”关键词）走精简链路：跳图表/跳辩论/限 3 条风险，目标 ≤1 分钟。
+# FAST_MODEL 保留独立配置位，便于未来把普通模式单独切回更强模型。
+FAST_MODE_KEYWORD = "快速模式"
+FAST_MODEL = os.getenv("FAST_MODEL", "deepseek-v4-flash")
+
+
+def _payload_wants_fast_mode(payload) -> bool:
+    """检测请求载荷是否启用快速模式（与 agent.py 跳过辩论的关键词保持一致）。
+
+    兼容两种消息形态：前端 JSON 的 dict（{"role","content"}）与 LangChain 消息对象。
+    """
+    for m in (payload or {}).get("messages", []):
+        content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+        if FAST_MODE_KEYWORD in str(content):
+            return True
+    return False
+
+
+# ── 多用户登录与分析历史：认证头解析 + 历史落库辅助 ──
+AUTH_TOKEN_HEADER = "X-Auth-Token"
+
+
+def _current_user(request: Request):
+    """从请求头解析当前登录用户；未登录/令牌无效返回 None（不阻断分析）。"""
+    token = request.headers.get(AUTH_TOKEN_HEADER, "")
+    if not token:
+        return None
+    try:
+        from storage.database.user_service import resolve_user
+        return resolve_user(token)
+    except Exception as e:  # noqa: BLE001 - 认证存储异常时降级为游客，不阻断主功能
+        logger.warning(f"解析登录态失败（按游客处理）: {e}")
+        return None
+
+
+def _extract_history_fields(report: dict) -> dict:
+    """从最终报告中抽取历史记录字段（公司/年度/评分/等级/文件）。
+
+    数据来源：
+    - 公司名/年度：复用 agents.agent._extract_risk_json 从 AI 回复抠风险台账
+    - 评分/等级：<!--COMPREHENSIVE_SCORE--> 标记后的综合评分 JSON
+    - 文件：报告的 files + images 路径列表
+    任一段解析失败均降级为缺省值，不抛异常。
+    """
+    ai_text = str(report.get("ai_text", "") or "")
+    fields = {"company_name": "", "report_year": "", "score": None, "risk_level": "", "summary": ""}
+    risk_data = {}
+    try:
+        from agents.agent import _extract_risk_json
+        risk_json = _extract_risk_json(ai_text)
+        if risk_json:
+            risk_data = json.loads(risk_json)
+            # 别名兼容：LLM 可能用 name/report_period 等键名（与导出工具同源逻辑）
+            from utils.filename import resolve_company_year
+            company, year = resolve_company_year(risk_data.get("company_info", {}) or {})
+            fields["company_name"] = company
+            fields["report_year"] = year
+    except Exception:
+        pass
+    try:
+        marker = "<!--COMPREHENSIVE_SCORE-->"
+        if marker in ai_text:
+            score_data = json.loads(ai_text.split(marker, 1)[1].strip().split("\n\n", 1)[0])
+            fields["score"] = score_data.get("score")
+            fields["risk_level"] = str(score_data.get("level", "") or "")
+            fields["summary"] = str(score_data.get("summary", "") or "")
+    except Exception:
+        pass
+    # 兜底：无 marker（或解析失败）时，从风险台账内嵌的 comprehensive_score 对象补齐
+    if fields["score"] is None and isinstance(risk_data.get("comprehensive_score"), dict):
+        cs = risk_data["comprehensive_score"]
+        fields["score"] = cs.get("score")
+        fields["risk_level"] = fields["risk_level"] or str(cs.get("level", "") or "")
+        fields["summary"] = fields["summary"] or str(cs.get("summary", "") or cs.get("note", "") or "")
+    fields["files"] = (
+        [f.get("path", "") for f in report.get("files", []) if f.get("path")]
+        + [i.get("path", "") for i in report.get("images", []) if i.get("path")]
+    )
+    return fields
+
+
+def _record_history(user, run_id: str, report: dict, fast: bool):
+    """分析完成后落历史（仅登录用户；失败只记日志，绝不影响主流程）。"""
+    if not user:
+        return
+    try:
+        from storage.database.user_service import save_history
+        fields = _extract_history_fields(report or {})
+        save_history(
+            user["user_id"], run_id,
+            company_name=fields["company_name"], report_year=fields["report_year"],
+            score=fields["score"], risk_level=fields["risk_level"],
+            mode="flash" if fast else "pro", files=fields["files"], summary=fields["summary"],
+        )
+        logger.info(f"分析历史已记录: user={user['username']} run_id={run_id}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"分析历史记录失败（不影响主报告）: {e}")
 
 
 class GraphService:
@@ -74,12 +176,114 @@ class GraphService:
     def __init__(self):
         self.running_tasks: Dict[str, asyncio.Task] = {}
         self.error_classifier = ErrorClassifier()
-        self._agent = None
+        # 按模式缓存双 Agent 实例："pro"=普通模式（config 主模型），"flash"=快速模式（FAST_MODEL）
+        # 两实例共享同一 checkpointer（get_memory_saver 单例），同 thread_id 会话可跨模式续接
+        self._agents: Dict[str, Any] = {}
 
-    def _get_agent(self, ctx=None):
-        if self._agent is None:
-            self._agent = graph_helper.get_agent_instance("agents.agent", ctx)
-        return self._agent
+    def _get_agent(self, ctx=None, fast: bool = False):
+        key = "flash" if fast else "pro"
+        if key not in self._agents:
+            build_kwargs = {"model_override": FAST_MODEL} if fast else {}
+            self._agents[key] = graph_helper.get_agent_instance("agents.agent", ctx, **build_kwargs)
+            logger.info(f"Agent 实例已构建：mode={key}" + (f", model={FAST_MODEL}" if fast else "（config 主模型）"))
+        return self._agents[key]
+
+    # ── P1 预处理并行注入：进 Agent 前由系统先提取财务数据，并行预跑
+    # 校验/指标/披露三工具，把结果以「已完成工具轨迹」（AIMessage.tool_calls +
+    # ToolMessage）注入上下文。LLM 看到历史里已调过这三步就不会重复调用，
+    # 省 2-3 次 LLM 往返（每次 5-15s）；台账/门禁/前端工具链展示/评分兜底
+    # 全部自动兼容（轨迹与真实调用形态一致）。
+    # fail-open：任一环节失败/超时都静默回退原链路，预处理只是加速器。
+    _PREPROCESS_MIN_CHARS = 800   # 短文本（无数据密度）不值得多一次提取调用
+    _EXTRACT_TIMEOUT = 25         # 提取超时即放弃，不阻塞主链路
+
+    @staticmethod
+    def _last_user_text(payload) -> str:
+        """取 payload 中最后一条 user 消息文本（预处理输入源）。"""
+        try:
+            for m in reversed(payload.get("messages") or []):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    return str(m.get("content", "") or "")
+        except Exception:
+            pass
+        return ""
+
+    async def _extract_financial_json(self, text: str):
+        """用快速模型从年报文本提取结构化财务数据 JSON；失败返回 None。"""
+        from langchain_openai import ChatOpenAI
+        from utils.llm import thinking_extra_body
+        llm = ChatOpenAI(
+            model=FAST_MODEL,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
+            temperature=0,
+            max_tokens=1200,
+            timeout=self._EXTRACT_TIMEOUT,
+            max_retries=0,
+            extra_body=thinking_extra_body(),  # 仅 DeepSeek 下发禁用思考模式，其它 provider 保持纯 OpenAI 协议
+        )
+        prompt = (
+            "从下面的年报/财务文本中提取财务数据，仅输出一个 JSON 对象，不要任何解释。\n"
+            "尽量提取以下字段（数值型，单位统一为万元；文本中缺失的字段直接省略，禁止编造）：\n"
+            "total_assets, total_liabilities, net_assets, net_profit, operating_cashflow, "
+            "depreciation, amortization, working_capital_change, retained_earnings_begin, "
+            "retained_earnings_end, dividends, revenue_current, revenue_previous, "
+            "net_profit_current, net_profit_previous, operating_cashflow_current, "
+            "operating_cashflow_previous, total_assets_current, total_liabilities_current, "
+            "accounts_receivable_current, accounts_receivable_previous, inventory_current, "
+            "inventory_previous, goodwill, monetary_funds, short_term_loans, industry\n"
+            "（industry 为字符串，取：制造业/房地产/互联网/医药/金融/零售/能源/农业/军工/传媒 之一）\n\n"
+            f"文本：\n{text}"
+        )
+        resp = await asyncio.wait_for(llm.ainvoke(prompt), timeout=self._EXTRACT_TIMEOUT + 5)
+        raw = str(resp.content).strip()
+        m = re.search(r"\{[\s\S]*\}", raw)
+        if not m:
+            return None
+        try:
+            data = json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, dict) or len(data) < 3:
+            # 提取不出足够字段说明文本无数据密度，预跑无意义
+            return None
+        return json.dumps(data, ensure_ascii=False)
+
+    async def _preprocess_inject(self, payload):
+        """构造预跑工具轨迹消息列表；不可用时返回 None（走原链路）。"""
+        try:
+            text = self._last_user_text(payload)
+            if len(text) < self._PREPROCESS_MIN_CHARS:
+                return None
+            data_json = await self._extract_financial_json(text[:30000])
+            if not data_json:
+                return None
+            from tools.data_validator import validate_financial_data
+            from tools.financial_calculator import calculate_financial_indicators
+            from tools.disclosure_checker import check_disclosure_compliance
+            # 三工具无相互依赖，线程并行执行（均为本地计算）
+            v_res, c_res, d_res = await asyncio.gather(
+                asyncio.to_thread(validate_financial_data.invoke, {"financial_data_json": data_json}),
+                asyncio.to_thread(calculate_financial_indicators.invoke, {"financial_data_json": data_json}),
+                asyncio.to_thread(check_disclosure_compliance.invoke, {"report_text": text}),
+            )
+            from langchain_core.messages import AIMessage, ToolMessage
+            # args 中的年报全文用占位符替代，避免上下文里同一段长文本出现两遍
+            calls = [
+                {"name": "validate_financial_data", "args": {"financial_data_json": data_json}, "id": "pre_v"},
+                {"name": "calculate_financial_indicators", "args": {"financial_data_json": data_json}, "id": "pre_c"},
+                {"name": "check_disclosure_compliance", "args": {"report_text": "（见上文年报文本）"}, "id": "pre_d"},
+            ]
+            logger.info("预处理注入完成：校验/指标/披露三工具已预跑")
+            return [
+                AIMessage(content="", tool_calls=calls),
+                ToolMessage(content=str(v_res), name="validate_financial_data", tool_call_id="pre_v"),
+                ToolMessage(content=str(c_res), name="calculate_financial_indicators", tool_call_id="pre_c"),
+                ToolMessage(content=str(d_res), name="check_disclosure_compliance", tool_call_id="pre_d"),
+            ]
+        except Exception as e:  # noqa: BLE001 — fail-open：预处理失败只意味着回到原速度
+            logger.warning(f"预处理注入失败，回退原链路: {e}")
+            return None
 
     async def run(self, payload: Dict[str, Any], ctx=None) -> Dict[str, Any]:
         if ctx is None:
@@ -87,7 +291,7 @@ class GraphService:
         run_id = ctx.run_id
         logger.info(f"Starting run with run_id: {run_id}")
         try:
-            agent = self._get_agent(ctx)
+            agent = self._get_agent(ctx, fast=_payload_wants_fast_mode(payload))
             run_config = init_run_config(agent, ctx)
             result = await agent.ainvoke(payload, config=run_config)
             return result
@@ -100,12 +304,13 @@ class GraphService:
         finally:
             self.running_tasks.pop(run_id, None)
 
-    async def stream_sse(self, payload, ctx=None, run_opt=None):
-        """用 astream 追踪真实工具进度，最后一次性推送完整报告"""
+    async def stream_sse(self, payload, ctx=None, run_opt=None, user=None):
+        """用 astream 追踪真实工具进度，最后一次性推送完整报告；登录态下顺带落历史"""
         if ctx is None:
             ctx = new_context("stream_sse")
         run_id = ctx.run_id
-        agent = self._get_agent(ctx)
+        fast = _payload_wants_fast_mode(payload)
+        agent = self._get_agent(ctx, fast=fast)
         run_config = init_agent_config(agent, ctx)
 
         seen_ids = set()
@@ -116,10 +321,34 @@ class GraphService:
 
         yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
 
+        # ── P1 预处理并行注入（详见 _preprocess_inject；失败静默回退原链路）
+        if isinstance(payload, dict) and len(self._last_user_text(payload)) >= self._PREPROCESS_MIN_CHARS:
+            current_step, current_pct = "预提取财务数据并行预跑工具", 8
+            yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+            pre_msgs = await self._preprocess_inject(payload)
+            if pre_msgs:
+                payload = {**payload, "messages": list(payload["messages"]) + pre_msgs}
+                # 注入轨迹登记进最终报告的工具链：astream 增量里不含输入消息，
+                # 不手动登记的话预跑的三工具不会出现在前端工具调用链展示中
+                for m in pre_msgs:
+                    name = getattr(m, "name", None)
+                    if name:
+                        all_messages.append({"type": "tool", "name": name, "content": str(m.content)})
+                # 三工具已完成，进度直接推进到披露检查锚点
+                current_step, current_pct = "预处理完成（校验/指标/披露）", 42
+                yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+
         try:
             async for chunk in agent.astream(payload, config=run_config):
-                # _AgentWrapper.astream 在流末会额外推送一个 __post_processed__ 标记 chunk，
-                # 携带含辩论复核/兜底导出/综合评分的完整消息，不参与进度追踪。
+                # _AgentWrapper.astream 流末会依次推送：
+                # ① __post_processing__ 标记：辩论复核 + 兜底导出开始（可能耗时 30-60s），
+                #    据此更新进度文案避免长时间静止；
+                # ② __post_processed__ 标记：携带含辩论/导出/评分的完整消息。
+                if isinstance(chunk, dict) and chunk.get("__post_processing__"):
+                    current_pct = max(current_pct, 90)
+                    current_step = "辩论复核与报告导出中"
+                    yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+                    continue
                 if isinstance(chunk, dict) and chunk.get("__post_processed__"):
                     final_messages = chunk.get("messages") or None
                     continue
@@ -154,11 +383,14 @@ class GraphService:
                 report = self._build_final_report_from_messages(processed)
             else:
                 report = self._build_final_report_from_messages(all_messages)
+
+            # 登录态下将本次分析写入用户历史（游客跳过；失败不影响推送）
+            _record_history(user, run_id, report, fast)
             yield self._sse({"type": "final_report", "percent": 100, **report})
 
         except Exception as e:
             logger.error(f"stream_sse error: {e}\n{traceback.format_exc()}")
-            yield self._sse({"type": "error", "content": str(e)})
+            yield self._sse({"type": "error", "content": "内部处理错误，请稍后重试（详见服务日志）"})
 
     @staticmethod
     def _sse(data: dict) -> str:
@@ -186,7 +418,14 @@ class GraphService:
         return new_msgs
 
     def _build_final_report_from_messages(self, all_messages):
-        """从消息列表构建最终报告"""
+        """从消息列表构建最终报告。
+
+        链接来源有两处，必须都扫：
+        - ToolMessage 内容（LLM 主动调用图表/导出工具的返回）；
+        - 最后一条 AI 正文（兜底导出的 PDF/Excel 链接由 _post_process 追加在正文，
+          不产生 ToolMessage；导出改全兜底后这是主要来源，漏扫会导致文件卡/历史无文件）。
+        同一路径去重，避免两源重复。
+        """
         ai_text = ""
         tool_results = []
 
@@ -210,19 +449,34 @@ class GraphService:
 
         images = []
         files = []
+        seen_paths = set()
         import re
+
+        def _collect(source_name, text):
+            """从一段文本中提取图片/文件链接，按路径去重后归档。"""
+            for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.png)', text):
+                if m.group(1) not in seen_paths:
+                    seen_paths.add(m.group(1))
+                    images.append({"tool": source_name, "path": m.group(1)})
+            for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.(?:pdf|xlsx))', text):
+                if m.group(1) not in seen_paths:
+                    seen_paths.add(m.group(1))
+                    files.append({"tool": source_name, "path": m.group(1)})
+            # 兼容旧格式 file://... 路径
+            for m in re.finditer(r'file://([^\s"\'<>]+\.png)', text):
+                if m.group(1) not in seen_paths:
+                    seen_paths.add(m.group(1))
+                    images.append({"tool": source_name, "path": m.group(1)})
+            for m in re.finditer(r'file://([^\s"\'<>]+\.(?:pdf|xlsx))', text):
+                if m.group(1) not in seen_paths:
+                    seen_paths.add(m.group(1))
+                    files.append({"tool": source_name, "path": m.group(1)})
+
         for tr in tool_results:
             c = tr["content"] if isinstance(tr["content"], str) else str(tr["content"])
-            # 匹配 /local_storage/... 路径（HTTP 相对路径）
-            for m in re.finditer(r'(/local_storage/[^\s"\'<>]+\.png)', c):
-                images.append({"tool": tr["name"], "path": m.group(1)})
-            for m in re.finditer(r'(/local_storage/[^\s"\'<>]+\.(?:pdf|xlsx))', c):
-                files.append({"tool": tr["name"], "path": m.group(1)})
-            # 兼容旧格式 file://... 路径
-            for m in re.finditer(r'file://([^\s"\'<>]+\.png)', c):
-                images.append({"tool": tr["name"], "path": m.group(1)})
-            for m in re.finditer(r'file://([^\s"\'<>]+\.(?:pdf|xlsx))', c):
-                files.append({"tool": tr["name"], "path": m.group(1)})
+            _collect(tr["name"], c)
+        # 兜底导出的链接在 AI 正文里（📎 PDF报告: .../📊 Excel底稿: ...）
+        _collect("fallback_export", str(ai_text))
 
         return {
             "ai_text": ai_text,
@@ -265,6 +519,15 @@ async def lifespan(app: FastAPI):
     # 再预加载 agent（确保 build_agent 拿到的是持久化 saver）
     from storage.memory.memory_saver import init_memory_saver, close_memory_saver
     await init_memory_saver()
+    # 业务库建表（用户/会话/分析历史）：幂等 create_all；失败不阻断启动，
+    # 仅登录/历史功能降级不可用（接口会返回可见错误），分析主流程不受影响。
+    try:
+        from storage.database.db import get_engine
+        from storage.database.shared.model import Base
+        Base.metadata.create_all(get_engine())
+        logger.info("业务库表结构就绪（users / session_tokens / analysis_history）")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"业务库初始化失败（登录/历史功能不可用）: {e}")
     service._get_agent()
     yield
     # 关闭时释放 checkpointer 连接
@@ -395,7 +658,7 @@ async def get_system_status():
         status["llm_detail"] = {
             "name": "大语言模型",
             "model": model_name,
-            "provider": base_url,
+            "provider": urlparse(base_url).hostname or base_url,
             "api_key_set": bool(api_key and not api_key.startswith("sk-your")),
             "streaming": True,
         }
@@ -407,9 +670,9 @@ async def get_system_status():
         kb_dir = Path(os.getenv("COZE_WORKSPACE_PATH", ".")) / "knowledge_base"
         txt_files = sorted(kb_dir.glob("*.txt")) if kb_dir.exists() else []
         status["knowledge_base"] = "ok" if txt_files else "empty"
+        # 不暴露服务器内部绝对路径（未认证接口），仅回中文展示名与计数
         status["kb_detail"] = {
             "name": "审计法规知识库",
-            "path": str(kb_dir),
             "file_count": len(txt_files),
             "files": [f.name for f in txt_files[:20]],
         }
@@ -422,9 +685,9 @@ async def get_system_status():
         file_count = sum(1 for _ in storage_dir.rglob("*") if _.is_file()) if storage_dir.exists() else 0
         subdirs = [d.name for d in storage_dir.iterdir() if d.is_dir()] if storage_dir.exists() else []
         status["storage"] = "ok" if storage_dir.exists() else "not_created"
+        # 同上：不暴露绝对路径，仅保留计数与子目录名（reports/charts）
         status["storage_detail"] = {
             "name": "本地文件存储",
-            "path": str(storage_dir),
             "file_count": file_count,
             "subdirs": subdirs,
         }
@@ -432,6 +695,96 @@ async def get_system_status():
         status["storage_detail"] = {"name": "本地文件存储", "error": "检测异常"}
 
     return status
+
+
+# ══════════════════════════════════════════════════════
+# 多用户认证与分析历史 API
+# 设计：未登录不影响分析（演示零摩擦），但历史仅在登录态记录/查询；
+# 历史接口强制按 token 对应的 user_id 隔离，无法跨用户读取。
+# ══════════════════════════════════════════════════════
+
+@app.post("/api/auth/register")
+async def auth_register(request: Request):
+    """注册新用户并自动登录（返回会话令牌，免二次登录）。"""
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"status": "error", "message": "请求体不是合法 JSON"}, status_code=400)
+    try:
+        from storage.database.user_service import login_user, register_user
+        register_user(body.get("username", ""), body.get("password", ""))
+        session_info = login_user(body.get("username", ""), body.get("password", ""))
+        return {"status": "ok", **session_info}
+    except ValueError as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"注册失败: {e}")
+        return JSONResponse({"status": "error", "message": "注册失败，请稍后重试（详见服务日志）"}, status_code=500)
+
+
+@app.post("/api/auth/login")
+async def auth_login(request: Request):
+    """口令登录，签发会话令牌（用户名不存在与口令错误统一提示，防枚举）。"""
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"status": "error", "message": "请求体不是合法 JSON"}, status_code=400)
+    try:
+        from storage.database.user_service import login_user
+        session_info = login_user(body.get("username", ""), body.get("password", ""))
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"登录异常: {e}")
+        return JSONResponse({"status": "error", "message": "登录服务异常，请稍后重试"}, status_code=500)
+    if session_info is None:
+        return JSONResponse({"status": "error", "message": "用户名或口令错误"}, status_code=401)
+    return {"status": "ok", **session_info}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    """登出：删除当前会话令牌（幂等）。"""
+    try:
+        from storage.database.user_service import logout_user
+        logout_user(request.headers.get(AUTH_TOKEN_HEADER, ""))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"登出异常（忽略）: {e}")
+    return {"status": "ok"}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """查询当前登录态（前端启动时校验本地 token 是否仍有效）。"""
+    user = _current_user(request)
+    if user is None:
+        return {"status": "anonymous"}
+    return {"status": "ok", **user}
+
+
+@app.get("/api/history")
+async def history_list(request: Request):
+    """当前用户的分析历史列表（倒序，最多 50 条；未登录返回 401）。"""
+    user = _current_user(request)
+    if user is None:
+        return JSONResponse({"status": "error", "message": "请先登录后查看分析历史"}, status_code=401)
+    try:
+        from storage.database.user_service import list_history
+        return {"status": "ok", "username": user["username"], "records": list_history(user["user_id"])}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"历史查询失败: {e}")
+        return JSONResponse({"status": "error", "message": "历史查询失败（详见服务日志）"}, status_code=500)
+
+
+@app.get("/api/history/{record_id}")
+async def history_detail(record_id: int, request: Request):
+    """单条历史详情；他人记录与不存在统一返回 404（防探测）。"""
+    user = _current_user(request)
+    if user is None:
+        return JSONResponse({"status": "error", "message": "请先登录"}, status_code=401)
+    from storage.database.user_service import get_history_detail
+    record = get_history_detail(user["user_id"], record_id)
+    if record is None:
+        return JSONResponse({"status": "error", "message": "记录不存在"}, status_code=404)
+    return {"status": "ok", "record": record}
 
 
 @app.post("/run")
@@ -450,7 +803,8 @@ async def http_run(request: Request) -> Dict[str, Any]:
     ctx = new_context(method="run", headers=request.headers)
     upstream_run_id = request.headers.get(HEADER_X_RUN_ID)
     if upstream_run_id:
-        ctx.run_id = upstream_run_id
+        # 走同一强校验，避免入口直接信任原始头部而绕过会话固定防护
+        ctx.run_id = normalize_run_id(upstream_run_id)
     run_id = ctx.run_id
     request_context.set(ctx)
 
@@ -470,6 +824,11 @@ async def http_run(request: Request) -> Dict[str, Any]:
             result = {}
         if isinstance(result, dict):
             result["run_id"] = run_id
+        # 登录态下落历史（与 /stream_run 行为一致；游客/失败均不影响返回）
+        user = _current_user(request)
+        if user and isinstance(result, dict) and result.get("messages"):
+            report = service._build_final_report(result)
+            _record_history(user, run_id, report, _payload_wants_fast_mode(payload))
         return result
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
@@ -490,7 +849,8 @@ async def http_stream_run(request: Request):
     ctx = new_context(method="stream_run", headers=request.headers)
     upstream_run_id = request.headers.get(HEADER_X_RUN_ID)
     if upstream_run_id:
-        ctx.run_id = upstream_run_id
+        # 走同一强校验，避免入口直接信任原始头部而绕过会话固定防护
+        ctx.run_id = normalize_run_id(upstream_run_id)
     request_context.set(ctx)
 
     try:
@@ -498,7 +858,7 @@ async def http_stream_run(request: Request):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
 
-    generator = service.stream_sse(payload, ctx)
+    generator = service.stream_sse(payload, ctx, user=_current_user(request))
     return StreamingResponse(generator, media_type="text/event-stream")
 
 
@@ -770,7 +1130,21 @@ async def upload_knowledge_base(files: List[UploadFile] = File(...)):
         txt_path = os.path.join(kb_dir, txt_filename)
 
         try:
-            raw = await f.read()
+            # 与 /upload 一致的大小上限：流式分块读取并强制 MAX_UPLOAD_SIZE，
+            # 防止未认证用户上传超大文件一次性读入内存导致耗尽（DoS）
+            raw = b""
+            while True:
+                chunk = await f.read(1024 * 1024)
+                if not chunk:
+                    break
+                raw += chunk
+                if len(raw) > MAX_UPLOAD_SIZE:
+                    results.append({"filename": original_name, "status": "error",
+                                    "error": f"文件超过大小上限 {MAX_UPLOAD_SIZE // (1024*1024)}MB"})
+                    raw = None
+                    break
+            if raw is None:
+                continue
             text = ""
 
             if ext == ".txt":

@@ -32,23 +32,27 @@ EXPORT_PDF_TOOL = "export_pdf_report"
 EXPORT_EXCEL_TOOL = "export_excel_report"
 
 # 完整声明链路的相对次序等级（rank）：
-#   validate_financial_data → calculate_financial_indicators → check_disclosure_compliance
-#   → search_regulations → calculate_comprehensive_score → export_pdf_report + export_excel_report
-# 其中 PDF / Excel 导出为并行步骤，共享同一 rank（彼此之间无先后约束）。
+#   validate_financial_data → calculate_financial_indicators
+#   → (check_disclosure_compliance ∥ search_regulations)  ← 二者无数据依赖，共享 rank 并行
+#   → calculate_comprehensive_score → export_pdf_report + export_excel_report
+# 设计说明：披露检查与法规检索之间不存在数据依赖（检索为风险找依据、披露检查独立
+# 评分输入），强制先后只会误伤；而综合评分消费校验/指标/披露三模块结果、导出
+# 需携带评分，因此 score 与 export 的后置次序保留。
 PIPELINE_RANK = {
     VALIDATE_TOOL: 0,
     CALCULATE_TOOL: 1,
     DISCLOSURE_TOOL: 2,
-    SEARCH_TOOL: 3,
-    SCORE_TOOL: 4,
-    EXPORT_PDF_TOOL: 5,
-    EXPORT_EXCEL_TOOL: 5,
+    SEARCH_TOOL: 2,
+    SCORE_TOOL: 3,
+    EXPORT_PDF_TOOL: 4,
+    EXPORT_EXCEL_TOOL: 4,
 }
 
 # 供错误信息展示的人类可读声明链路
 PIPELINE_DESC = (
-    "validate_financial_data → calculate_financial_indicators → check_disclosure_compliance"
-    " → search_regulations → calculate_comprehensive_score → export_pdf_report + export_excel_report"
+    "validate_financial_data → calculate_financial_indicators"
+    " → check_disclosure_compliance ∥ search_regulations（并行）"
+    " → calculate_comprehensive_score → export_pdf_report + export_excel_report"
 )
 
 # ── 约束二相关常量：免责声明标识 ──────────────────────────
@@ -154,18 +158,49 @@ def _check_pipeline_order(seq):
 
 
 def assert_tool_call_order(called_tools):
-    """断言版本：调用顺序违反约束时抛出 ToolCallOrderViolation。
+    """断言版本（两层合并）：任一层违规均抛 ToolCallOrderViolation。
+
+    注：Agent 运行时已改用分级门禁（assert_hard_order + check_soft_order），
+    本函数保留给需要严格两层拦截的调用方（如 CI 完整链路回归校验）。
 
     Args:
         called_tools: 按调用先后顺序排列的工具名称序列。
 
     Raises:
-        ToolCallOrderViolation: 当 calculate 先于 validate 或缺失 validate 时。
+        ToolCallOrderViolation: 当任一层顺序约束被违反时。
     """
     ok, message = check_tool_call_order(called_tools)
     if not ok:
         raise ToolCallOrderViolation(message)
     return message
+
+
+# ── 分级门禁接口（Agent 运行时使用）──
+# 硬约束：「先校验后计算」——审计底线，数据不可靠则一切指标无意义，
+#         违反时 fail-closed 中断，绝不在不可靠数据上产出报告。
+# 软约束：完整声明链路的其余相对次序（disclosure/search/score/export 之间）——
+#         属推荐顺序而非数据依赖，LLM 偶发乱序不应炸掉整场分析（兜底导出也会
+#         被连带中断导致零产出），降级为「可见警告」附在报告中供人工复核。
+
+def assert_hard_order(called_tools):
+    """硬约束断言：仅拦截「先校验后计算」违规（fail-closed）。
+
+    Raises:
+        ToolCallOrderViolation: calculate 无前置 validate 或次序颠倒时。
+    """
+    ok, message = _check_validate_before_calculate(list(called_tools))
+    if not ok:
+        raise ToolCallOrderViolation(message)
+    return message
+
+
+def check_soft_order(called_tools):
+    """软约束检查：完整声明链路相对次序，返回 (ok, message) 不抛异常。
+
+    调用方应在 ok=False 时将 message 以可见警告形式附入报告（降级可见原则），
+    但不中断分析与导出。
+    """
+    return _check_pipeline_order(list(called_tools))
 
 
 # ═══════════════════════════════════════════════════════════
