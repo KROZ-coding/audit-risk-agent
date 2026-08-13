@@ -4,15 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2.5' stroke-linecap='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/></svg>">
-<title>审计风险识别系统 | AI Agent</title>
+<title>上市公司年报风险识别 | AI Agent</title>
+<!-- ECharts 本地内置（单机断网可用，禁用 CDN）；文件缺失时图表自动降级为表格 -->
+<script src="/vendor/echarts.min.js" onerror="console.warn('本地 ECharts 未就绪，图表将降级为表格展示')"></script>
 <style>
-/* Hallmark · component: card-system (toast/file/score/debate) · genre: modern-minimal
- * theme: existing dark tokens · studied-DNA: card best-practices (StanVision/M3, 2026-07)
- * 卡片统一语言：outlined + 微抬升；语义色 footprint ≤5%（色条/图标）；禁整卡泼色
- * states: default · hover(描边+抬升) · focus-visible · toast: auto-dismiss 5s + hover 暂停
- * audit-fix 2026-07-25：渐变清零（仅留输入区功能性 scrim + 雷达图蓝系填充）；
- * 紫色驱逐；无限循环动画仅留加载语义（spinner/indeterminate/loading dot）；
- * 双灰阶收编 token；tabular-nums 上表格与评分；tooltip 触屏可达；z-index 命名化 */
+/* Hallmark · page: workbench-app · genre: modern-minimal · theme: dark tokens
+ * 卡片统一语言：outlined + 微抬升；语义色 footprint ≤5%（图标）；禁整卡泼色
+ * states: default · hover(描边+抬升) · focus-visible(全局兑底) · toast: auto-dismiss 5s + hover 暂停
+ * audit-fix 2026-07-30：transition:all 清零；字体栈去幽灵化（未加载字体不再声明）；
+ * 靛蓝/紫收编 token；入场动画仅新消息；prefers-reduced-motion 全覆盖；
+ * 开屏每次完整播放（用户明确保留的产品门面，运动敏感由 reduced-motion 降级）；
+ * toast 去侧色条；UI chrome 字形收编 SVG 图标系
+ * 豁免清单（有语义，非漂移）：输入区功能性 scrim 渐变；辩论三方身份色（红/蓝/紫，
+ * 已 token 化 --debate-*）；风险等级语义色；雪花旋转=分析进行中状态语义；
+ * 图表渲染层（ECharts canvas / 雷达图 SVG 内部）需字面色值，var() 不可达 */
 /* ── Modern Dark Theme & Variables ─────────────────── */
 :root {
   --bg-base: #0b0f19;
@@ -29,6 +34,10 @@
   --accent: #3b82f6;
   --accent-glow: rgba(59, 130, 246, 0.4);
   --accent-hover: #2563eb;
+  /* accent 透明度梯度：软底/软边（收编全文散装 rgba(59,130,246,…) 与越线靛蓝系） */
+  --accent-soft-bg: rgba(59, 130, 246, 0.08);
+  --accent-soft-bg-2: rgba(59, 130, 246, 0.15);
+  --accent-soft-border: rgba(59, 130, 246, 0.2);
 
   --success: #10b981;
   --warning: #f59e0b;
@@ -37,8 +46,25 @@
   --success-lite: #34d399;
   --warning-lite: #fbbf24;
   --danger-lite: #f87171;
+  /* 语义色软底/软边（徒章/评分级/裁决站统一引用） */
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-border: rgba(16, 185, 129, 0.3);
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --warning-border: rgba(245, 158, 11, 0.3);
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --danger-border: rgba(239, 68, 68, 0.3);
+  /* 辩论三方身份色（功能语义：关注方红/否定方蓝/仲裁紫，印章豁免项） */
+  --debate-advocate: #f87171;
+  --debate-advocate-bg: rgba(239, 68, 68, 0.06);
+  --debate-skeptic: #60a5fa;
+  --debate-skeptic-bg: rgba(59, 130, 246, 0.06);
+  --debate-arbiter: #c4b5fd;
+  --debate-arbiter-bg: rgba(139, 92, 246, 0.06);
 
-  /* 命名层级（替代散装 z-index:9999） */
+  /* 命名层级（替代散装 z-index：界面骨架三层一并收编） */
+  --z-topbar: 10;
+  --z-scrim: 15;
+  --z-sidebar: 20;
   --z-toast: 50;
   --z-tooltip: 60;
   --z-overlay: 100;
@@ -56,8 +82,34 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg-base); color: var(--text-primary); overflow: hidden; }
+
+/* ── 滚动条全站统一风格 ──
+   旧写法是每个容器各自写一套（侧栏 4px 灰 / 对话区 6px 深蓝 / 评估面板 6px 边框色），
+   漏掉的容器（会话列表 / 表格横滚 / 代码块 / 弹窗）就退回系统默认的白胖滚动条，
+   在深色玻璃拟态界面里异常突兀。此处一次性收归，新增容器自动继承。 */
+* { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,0.30) transparent; }   /* Firefox */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.26);
+  border-radius: 8px;
+  /* 透明边框 + background-clip 做出“滚块比轨道窄”的轻量观感 */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.52); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+html, body { height: 100%; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg-base); color: var(--text-primary); overflow: hidden; }
 body { display: flex; }
+
+/* ── 键盘可达性兑底：所有可交互元素统一 focus 环──
+   此前全文仅 1 处 :focus-visible，键盘用户在深色界面里完全无法定位焦点。
+   用 :where() 压低优先级，个别组件需要特殊焦点样式时可直接覆盖 */
+:where(button, [role="button"], a, summary, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* 内联 SVG 图标：随字号缩放、随文字色继承，垂直对齐基线 */
 .ico { vertical-align: -0.125em; flex-shrink: 0; }
@@ -70,11 +122,17 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   border-right: 1px solid var(--glass-border);
   display: flex; flex-direction: column;
   transition: var(--transition);
-  z-index: 20;
+  z-index: var(--z-sidebar);
 }
 .sidebar.collapsed { margin-left: -280px; }
 
-.sidebar-header { padding: 24px; border-bottom: 1px solid var(--glass-border); }
+/* 窄屏抽屉配套：遮罩与关闭按钮默认隐藏，仅 ≤768px 浮层模式下启用。
+   背景：浮层侧栏（z-index:20）会盖住顶栏（z-index:10）里的 ☰ 按钮，
+   展开后唯一入口被自己遮死、无法再收起；遮罩点击收起 + 显式 ✕ 修复此死锁 */
+.sidebar-scrim { display: none; }
+.sidebar-close { display: none; }
+
+.sidebar-header { padding: 24px; border-bottom: 1px solid var(--glass-border); position: relative; }
 .logo-wrap { display: flex; align-items: center; gap: 12px; }
 .logo {
   width: 36px; height: 36px; border-radius: 10px;
@@ -86,8 +144,6 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .sidebar-header p { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
 .status-section { padding: 20px; flex: 1; overflow-y: auto; }
-.status-section::-webkit-scrollbar { width: 4px; }
-.status-section::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 4px; }
 
 .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 16px; font-weight: 600; }
 .status-card {
@@ -168,6 +224,14 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .status-value { font-size: 12px; font-weight: 500; color: var(--text-primary); }
 
 .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--glass-border); font-size: 11px; color: var(--text-muted); text-align: center; }
+/* 侧栏页脚工具按钮（知识库操作）：收编自内联 style + onmouseover 的三重反模式 */
+.kb-btn {
+  padding: 6px 14px; border-radius: 8px;
+  border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04);
+  color: var(--text-secondary); font-size: 11px; cursor: pointer;
+  transition: var(--transition);
+}
+.kb-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
 
 /* ── Main Area ─────────────────────────────────────── */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
@@ -175,13 +239,20 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .topbar {
   height: 64px; background: var(--bg-surface);
   border-bottom: 1px solid var(--glass-border);
-  display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: 10;
+  display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: var(--z-topbar);
 }
 .menu-btn { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; padding: 8px; border-radius: 8px; transition: var(--transition); }
 .menu-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
-.topbar-title { font-size: 15px; font-weight: 500; flex: 1; color: var(--text-secondary); }
+/* flex:1 + min-width:0 让标题在窄屏优先被压缩并省略号收尾，
+   而不是把右侧按钮组顶出屏幕外（实测 420px 宽时最后一个按钮被裁掉） */
+.topbar-title { font-size: 15px; font-weight: 500; min-width: 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+/* 本页内容解说：跟随当前面板（对话 / 效果评估）变文案，窄屏最先让位 */
+.topbar-hint { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.topbar-hint::before { content: '·'; margin-right: 8px; opacity: 0.6; }
 
-.btn-group { display: flex; gap: 8px; }
+/* margin-left:auto 保证标题与解说都隐藏后，按钮组仍紧贴右侧，
+   不会塌到左边粘在 ☰ 旁边（旧行为在 ≤900px 时就是这么丑的） */
+.btn-group { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .btn-sm {
   padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
   border: 1px solid var(--glass-border); background: rgba(255,255,255,0.03);
@@ -192,10 +263,11 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 
 /* ── Chat Area ─────────────────────────────────────── */
 .chat-area { flex: 1; overflow-y: auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; }
-.chat-area::-webkit-scrollbar { width: 6px; }
-.chat-area::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
 
-.msg { max-width: 80%; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+/* 入场动画只给新增消息（.msg-new 由 addMessage 添加）：
+   历史恢复/会话切换时几十条旧消息同时飞入既卡顿又吵闹，恢复路径不加此类 */
+.msg { max-width: 80%; }
+.msg.msg-new { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
 /* 助手气泡恒定宽度：块级占满到上限，展开/收起思维链不再引起气泡宽度跳变 */
 .msg.assistant { width: 100%; max-width: 960px; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -369,7 +441,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   color: var(--text-muted); width: 28px; height: 28px;
   border-radius: 6px; cursor: pointer; font-size: 12px;
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
+  transition: var(--transition);
 }
 .think-collapse-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
 
@@ -408,7 +480,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .tool-chain-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   margin-bottom: 12px; padding: 10px 14px;
-  background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15);
+  background: var(--accent-soft-bg); border: 1px solid var(--accent-soft-border);
   border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted);
 }
 .tool-chain-bar .tc-title { color: var(--accent); font-weight: 700; margin-right: 4px; }
@@ -421,7 +493,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .tc-chip b {
   display: inline-flex; align-items: center; justify-content: center;
   width: 15px; height: 15px; border-radius: 50%;
-  background: rgba(59,130,246,0.18); color: var(--accent);
+  background: var(--accent-soft-bg-2); color: var(--accent);
   font-size: 10px; font-weight: 700;
 }
 .tc-chip .tc-x { color: var(--accent); font-weight: 700; }
@@ -449,27 +521,30 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .file-download-card .file-action { font-size: 12px; color: var(--accent); font-weight: 500; }
 
 /* Welcome */
-.welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
-.welcome-icon {
-  width: 80px; height: 80px; border-radius: var(--radius-lg);
-  background: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 36px; margin-bottom: 24px; color: #fff;
-}
+.welcome { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
+.welcome-icon { display: none; }
 
-.welcome h2 { font-size: 28px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary); }
-.welcome p { font-size: 15px; color: var(--text-secondary); max-width: 480px; line-height: 1.6; margin-bottom: 32px; }
+.welcome h2 { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 10px; color: var(--text-primary); max-width: 100%; overflow-wrap: anywhere; }
+.welcome p { font-size: 15px; color: var(--text-secondary); max-width: min(420px, 100%); line-height: 1.6; margin-bottom: 32px; }
 
-.quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; max-width: 600px; }
+/* max-width 必须与 .quick-group 的 720px 一致：旧值 600px 会让网格比组标题窄 120px
+   且因 margin:0 而贴左，宽屏下卡片区中心偏离页面中心 60px（实测 900 vs 960），
+   看上去就是整块快捷区“歪了” */
+.quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; max-width: 720px; }
 .quick-btn {
-  padding: 16px; border-radius: var(--radius-md); font-size: 14px; font-weight: 500;
-  border: 1px solid var(--glass-border); background: var(--bg-surface);
+  padding: 20px 18px; border-radius: var(--radius-md); font-size: 14px; font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.06); background: var(--bg-surface);
   cursor: pointer; color: var(--text-primary); transition: var(--transition);
   text-align: left; display: flex; align-items: center; gap: 12px;
 }
-.quick-btn:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); transform: translateY(-1px); }
-.quick-btn .icon { font-size: 20px; }
+.quick-btn:hover { border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.03); transform: translateY(-1px); }
+/* 奇数张卡的末张跨整行补位（避免右侧空洞），内容居中：整行卡若仍贴左，
+   右侧大片留白会显得失衡（图标+标题/副题整块居中，块内保持左对齐） */
 .quick-grid .quick-btn:last-child:nth-child(odd) { grid-column: 1 / -1; justify-content: center; }
+.quick-grid .quick-btn:last-child:nth-child(odd):hover { transform: translateY(-1px); }
+/* 其他工具组：虚线边框，视觉权重低于核心卡 */
+.quick-grid-tools .quick-btn { border-style: dashed; }
+.quick-btn .icon { font-size: 20px; }
 
 /* ── Input Area ────────────────────────────────────── */
 .input-area { padding: 20px 32px 32px; background: linear-gradient(to top, var(--bg-base), transparent); position: relative; }
@@ -521,14 +596,20 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .bubble li { margin: 4px 0; }
 .bubble code {
   background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;
-  font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--text-code);
+  font-size: 13px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--text-code);
 }
 .bubble pre {
   background: #0f172a; border: 1px solid var(--glass-border);
   padding: 16px; border-radius: var(--radius-sm); overflow-x: auto; margin: 12px 0;
 }
 .bubble pre code { background: none; padding: 0; color: #e2e8f0; font-size: 13px; }
-.bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* 报表类表格常有 6-7 列（时序表 / 交叉验证矩阵）。窄屏下不能无限挤列，
+   否则每列只剩 ~50px、中文表头逐字折行变不可读；也不能让表格自己撑破气泡。
+   方案：外层 .table-scroll 负责横滚，表格本体用 min-width 守住可读下限，
+   宽屏下 width:100% 接管、不会凭空出现滚动条。 */
+.bubble .table-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; }
+.bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; min-width: 480px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.bubble .table-scroll > table { margin: 0; }
 .bubble th, .bubble td { border: 1px solid var(--glass-border); padding: 10px; text-align: left; }
 .bubble th { background: rgba(255,255,255,0.05); font-weight: 600; }
 .bubble a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--accent); }
@@ -547,13 +628,20 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .code-fold > summary {
   cursor: pointer; user-select: none;
   padding: 10px 14px; border-radius: var(--radius-sm);
-  background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2);
-  font-size: 13px; color: #a5b4fc; font-weight: 600;
+  background: var(--accent-soft-bg); border: 1px solid var(--accent-soft-border);
+  font-size: 13px; color: var(--accent); font-weight: 600;
   list-style: none;
+  display: flex; align-items: center; gap: 8px;
 }
 .code-fold > summary::-webkit-details-marker { display: none; }
-.code-fold > summary::before { content: '▶ '; font-size: 10px; }
-.code-fold[open] > summary::before { content: '▼ '; }
+/* 折叠箭头：border 绘制三角（替代 ▶/▼ OS 字形，笔触随图标系统一） */
+.code-fold > summary::before {
+  content: ''; width: 0; height: 0; flex-shrink: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform 0.2s ease;
+}
+.code-fold[open] > summary::before { transform: rotate(90deg); }
 .code-fold[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .code-fold > pre { margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0; }
 
@@ -585,7 +673,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .review-card-icon {
   width: 36px; height: 36px;
   border-radius: var(--radius-sm);
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--accent-soft-bg-2);
   color: var(--accent);
   display: flex; align-items: center; justify-content: center;
   font-size: 18px;
@@ -608,7 +696,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--accent-soft-bg-2);
   padding: 3px 10px;
   border-radius: 4px;
   margin-bottom: 6px;
@@ -627,9 +715,9 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   border-radius: 6px;
   margin-left: 4px;
 }
-.review-verdict.pass { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.review-verdict.supplement { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-.review-verdict.redo { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+.review-verdict.pass { background: var(--success-bg); color: var(--success-lite); border: 1px solid var(--success-border); }
+.review-verdict.supplement { background: var(--warning-bg); color: var(--warning-lite); border: 1px solid var(--warning-border); }
+.review-verdict.redo { background: var(--danger-bg); color: var(--danger-lite); border: 1px solid var(--danger-border); }
 
 /* ── 辩论三段式折叠面板 ───────────────────── */
 /* 辩论可视化摘要条：三方流程 chip + 仲裁徽章 + 调整计数 */
@@ -665,7 +753,13 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   user-select: none;
 }
 .debate-section-header:hover { background: rgba(255,255,255,0.04); }
-.debate-section-header .arrow { transition: transform 0.2s; font-size: 10px; display: inline-block; }
+/* 折叠箭头：border 绘制三角（与 code-fold 一致，替代 ▶ OS 字形） */
+.debate-section-header .arrow, .reasoning-chain-header .arrow {
+  width: 0; height: 0; display: inline-block; flex-shrink: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform 0.2s;
+}
 .debate-section.open .debate-section-header .arrow { transform: rotate(90deg); }
 .debate-section-body {
   display: none;
@@ -678,26 +772,25 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   word-break: break-word;
 }
 .debate-section.open .debate-section-body { display: block; }
-.debate-advocate .debate-section-header { color: #f87171; background: rgba(239,68,68,0.06); }
-.debate-skeptic .debate-section-header { color: #60a5fa; background: rgba(59,130,246,0.06); }
-.debate-arbiter .debate-section-header { color: #c4b5fd; background: rgba(139,92,246,0.06); }
+.debate-advocate .debate-section-header { color: var(--debate-advocate); background: var(--debate-advocate-bg); }
+.debate-skeptic .debate-section-header { color: var(--debate-skeptic); background: var(--debate-skeptic-bg); }
+.debate-arbiter .debate-section-header { color: var(--debate-arbiter); background: var(--debate-arbiter-bg); }
 
 /* ── 思维链五步卡片 ───────────────────────── */
 .reasoning-chain {
   margin: 12px 0;
-  border: 1px solid rgba(99,102,241,0.2);
+  border: 1px solid var(--accent-soft-border);
   border-radius: 12px;
   overflow: hidden;
 }
 .reasoning-chain-header {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px;
-  background: rgba(99,102,241,0.08);
+  background: var(--accent-soft-bg);
   cursor: pointer;
-  font-size: 13px; font-weight: 600; color: #a5b4fc;
+  font-size: 13px; font-weight: 600; color: var(--accent);
   user-select: none;
 }
-.reasoning-chain-header .arrow { transition: transform 0.2s; font-size: 10px; display: inline-block; }
 .reasoning-chain.open .reasoning-chain-header .arrow { transform: rotate(90deg); }
 .reasoning-chain-body { display: none; padding: 12px 16px; }
 .reasoning-chain.open .reasoning-chain-body { display: block; }
@@ -729,7 +822,8 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   padding: 28px 32px;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  min-width: 340px;
+  /* 320px 视口下不得横向溢出：下限随视口收缩 */
+  min-width: min(340px, calc(100vw - 32px));
 }
 .module-choice-title {
   font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px;
@@ -741,11 +835,11 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   flex: 1; padding: 20px 16px;
   border-radius: 12px; border: 1px solid var(--glass-border);
   background: rgba(255,255,255,0.03);
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer; transition: var(--transition);
   display: flex; flex-direction: column; align-items: center; gap: 8px;
 }
 .module-choice-btn:hover {
-  background: rgba(59,130,246,0.1); border-color: var(--accent);
+  background: var(--accent-soft-bg); border-color: var(--accent);
   transform: translateY(-2px); box-shadow: 0 4px 16px rgba(59,130,246,0.15);
 }
 .module-choice-btn .mc-icon { font-size: 28px; }
@@ -771,22 +865,71 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 800; color: var(--text-primary);
-  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums;
 }
 .score-info { flex: 1; }
 .score-level {
   display: inline-block; padding: 3px 12px; border-radius: 6px;
   font-size: 13px; font-weight: 700; margin-bottom: 8px;
 }
-.score-level.low { background: rgba(16,185,129,0.15); color: #34d399; }
-.score-level.medium { background: rgba(59,130,246,0.15); color: #60a5fa; }
-.score-level.high { background: rgba(245,158,11,0.15); color: #fbbf24; }
-.score-level.critical { background: rgba(239,68,68,0.15); color: #f87171; }
+.score-level.low { background: var(--success-bg); color: var(--success-lite); }
+.score-level.medium { background: var(--accent-soft-bg-2); color: var(--debate-skeptic); }
+.score-level.high { background: var(--warning-bg); color: var(--warning-lite); }
+.score-level.critical { background: var(--danger-bg); color: var(--danger-lite); }
 .score-breakdown { display: flex; gap: 12px; margin-top: 8px; }
 .score-dim { flex: 1; }
 .score-dim-label { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
 .score-dim-bar { height: 6px; border-radius: 3px; background: rgb(30,41,59); overflow: hidden; }
 .score-dim-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+/* ── C 端轻量卡片：投资参考卡 / 行业风向标（score-card 变体）── */
+.invest-card { align-items: flex-start; }
+.ic-badge {
+  flex-shrink: 0; width: 92px; padding: 14px 10px; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+}
+.ic-badge b { font-size: 22px; font-weight: 800; }
+.ic-badge i { font-size: 11px; font-style: normal; opacity: 0.75; }
+.ic-badge span { font-size: 11px; color: var(--text-muted); }
+.ic-body { flex: 1; min-width: 0; }
+.ic-cols { display: flex; gap: 16px; flex-wrap: wrap; }
+.ic-col { flex: 1; min-width: 180px; }
+.ic-col h4 { font-size: 12px; color: var(--text-muted); margin: 0 0 6px; letter-spacing: 1px; }
+.ic-col ul { margin: 0; padding-left: 18px; }
+.ic-col li { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.ic-empty { color: var(--text-muted); list-style: none; margin-left: -18px; }
+.ic-profiles { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.ic-profile {
+  flex: 1; min-width: 150px; padding: 8px 10px; border-radius: 8px;
+  background: rgb(30,41,59); font-size: 12px;
+}
+.ic-profile b { display: block; color: var(--text-primary); margin-bottom: 2px; }
+.ic-profile span { color: var(--text-muted); }
+.ic-checklist { margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+.ic-checklist summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.ic-checklist ul { margin: 6px 0 0; padding-left: 18px; }
+.ic-disclaimer {
+  margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--glass-border);
+  font-size: 11px; color: var(--text-muted); line-height: 1.5;
+}
+.io-head { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-primary); }
+.io-mode {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px;
+  background: var(--warning-bg); color: var(--warning-lite);
+}
+.io-mode-on { background: var(--success-bg); color: var(--success-lite); }
+.io-thermo { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.io-thermo-num { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.io-outlook { margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
+.io-events { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.io-event {
+  display: flex; align-items: baseline; gap: 8px; font-size: 12px;
+  padding: 6px 10px; border-radius: 8px; background: rgb(30,41,59);
+}
+.io-pol { flex-shrink: 0; font-weight: 700; }
+.io-evt-title { color: var(--text-secondary); min-width: 0; }
+.io-src { margin-left: auto; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+.io-trans { margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
 
 /* ── Responsive ────────────────────────────────────── */
 
@@ -805,7 +948,6 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .toast-card {
   background: var(--bg-elevated);
   border: 1px solid var(--glass-border);
-  border-left: 4px solid var(--success);
   border-radius: var(--card-radius);
   padding: 12px 16px;
   color: var(--text-primary);
@@ -825,8 +967,8 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 }
 .toast-card .toast-icon {
   width: 28px; height: 28px; flex-shrink: 0;
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
+  background: var(--success-bg);
+  color: var(--success-lite);
   border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
@@ -862,12 +1004,83 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   to { width: 0; }
 }
 
+/* ── 响应式分档：顶栏是最先被挤爆的区域，按「解说 → 标题 → 按钮文字」
+   的优先序逐档让位，而不是一上来就把按钮打成光秃图标 ── */
+@media (max-width: 1180px) {
+  /* 第一档：只舍解说文案（信息量最低）。阈值按实测取：
+     侧栏 280 + ☰ 36 + 标题 ~60 + 按钮组 473 后，余宽不够放下一句完整解说 */
+  .topbar-hint { display: none; }
+}
+@media (max-width: 1080px) {
+  .topbar { padding: 0 16px; gap: 12px; }
+  .btn-sm { padding: 7px 12px; font-size: 12.5px; }
+  .chat-area { padding: 24px; }
+  .input-area { padding: 16px 24px 24px; }
+}
+@media (max-width: 900px) {
+  /* 第二档：舍会话标题（侧栏会话列表里已有），按钮文字继续保留 */
+  .topbar-title { display: none; }
+  .topbar { padding: 0 12px; gap: 8px; }
+  .btn-group { gap: 6px; }
+  .btn-sm { padding: 6px 9px; font-size: 12px; gap: 4px; }
+}
 @media (max-width: 768px) {
   .sidebar { position: absolute; height: 100%; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
   .sidebar.collapsed { margin-left: -280px; box-shadow: none; }
+  /* 抽屉遮罩：盖在主区上、位于侧栏下，点击空白处收起侧栏 */
+  .sidebar-scrim {
+    display: block; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: var(--z-scrim);
+  }
+  .sidebar.collapsed + .sidebar-scrim { display: none; }
+  /* 侧栏内的显式收起按钮（顶栏 ☰ 被遮时的可见退路，同样用 ☰ 保持认知一致） */
+  .sidebar-close {
+    display: flex; align-items: center; justify-content: center;
+    position: absolute; top: 20px; right: 14px;
+    width: 32px; height: 32px; border-radius: 8px;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-secondary); font-size: 16px;
+    transition: var(--transition);
+  }
+  .sidebar-close:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
   .chat-area { padding: 16px; }
   .input-area { padding: 12px 16px 20px; }
   .quick-grid { grid-template-columns: 1fr; }
+  .quick-grid-tools { grid-template-columns: 1fr; }
+  .welcome { padding: 24px 16px; }
+  .msg { max-width: 92%; }
+  /* .msg.assistant 固定宽度的选择器优先级更高，需单独放开上限 */
+  .msg.assistant { max-width: 100%; }
+}
+@media (max-width: 720px) {
+  /* 第三档（实在放不下了）：降为图标模式，语义靠 title 提示保留 */
+  .btn-sm .btn-label { display: none; }
+  .btn-sm { padding: 8px 10px; }
+}
+@media (max-width: 560px) {
+  .topbar { height: 56px; padding: 0 10px; gap: 6px; }
+  .btn-group { gap: 6px; }
+  .chat-area { padding: 12px; }
+  .input-area { padding: 10px 12px 16px; }
+  .msg { max-width: 100%; }
+  .welcome h2 { font-size: 20px; }
+}
+
+/* ── 运动敏感降级：装饰动效全部静止，仅保留进度语义的最小反馈 ── */
+@media (prefers-reduced-motion: reduce) {
+  .msg.msg-new,
+  .toast-card,
+  .vstep,
+  .splash-content,
+  .splash-subtitle,
+  .splash-footer,
+  .module-choice-overlay { animation: none; opacity: 1; transform: none; }
+  .splash-particle { display: none; }
+  .thinking-snowflake { animation: none; }
+  .typing span, .splash-loading span { animation-duration: 2.8s; } /* 加载语义保留，降频 */
+  .progress-indeterminate { animation-duration: 4.5s; }           /* 进度语义保留，降速 */
+  .chat-area { scroll-behavior: auto; }
+  * { transition-duration: 0.01ms !important; }
 }
 
 .ai-disclaimer {
@@ -883,7 +1096,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   color: var(--text-muted);
   margin-top: 20px;
   opacity: 0.7;
-  max-width: 520px;
+  max-width: min(520px, 100%);
   line-height: 1.6;
 }
 
@@ -902,7 +1115,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at 50% 40%, #111827 0%, #0b0f19 70%);
+  background: var(--bg-base);
   overflow: hidden;
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
@@ -1071,8 +1284,6 @@ body.splash-active .main {
 /* ── 效果评估面板样式 ── */
 .eval-panel { display: none; flex-direction: column; gap: 20px; padding: 24px 32px; height: 100%; overflow-y: auto; }
 .eval-panel.active { display: flex; }
-.eval-panel::-webkit-scrollbar { width: 6px; }
-.eval-panel::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 3px; }
 .eval-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--glass-border); }
 .eval-header h2 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0; }
 .eval-metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
@@ -1087,16 +1298,83 @@ body.splash-active .main {
 .eval-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .eval-table th { padding: 8px 12px; text-align: left; color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--glass-border); }
 .eval-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-.eval-table .pass { color: #22c55e; }
-.eval-table .fail { color: #ef4444; }
-.eval-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--accent); background: rgba(245,158,11,0.1); color: var(--accent); font-size: 13px; cursor: pointer; transition: all 0.2s; }
-.eval-btn:hover { background: rgba(245,158,11,0.2); }
+.eval-table .pass { color: var(--success); }
+.eval-table .fail { color: var(--danger); }
+.eval-btn { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent-soft-bg); color: var(--accent); font-size: 13px; cursor: pointer; transition: var(--transition); }
+.eval-btn:hover { background: var(--accent-soft-bg-2); }
 .eval-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-sm.active { background: rgba(255,255,255,0.1); border-color: var(--accent); color: var(--accent); }
+
+/* ── 侧栏会话列表（动态历史）── */
+/* 不在列表自身上做滚动：否则滚动条落在 .status-section 的 20px 内边距里面，
+   与上方「账户/系统状态」那条贴侧栏右边缘的滚动条不在同一条竖线上。
+   交由外层 .status-section（已有 flex:1 + overflow-y:auto）接管，两条滚动条位置一致。 */
+.session-list { margin: 4px 0 2px; }
+.session-empty { font-size: 11.5px; color: var(--text-muted); padding: 10px 12px; text-align: center; }
+.session-item {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  border-radius: var(--radius-sm); cursor: pointer; margin-bottom: 4px;
+  border: 1px solid transparent; transition: background .18s, border-color .18s;
+}
+.session-item:hover { background: rgba(255,255,255,0.05); border-color: var(--glass-border); }
+.session-item.active { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.35); }
+.session-main { flex: 1; min-width: 0; }
+.session-title {
+  font-size: 12.5px; color: var(--text-primary); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.session-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.session-del {
+  flex: 0 0 auto; background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 3px; border-radius: 5px; opacity: 0; transition: opacity .18s, color .18s;
+}
+.session-item:hover .session-del { opacity: 1; }
+/* 键盘路径同样可见且瞬时出现：焦点指示不走过渡（与 focus 环瞬时原则一致，
+   也避免后台窗口动画节流时过渡永远走不完导致删除键不可见） */
+.session-item:focus-within .session-del { opacity: 1; transition: none; }
+.session-del:hover { color: var(--danger-lite); background: var(--danger-bg); }
+
+/* ── 快捷区分组网格（可扩展：新功能往“其他工具”组加卡即可）── */
+.quick-group { width: 100%; max-width: 720px; margin: 0 auto; }
+.quick-group-title {
+  font-size: 12px; letter-spacing: 1px; color: var(--text-secondary);
+  text-align: left; margin: 18px 2px 8px; font-weight: 700;
+  border-left: 2px solid var(--accent); padding-left: 8px;
+}
+/* 其他工具组与核心分析组拉开呼吸间距 */
+.quick-group-title + .quick-grid + .quick-group-title { margin-top: 28px; }
+/* minmax 下限跟随网格宽度上调：720px 下保持 2 列（3 列需 744px），
+   与核心分析组的列宽对齐；后续加卡超过 2 张会自然换行而不破布局 */
+.quick-grid-tools { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.quick-btn-core { align-items: flex-start; text-align: left; }
+.quick-btn-core .qb-text { display: flex; flex-direction: column; gap: 2px; }
+.quick-btn-core .qb-text b { font-size: 13.5px; color: var(--text-primary); font-weight: 650; }
+.quick-btn-core .qb-text i {
+  font-style: normal; font-size: 11px; color: var(--text-muted); line-height: 1.4;
+}
+
+/* ── ECharts 图表块（报表类时序/结构图）── */
+.echart-block {
+  margin: 14px 0; border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.02); overflow: hidden;
+}
+.echart-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-bottom: 1px solid var(--glass-border); font-size: 11px;
+  letter-spacing: 1px; color: var(--text-muted); background: rgba(255,255,255,0.02);
+}
+.echart-head .echart-title { color: var(--text-secondary); letter-spacing: 0; font-size: 12.5px; font-weight: 600; }
+.echart-canvas { width: 100%; height: 320px; }
+.echart-fallback { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.echart-fallback th, .echart-fallback td { border: 1px solid var(--glass-border); padding: 6px 10px; text-align: right; }
+.echart-fallback th:first-child, .echart-fallback td:first-child { text-align: left; }
+.echart-fallback th { background: rgba(255,255,255,0.04); color: var(--accent); }
+.echart-hint { padding: 8px 14px; font-size: 11.5px; color: var(--text-muted); }
 
 /* ── 雷达图 SVG 动画 ── */
 @keyframes radarDraw { to { stroke-dashoffset: 0; } }
 .radar-polygon { stroke-dasharray: 800; stroke-dashoffset: 800; animation: radarDraw 1.2s ease-out forwards; }</style>
+
 </head>
 <body class="splash-active">
 
@@ -1111,8 +1389,8 @@ body.splash-active .main {
       <!-- 蓝色圆角方块+放大镜（简约版，内联 SVG 第一帧可见） -->
       <div class="splash-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
     </div>
-    <div class="splash-title">审计风险识别系统</div>
-    <div class="splash-subtitle">AI Agent · 智能审计分析平台</div>
+    <div class="splash-title">年报风险识别</div>
+    <div class="splash-subtitle">AI Agent · 智能风险分析平台</div>
   </div>
 
   <!-- 底部版本和加载点 -->
@@ -1120,17 +1398,18 @@ body.splash-active .main {
     <div class="splash-loading">
       <span></span><span></span><span></span>
     </div>
-    <div class="splash-version">v4.3 GA · 载入中...</div>
+    <div class="splash-version">v4.5 GA · 载入中…</div>
   </div>
 </div>
 
 <!-- ═══ Sidebar ═══ -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
+    <button class="sidebar-close" onclick="toggleSidebar()" title="收起侧栏" aria-label="收起侧栏">☰</button>
     <div class="logo-wrap">
       <div class="logo" data-ico="search" data-ico-size="18"></div>
       <div>
-        <h1>审计风险识别</h1>
+        <h1>年报风险识别</h1>
         <p>AI Agent 智能分析平台</p>
       </div>
     </div>
@@ -1145,22 +1424,22 @@ body.splash-active .main {
     <div class="status-card" id="status-server">
       <span class="dot loading"></span>
       <span class="status-label">后端服务</span>
-      <span class="status-value">检测中...</span>
+      <span class="status-value">检测中…</span>
     </div>
     <div class="status-card" id="status-llm">
       <span class="dot loading"></span>
       <span class="status-label">LLM 模型</span>
-      <span class="status-value">检测中...</span>
+      <span class="status-value">检测中…</span>
     </div>
     <div class="status-card" id="status-kb">
       <span class="dot loading"></span>
       <span class="status-label">知识库</span>
-      <span class="status-value">检测中...</span>
+      <span class="status-value">检测中…</span>
     </div>
     <div class="status-card" id="status-storage">
       <span class="dot loading"></span>
       <span class="status-label">文件存储</span>
-      <span class="status-value">检测中...</span>
+      <span class="status-value">检测中…</span>
     </div>
 
     <div class="section-title" style="margin-top:24px">会话信息</div>
@@ -1178,54 +1457,73 @@ body.splash-active .main {
     </div>
   </div>
 
+  <div class="status-section">
+    <div class="section-title">会话历史</div>
+    <div class="session-list" id="sessionList"></div>
+  </div>
+
     <div class="sidebar-footer">
     <div>本地模式 · LangGraph + DeepSeek</div>
-    <div style="margin-top:4px">v4.3 GA · © 2026</div>
+    <div style="margin-top:4px">v4.5 GA · © 2026</div>
     <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
-      <button onclick="triggerKBUpload()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）" data-ico="paperclip"> 添加知识库</button>
-      <button onclick="reloadKB(this)" style="padding:6px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.04);color:var(--text-secondary);font-size:11px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'" title="重新加载知识库文件" data-ico="refresh"> 重载知识库</button>
+      <button onclick="triggerKBUpload()" class="kb-btn" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）" data-ico="paperclip"> 添加知识库</button>
+      <button onclick="reloadKB(this)" class="kb-btn" title="重新加载知识库文件" data-ico="refresh"> 重载知识库</button>
     </div>
     <input type="file" id="kbFileInput" accept=".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.json,.xml,.html,.htm,.log" multiple style="display:none" onchange="uploadKBFiles(this.files)">
   </div>
 </aside>
+<!-- 窄屏抽屉遮罩：仅 ≤768px 且侧栏展开时可见（CSS 相邻选择器控制），点击收起 -->
+<div class="sidebar-scrim" onclick="toggleSidebar()"></div>
 
 <!-- ═══ Main Area ═══ -->
 <div class="main">
   <div class="topbar">
     <button class="menu-btn" onclick="toggleSidebar()" title="切换侧栏">☰</button>
     <span class="topbar-title" id="topbar-title">新建会话</span>
+    <span class="topbar-hint" id="topbarHint" title="上传年报 PDF 或输入公司名，选模块开始分析，自动出风险报告与审计底稿">上传年报 PDF 或输入公司名，选模块开始分析，自动出风险报告与审计底稿</span>
     <div class="btn-group">
-      <button class="btn-sm active" id="panelBtnChat" onclick="togglePanel('chat')" data-ico="message"> 对话</button>
-      <button class="btn-sm" id="panelBtnEval" onclick="togglePanel('eval')" data-ico="chart"> 效果评估</button>
-      <button class="btn-sm" onclick="clearChat()" title="清空对话" data-ico="trash"> 新会话</button>
-      <button class="btn-sm" onclick="exportChat()" title="导出对话记录" data-ico="download"> 导出</button>
-      <button class="btn-sm" id="flashToggle" onclick="toggleFlashMode()" title="快速模式：跳过图表与辩论复核、只出核心风险，目标 1 分钟内；普通模式为完整链路（图表+三方辩论复核）" data-ico="zap"> 快速</button>
+      <button class="btn-sm active" id="panelBtnChat" onclick="togglePanel('chat')" title="对话" data-ico="message"> <span class="btn-label">对话</span></button>
+      <button class="btn-sm" id="panelBtnEval" onclick="togglePanel('eval')" title="效果评估" data-ico="chart"> <span class="btn-label">效果评估</span></button>
+      <button class="btn-sm" onclick="clearChat()" title="新会话（清空当前对话并新开一个会话）" data-ico="trash"> <span class="btn-label">新会话</span></button>
+      <button class="btn-sm" onclick="exportChat()" title="导出对话记录" data-ico="download"> <span class="btn-label">导出</span></button>
+      <button class="btn-sm" id="flashToggle" onclick="toggleFlashMode()" title="快速模式：跳过图表与辩论复核、只出核心风险，目标 1 分钟内；普通模式为完整链路（图表+三方辩论复核）" data-ico="zap"> <span class="btn-label">快速</span></button>
     </div>
   </div>
 
   <div class="chat-area" id="chatArea">
     <div class="welcome" id="welcomeScreen">
-      <div class="welcome-icon" data-ico="chart" data-ico-size="36"></div>
-      <h2>上市公司年报审计风险识别</h2>
-      <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告（PDF + Excel）。</p>
-      <div class="quick-grid">
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','财务指标分析')">
-          <span class="icon" data-ico="chart" data-ico-size="20"></span> <span>财务指标分析</span>
-        </button>
-        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','披露规范性检查')">
-          <span class="icon" data-ico="clipboard" data-ico-size="20"></span> <span>披露规范性检查</span>
-        </button>
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','综合风险评估')">
-          <span class="icon" data-ico="target" data-ico-size="20"></span> <span>综合风险评估</span>
-        </button>
-        <button class="quick-btn" onclick="searchPenalty()">
-          <span class="icon" data-ico="scale" data-ico-size="20"></span> <span>监管处罚检索</span>
-        </button>
-        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件">
-          <span class="icon" data-ico="package" data-ico-size="20"></span> <span>批量上传年报</span>
-        </button>
+      <div class="welcome-icon" data-ico="search" data-ico-size="36"></div>
+      <h2>上市公司年报风险识别</h2>
+      <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成风险报告（PDF + Excel）。</p>
+      <div class="quick-group">
+        <div class="quick-group-title">核心分析</div>
+        <div class="quick-grid">
+          <button class="quick-btn quick-btn-core" onclick="moduleAction('请对该年报进行财务健康度诊断：深度解析三大报表，计算核心指标并与行业基准对比，评估盈利质量与持续经营能力','财务健康度诊断','financial')">
+            <span class="icon" data-ico="chart" data-ico-size="20"></span>
+            <span class="qb-text"><b>财务健康度诊断</b><i>三大报表深度解析 · 5 年时序</i></span>
+          </button>
+          <button class="quick-btn quick-btn-core" onclick="moduleAction('请对该年报进行合规与经营风险扫描：检查信息披露规范性，识别审计意见类型，检索相关法规与监管处罚案例','合规与经营风险扫描','compliance')">
+            <span class="icon" data-ico="clipboard" data-ico-size="20"></span>
+            <span class="qb-text"><b>合规与经营风险扫描</b><i>披露合规 · 审计意见 · 监管处罚</i></span>
+          </button>
+          <button class="quick-btn quick-btn-core" onclick="moduleAction('请对该年报进行综合研判：依次完成财务健康度诊断与合规风险扫描，交叉验证两者结论，输出量化风险报告','综合研判','synthesis')">
+            <span class="icon" data-ico="target" data-ico-size="20"></span>
+            <span class="qb-text"><b>综合研判</b><i>串跑三阶段 · 交叉验证 · 量化报告</i></span>
+          </button>
+        </div>
+        <div class="quick-group-title">其他工具</div>
+        <div class="quick-grid quick-grid-tools">
+          <button class="quick-btn quick-btn-core" onclick="investmentCard()" title="风险提示定位，不构成投资建议">
+            <span class="icon" data-ico="chart" data-ico-size="20"></span>
+            <span class="qb-text"><b>智能投资参考</b><i>四档参考位 · 亮点与警示</i></span>
+          </button>
+          <button class="quick-btn quick-btn-core" onclick="outlookAction()" title="在线新闻驱动，失败自动降级知识库">
+            <span class="icon" data-ico="trend" data-ico-size="20"></span>
+            <span class="qb-text"><b>行业风向标</b><i>新闻驱动 · 3-6月景气预判</i></span>
+          </button>
+        </div>
       </div>
-      <p style="font-size:11px;color:var(--text-muted);margin-top:8px;opacity:0.6">数据来源：巨潮资讯网上市公司公开年报、证监会近五年行政处罚决定书、上交所/深交所问询函、中国审计准则及会计准则电子版。所有数据均为合法公开信息。</p>
+      <p style="font-size:10.5px;color:var(--text-muted);margin-top:8px;opacity:0.45;max-width:540px">数据来源：巨潮资讯网上市公司公开年报、证监会近五年行政处罚决定书、上交所/深交所问询函、中国审计准则及会计准则电子版。所有数据均为合法公开信息。</p>
     </div>
   </div>
 
@@ -1269,14 +1567,14 @@ body.splash-active .main {
       <div class="file-preview" id="filePreview"></div>
       <div class="input-row">
         <div class="input-box">
-          <textarea id="msgInput" rows="1" placeholder="输入分析需求，如：请分析某公司年报的审计风险..."
+          <textarea id="msgInput" rows="1" placeholder="输入分析需求，如：请分析某公司年报的审计风险…"
                     onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
           <button class="btn-icon btn-upload" onclick="triggerUpload()" title="上传 PDF 年报" data-ico="paperclip" data-ico-size="18"></button>
         </div>
         <button class="btn-icon btn-send" id="sendBtn" onclick="sendMessage()" title="发送" data-ico="send" data-ico-size="18"></button>
       </div>
     </div>
-    <div class="ai-disclaimer">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。</div>
+    <div class="ai-disclaimer">⚠️ 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议；投资参考卡的四档参考位仅为风险提示分档。</div>
     <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.pptx,.html,.htm,.txt,.md" multiple style="display:none" onchange="handleFiles(this.files)">
   </div>
 </div>
@@ -1319,9 +1617,12 @@ const ICONS = {
   'bot':        '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   'pencil':     '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   'square':     '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+  'dot':        '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
+  'check':      '<path d="M20 6 9 17l-5-5"/>',
   'folder':     '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   'lock':       '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'radar':      '<path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62a10 10 0 1 0 19.02-1.27"/><path d="M16.24 7.76a6 6 0 1 0-8.01 8.91"/><path d="M12 18h.01"/><path d="M17.99 11.66a6 6 0 0 1-2.22 4.58"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/>',
+  'info':        '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
 };
 
 /** 生成内联 SVG 图标（name 取自 ICONS；size 默认 1em 随字号缩放） */
@@ -1339,12 +1640,22 @@ function hydrateIcons(root) {
     el.insertAdjacentHTML('afterbegin', icon(el.dataset.ico, el.dataset.icoSize));
   });
 }
-document.addEventListener('DOMContentLoaded', () => hydrateIcons());
+document.addEventListener('DOMContentLoaded', () => {
+  hydrateIcons();
+  try { initSessions(); } catch (e) { console.warn('会话初始化失败', e); }
+  // 窄屏（≤768px）下侧栏已是 absolute 浮层，默认展开会直接盖死对话区，
+  // 所以初始就收起，用户点 ☰ 自行展开（只在首次加载时介入，不抢用户的手动开关）
+  if (window.innerWidth <= 768) {
+    document.getElementById('sidebar')?.classList.add('collapsed');
+  }
+});
 
 // ── 鉴权头自动注入：后端配置 APP_API_KEY 时，在浏览器 localStorage 存入
 // audit_api_key 即可通过校验（控制台执行 localStorage.setItem('audit_api_key','...')）。
 // 包装同源 fetch 统一附加 X-API-Key，未设置 key 时行为与原生 fetch 完全一致。
 // 同时自动附加 X-Auth-Token 登录令牌（多用户历史功能），未登录时不加。
+// 以及 X-Run-Id：当前会话的 threadId，使后端 checkpointer 能将同一会话的
+// 多轮对话继续上去（切回旧会话可追问的关键）。
 const _nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   const key = localStorage.getItem('audit_api_key');
@@ -1355,6 +1666,14 @@ window.fetch = (input, init) => {
     const extra = {};
     if (key) extra['X-API-Key'] = key;
     if (authToken) extra['X-Auth-Token'] = authToken;
+    // 会话继接：仅分析类接口需要，其余接口带上也无害。
+    // 调用方显式指定了 X-Run-Id 时不覆盖（流式分析会冻结源会话的 threadId，
+    // 中途切会话不得改写归属，否则污染新会话的后端 checkpoint）
+    try {
+      const explicit = init.headers && (init.headers['X-Run-Id'] || init.headers['x-run-id']);
+      const s = (typeof currentSession === 'function') ? currentSession() : null;
+      if (!explicit && s && s.threadId) extra['X-Run-Id'] = s.threadId;
+    } catch (e) { /* 会话模块未初始化时跳过 */ }
     if (Object.keys(extra).length) init.headers = Object.assign({}, init.headers, extra);
   }
   return _nativeFetch(input, init);
@@ -1363,6 +1682,10 @@ window.fetch = (input, init) => {
 let messages = [];
 let uploadedFiles = [];
 let isStreaming = false;
+// 正在流式分析的会话 id（单流模型：全局同时只允许一路分析）。
+// 所有流式产出（报告/停止提示/错误）都写回该会话而非当前可见会话，
+// 停止按钮也只在该会话前台时展示，彻底隔离跨会话状态污染。
+let streamingSessionId = null;
 let toolCallCount = 0;
 let currentController = null;
 let toolResultCollector = [];
@@ -1380,16 +1703,19 @@ let _thinkTimer = null;
 let _thinkStart = 0;
 let _completedSteps = [];
 let _thinkCardId = 0;
+const _streamProgress = {}; // { [sessionId]: { start: ts, steps: [{step,percent}] } }
 
-function showThinkingCard() {
-  _completedSteps = [];
-  _thinkStart = Date.now();
+function showThinkingCard(sessionId) {
+  // 支持从缓存恢复：中途切走再切回时，步骤与计时从缓存继续而非重置
+  const cached = sessionId && _streamProgress[sessionId];
+  _completedSteps = cached ? cached.steps.map(s => s.step) : [];
+  _thinkStart = cached ? cached.start : Date.now();
   _thinkCardId++;
   const cardId = `thinkingWrapper_${_thinkCardId}`;
 
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
-  div.className = 'msg assistant';
+  div.className = 'msg assistant msg-new';
   div.id = cardId;
   div.dataset.thinkId = _thinkCardId;
   div.innerHTML = `
@@ -1415,6 +1741,31 @@ function showThinkingCard() {
     </div>`;
   area.appendChild(div);
   scrollToBottom();
+
+  // 从缓存恢复时：把已完成的步骤重新渲染到 DOM（否则切回只看到空的“初始化…”）
+  if (cached && cached.steps.length > 0) {
+    const card = div.querySelector('.thinking-card');
+    const container = card.querySelector('.thinking-steps-vertical');
+    const lastStep = cached.steps[cached.steps.length - 1];
+    // 更新当前步骤文本
+    const stepText = card.querySelector('.thinking-step-text');
+    if (stepText) stepText.textContent = lastStep.step;
+    // 进度条保持 progress-indeterminate 动画态，不冻结为静态百分比：
+    // 思考卡仅在「该会话仍在后台生成」时恢复（isStreaming && streamingSessionId===id），
+    // 分析尚未结束，进度条应继续滑动动画（与未切走时一致）。若在此切成静态宽度，
+    // 后续 updateProgress 只更新步骤文本、不再碰进度条，进度条会卡在恢复瞬间的百分比
+    // 不再变化——即「生成途中切到别的界面再切回，进度条不动」的根因。
+    // 渲染已完成的步骤列表
+    if (container) {
+      cached.steps.forEach((s, i) => {
+        const item = document.createElement('div');
+        const isLast = (i === cached.steps.length - 1);
+        item.className = isLast ? 'vstep active' : 'vstep done';
+        item.innerHTML = `<span class="vstep-icon">${isLast ? icon('loader', '11') : icon('check', '11')}</span><span class="vstep-label">${escapeHtml(s.step)}</span>`;
+        container.appendChild(item);
+      });
+    }
+  }
 
   if (_thinkTimer) clearInterval(_thinkTimer);
   _thinkTimer = setInterval(_updateThinkTimer, 1000);
@@ -1447,13 +1798,13 @@ function updateProgress(step, percent) {
   if (lastActive) {
     lastActive.classList.remove('active');
     lastActive.classList.add('done');
-    lastActive.querySelector('.vstep-icon').textContent = '✓';
+    lastActive.querySelector('.vstep-icon').innerHTML = icon('check', '11');
   }
 
-  // 添加新步骤（竖向排列）
+  // 添加新步骤（竖向排列；状态点/对勾走图标系 SVG，替代 ◉/✓ OS 字形）
   const item = document.createElement('div');
   item.className = 'vstep active';
-  item.innerHTML = `<span class="vstep-icon">◉</span><span class="vstep-label">${escapeHtml(step)}</span>`;
+  item.innerHTML = `<span class="vstep-icon">${icon('dot', '11')}</span><span class="vstep-label">${escapeHtml(step)}</span>`;
   container.appendChild(item);
   _completedSteps.push(step);
   scrollToBottom();
@@ -1474,7 +1825,7 @@ function removeThinkingCard() {
     if (lastActive) {
       lastActive.classList.remove('active');
       lastActive.classList.add('done');
-      lastActive.querySelector('.vstep-icon').textContent = '✓';
+      lastActive.querySelector('.vstep-icon').innerHTML = icon('check', '11');
     }
     // 进度条满
     const fill = card.querySelector('.progress-fill');
@@ -1487,7 +1838,75 @@ function removeThinkingCard() {
   setTimeout(() => { if (wrapper.parentNode) wrapper.remove(); }, 600);
 }
 
-function renderFinalReport(report) {
+// 从文本中提取「marker + JSON」段（C 端轻量卡片契约）：找到 marker 后的第一个
+// '{'，按括号配平截取完整 JSON 并解析；任意失败返回 null（调用方静默跳过）。
+// 工具输出受控（中文文案无花括号），括号计数足够稳健；解析失败不白屏。
+function extractMarkerJson(text, marker) {
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+  const start = text.indexOf('{', idx);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch (e) { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+// ── 历史存储截断：先剥离冗余 JSON，再按安全边界截断 ────────────
+// 无差别硬截断可能正好切在表格中间/echarts 块之前，切会话恢复视图时
+// 残缺表格不渲染、正文断在半句（实测症状：图表丢失/输出残缺/格式每次不同）。
+// 策略：①先整段剥离风险台账 JSON 块（单块可达全文一半体量，与 PDF 完全冗余）；
+// ②仍超阈值时在阈值之前最近的段落边界截断；③追加可见提示。
+const STORAGE_TEXT_LIMIT = 20000;
+function _truncateForStorage(text) {
+  if (!text) return '';
+  let t = text.replace(/```json[\s\S]*?```/g, '');   // 台账 JSON 已存于 PDF/附件，历史不留
+  if (t.length <= STORAGE_TEXT_LIMIT) return t;
+  let cut = t.lastIndexOf('\n\n', STORAGE_TEXT_LIMIT);   // 段落边界优先（切点落在段间而非段内）
+  if (cut < STORAGE_TEXT_LIMIT * 0.5) cut = t.lastIndexOf('\n', STORAGE_TEXT_LIMIT);  // 次选行边界
+  if (cut < STORAGE_TEXT_LIMIT * 0.5) cut = STORAGE_TEXT_LIMIT;   // 都找不到才硬切
+  return t.slice(0, cut) + '\n\n（正文已截断，完整内容见 PDF 报告）';
+}
+
+// 工具结果存储压缩：截断至 2000 字符而非清空。完整清空会永久丢失旧会话的工具
+// 原文（切换会话恢复时被覆盖不可逆，未来依赖原文的渲染无法恢复）；截断保留
+// 可读前缀，既防 localStorage 膨胀又保住数据。
+const TOOL_CONTENT_LIMIT = 2000;
+function _compactToolResults(toolResults) {
+  return (toolResults || []).map(t => {
+    const c = t.content || '';
+    return { name: t.name, content: c.length > TOOL_CONTENT_LIMIT ? c.slice(0, TOOL_CONTENT_LIMIT) + '…(截断)' : c };
+  });
+}
+
+function renderFinalReport(report, originSessionId, _historyReplay) {
+  const origin = originSessionId || currentSessionId;
+  if (origin !== currentSessionId) {
+    // 用户已切到其他会话：产出只写回源会话的存储记录，不碰当前视图 DOM，
+    // 切回源会话时由 switchSession 从记录重新渲染（会话隔离修复）
+    const s = sessions.find(x => x.id === origin);
+    if (s) {
+      if (!Array.isArray(s.messages)) s.messages = [];
+      const _bgStored = _truncateForStorage(report.ai_text || '');
+      s.messages.push({ role: 'assistant', content: report.ai_text || '（分析报告已生成）',
+        meta: { report: { tool_results: _compactToolResults(report.tool_results), images: report.images, files: report.files, ai_text: _bgStored } },
+        time: new Date() });
+      s.toolCallCount = (s.toolCallCount || 0) + (report.tool_results || []).length;
+      s.updatedAt = Date.now();
+      saveSessions();
+      renderSessionList();
+      notify('分析完成', `会话「${s.title}」的报告已生成，切回可查看`, 'success');
+    }
+    return;
+  }
   removeThinkingCard();
   removeTypingIndicator();
 
@@ -1514,6 +1933,11 @@ function renderFinalReport(report) {
       'export_pdf_report': 'PDF报告导出',
       'export_excel_report': 'Excel底稿导出',
       'batch_analyze_companies': '批量公司分析',
+      'calculate_risk_models': '量化风险模型',
+      'identify_audit_opinion': '审计意见识别',
+      'investment_advisor': '投资参考卡',
+      'industry_outlook': '行业风向标',
+      'search_regulatory_inquiries': '监管问询查询',
     };
     // 连续重复合并：法规检索 → 法规检索 → 法规检索 展示为 法规检索 ×3
     const seq = [];
@@ -1529,58 +1953,155 @@ function renderFinalReport(report) {
   }
 
   // 综合评分卡片：检测 AI 回复中的 comprehensive_score JSON
+  // 50d：兼容维度未获取（"未获取"字符串）与 score:null（全维度未获取）——
+  // 否则部分维度缺失时评分卡静默消失（实测 18:37 版披露维度未获取场景）
   if (report.ai_text) {
-    const scoreMatch = report.ai_text.match(/"score"\s*:\s*([\d.]+)[\s\S]*?"level"\s*:\s*"([^"]+)"[\s\S]*?"level_key"\s*:\s*"([^"]+)"[\s\S]*?"breakdown"\s*:\s*\{[^}]*"financial"\s*:\s*([\d.]+)[^}]*"disclosure"\s*:\s*([\d.]+)[^}]*"validation"\s*:\s*([\d.]+)/);
+    const scoreMatch = report.ai_text.match(/"score"\s*:\s*([\d.]+|null)[\s\S]*?"level"\s*:\s*"([^"]+)"[\s\S]*?"level_key"\s*:\s*"([^"]+)"[\s\S]*?"breakdown"\s*:\s*\{[^}]*"financial"\s*:\s*([\d.]+|"未获取")[^}]*"disclosure"\s*:\s*([\d.]+|"未获取")[^}]*"validation"\s*:\s*([\d.]+|"未获取")/);
     if (scoreMatch) {
       const [, score, level, levelKey, fin, disc, val] = scoreMatch;
       const s = parseFloat(score);
+      const sValid = !Number.isNaN(s);
       const circumference = 2 * Math.PI * 34;
-      const offset = circumference * (1 - s / 100);
-      const colors = { low: '#34d399', medium: '#60a5fa', high: '#fbbf24', critical: '#f87171' };
-      const color = colors[levelKey] || '#60a5fa';
+      const offset = sValid ? circumference * (1 - s / 100) : circumference;
+      // 评分色引用 CSS token（var() 在 style 属性里生效；SVG 描边改走 style 以支持 var）
+      const colors = { low: 'var(--success-lite)', medium: 'var(--debate-skeptic)', high: 'var(--warning-lite)', critical: 'var(--danger-lite)' };
+      const color = colors[levelKey] || 'var(--debate-skeptic)';
+      // 维度分渲染：未获取显示「未获取」占位，进度条置 0
+      const dimVal = (v) => { const n = parseFloat(v); return Number.isNaN(n) ? '未获取' : n.toFixed(0); };
+      const dimFill = (v, c) => { const n = parseFloat(v); const w = Number.isNaN(n) ? 0 : Math.min(100, n); return `<div class="score-dim-bar"><div class="score-dim-fill" style="width:${w}%;background:${c}"></div></div>`; };
       headHtml += `<div class="score-card">
         <div class="score-ring">
           <svg width="80" height="80" viewBox="0 0 80 80">
             <circle cx="40" cy="40" r="34" fill="none" stroke="rgb(30,41,59)" stroke-width="7"/>
-            <circle cx="40" cy="40" r="34" fill="none" stroke="${color}" stroke-width="7"
+            <circle cx="40" cy="40" r="34" fill="none" style="stroke:${color}" stroke-width="7"
               stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
           </svg>
-          <div class="score-num">${Math.round(s)}</div>
+          <div class="score-num">${sValid ? Math.round(s) : '—'}</div>
         </div>
         <div class="score-info">
           <span class="score-level ${levelKey}">综合风险评分：${level}</span>
           <div class="score-breakdown">
-            <div class="score-dim"><div class="score-dim-label">财务指标 ${parseFloat(fin).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${fin}%;background:#60a5fa"></div></div></div>
-            <div class="score-dim"><div class="score-dim-label">披露合规 ${parseFloat(disc).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${disc}%;background:#fbbf24"></div></div></div>
-            <div class="score-dim"><div class="score-dim-label">数据校验 ${parseFloat(val).toFixed(0)}</div><div class="score-dim-bar"><div class="score-dim-fill" style="width:${val}%;background:#a78bfa"></div></div></div>
+            <div class="score-dim"><div class="score-dim-label">财务指标 ${dimVal(fin)}</div>${dimFill(fin, 'var(--debate-skeptic)')}</div>
+            <div class="score-dim"><div class="score-dim-label">披露合规 ${dimVal(disc)}</div>${dimFill(disc, 'var(--warning-lite)')}</div>
+            <div class="score-dim"><div class="score-dim-label">数据校验 ${dimVal(val)}</div>${dimFill(val, 'var(--debate-arbiter)')}</div>
           </div>
+        </div>
+      </div>`;
+    } else if (/"score"\s*:\s*null/.test(report.ai_text)) {
+      // 50d：全维度未获取（score:null）时渲染降级提示卡，而非静默消失
+      headHtml += `<div class="score-card">
+        <div class="score-info">
+          <span class="score-level">综合风险评分：未获取/无法判定</span>
+          <div class="score-breakdown"><div class="score-dim">评分维度数据未获取，请结合人工专业判断复核（详见 PDF 评分口径说明）</div></div>
         </div>
       </div>`;
     }
   }
 
-  // 风险等级分布饼图：从风险台账的 risk_summary 提取重大/重要/一般计数，
-  // 以 SVG 环形图直观展示占比（与「风险统计总览」表格互补）
+  // ── C 端轻量工具专属卡片：服务端在 ai_text 确定性注入 marker + 工具 JSON
+  // （契约同评分卡 COMPREHENSIVE_SCORE），此处提取渲染；解析失败静默跳过 ──
   if (report.ai_text) {
-    const mMajor = report.ai_text.match(/"major_risks"\s*:\s*(\d+)/);
-    const mImportant = report.ai_text.match(/"important_risks"\s*:\s*(\d+)/);
-    const mGeneral = report.ai_text.match(/"general_risks"\s*:\s*(\d+)/);
-    const major = mMajor ? parseInt(mMajor[1]) : 0;
-    const important = mImportant ? parseInt(mImportant[1]) : 0;
-    const general = mGeneral ? parseInt(mGeneral[1]) : 0;
-    const total = major + important + general;
+    // 投资参考卡：四档参考位徽章 + 双栏亮点/警示 + 画像匹配 + 免责声明
+    const inv = extractMarkerJson(report.ai_text, '<!--INVESTMENT_CARD-->');
+    if (inv && inv.tier) {
+      const tierColors = { watch: 'var(--success-lite)', neutral: 'var(--debate-skeptic)', caution: 'var(--warning-lite)', avoid: 'var(--danger-lite)' };
+      const tierBgs = { watch: 'var(--success-bg)', neutral: 'var(--accent-soft-bg-2)', caution: 'var(--warning-bg)', avoid: 'var(--danger-bg)' };
+      const tc = tierColors[inv.tier_key] || 'var(--debate-skeptic)';
+      const tb = tierBgs[inv.tier_key] || 'var(--accent-soft-bg-2)';
+      const hl = (inv.highlights || []).map(h => `<li>${escapeHtml(h.point || '')}</li>`).join('') || '<li class="ic-empty">未命中亮点规则</li>';
+      const wn = (inv.warnings || []).map(w => `<li>${escapeHtml(w.point || '')}</li>`).join('') || '<li class="ic-empty">暂无风险警示</li>';
+      const profiles = Object.entries(inv.investor_profiles || {}).map(([k, v]) =>
+        `<div class="ic-profile"><b>${escapeHtml(k)}</b><span>${escapeHtml(String(v))}</span></div>`).join('');
+      const checklist = (inv.checklist || []).map(c => `<li>${escapeHtml(String(c))}</li>`).join('');
+      headHtml += `<div class="score-card invest-card">
+        <div class="ic-badge" style="background:${tb};color:${tc}"><b>${escapeHtml(inv.tier)}</b><i>参考位</i><span>风险分 ${escapeHtml(String(inv.risk_score ?? '—'))}</span></div>
+        <div class="ic-body">
+          <div class="ic-cols">
+            <div class="ic-col"><h4>投资亮点</h4><ul>${hl}</ul></div>
+            <div class="ic-col"><h4>风险警示</h4><ul>${wn}</ul></div>
+          </div>
+          ${profiles ? `<div class="ic-profiles">${profiles}</div>` : ''}
+          ${checklist ? `<details class="ic-checklist"><summary>关注检查清单</summary><ul>${checklist}</ul></details>` : ''}
+          <div class="ic-disclaimer">${escapeHtml(inv.disclaimer || '')}</div>
+        </div>
+      </div>`;
+    }
+
+    // 行业风向标：景气度温度计 + 新闻时间线（≤20 条）+ 传导影响 + 降级徽标
+    const outk = extractMarkerJson(report.ai_text, '<!--INDUSTRY_OUTLOOK-->');
+    if (outk && typeof outk.thermometer !== 'undefined') {
+      const t = Math.max(1, Math.min(10, parseFloat(outk.thermometer) || 5));
+      const tColor = t >= 7 ? 'var(--success-lite)' : (t >= 4 ? 'var(--debate-skeptic)' : 'var(--danger-lite)');
+      const polColors = { '利好': 'var(--success-lite)', '利空': 'var(--danger-lite)' };
+      const evs = (outk.events || []).slice(0, 20).map(ev =>
+        `<div class="io-event"><span class="io-pol" style="color:${polColors[ev.polarity] || 'var(--text-muted)'}">${escapeHtml(ev.polarity || '中性')}</span>`
+        + `<span class="io-evt-title">${escapeHtml(ev.title || '')}</span>`
+        + `<span class="io-src">${escapeHtml(ev.source || '')}${ev.date ? ' · ' + escapeHtml(ev.date) : ''}</span></div>`).join('');
+      const modeBadge = outk.data_mode === 'offline_kb'
+        ? '<span class="io-mode">离线知识库模式</span>'
+        : (outk.data_mode === 'online' ? '<span class="io-mode io-mode-on">在线新闻</span>' : '');
+      headHtml += `<div class="score-card outlook-card">
+        <div class="ic-body" style="width:100%">
+          <div class="io-head"><b>行业风向标 · ${escapeHtml(outk.industry || '')}</b>${modeBadge}</div>
+          <div class="io-thermo"><span class="io-thermo-num" style="color:${tColor}">景气度 ${t}/10</span>
+            <div class="score-dim-bar" style="flex:1"><div class="score-dim-fill" style="width:${t * 10}%;background:${tColor}"></div></div></div>
+          <div class="io-outlook">${escapeHtml(outk.outlook_3_6m || '')}</div>
+          ${evs ? `<div class="io-events">${evs}</div>` : ''}
+          ${outk.transmission_to_company ? `<div class="io-trans">${escapeHtml(outk.transmission_to_company)}</div>` : ''}
+          <div class="ic-disclaimer">${escapeHtml(outk.disclaimer || '')}</div>
+        </div>
+      </div>`;
+    }
+  }
+
+  // 风险等级分布饼图：优先从 risk_summary 提取重大/重要/一般计数，缺失或为 0 时
+  // 回退解析 risk_details 台账逐条统计（与后端 PDF 环形图同源逻辑），保证卡片恒渲染。
+  function extractRiskLevelCounts(text) {
+    const mMajor = text.match(/"major_risks"\s*:\s*(\d+)/);
+    const mImportant = text.match(/"important_risks"\s*:\s*(\d+)/);
+    const mGeneral = text.match(/"general_risks"\s*:\s*(\d+)/);
+    let major = mMajor ? parseInt(mMajor[1]) : 0;
+    let important = mImportant ? parseInt(mImportant[1]) : 0;
+    let general = mGeneral ? parseInt(mGeneral[1]) : 0;
+    if (major + important + general > 0) return { major, important, general, total: major + important + general };
+    // 回退：从 ```json 代码块的风险台账逐条统计（兼容 LLM 等级别名：高→重大、中→重要等）
+    const aliases = { '重大': '重大', '高风险': '重大', '极高风险': '重大', '严重': '重大', '高': '重大',
+      '重要': '重要', '中等风险': '重要', '中': '重要',
+      '一般': '一般', '低风险': '一般', '轻微': '一般', '低': '一般' };
+    try {
+      const blocks = text.match(/```json\s*([\s\S]*?)```/g) || [];
+      for (const block of blocks) {
+        const data = JSON.parse(block.replace(/```json|```/g, ''));
+        const details = data.risk_details || [];
+        if (!details.length) continue;
+        const c = { '重大': 0, '重要': 0, '一般': 0 };
+        for (const r of details) {
+          const lv = aliases[String(r.level ?? r.risk_level ?? '').trim()];
+          if (lv) c[lv]++;
+        }
+        major = c['重大']; important = c['重要']; general = c['一般'];
+        return { major, important, general, total: major + important + general };
+      }
+    } catch (e) { /* 台账解析失败则保持 0，走占位渲染 */ }
+    return { major: 0, important: 0, general: 0, total: 0 };
+  }
+
+  if (report.ai_text && /"risk_details"|"risk_summary"|"major_risks"/.test(report.ai_text)) {
+    const counts = extractRiskLevelCounts(report.ai_text);
+    const major = counts.major, important = counts.important, general = counts.general;
+    const total = counts.total;
     if (total > 0) {
       const C = 2 * Math.PI * 30;
       const segs = [
-        { label: '重大', count: major, color: '#f87171' },
-        { label: '重要', count: important, color: '#fbbf24' },
-        { label: '一般', count: general, color: '#60a5fa' },
+        { label: '重大', count: major, color: 'var(--danger-lite)' },
+        { label: '重要', count: important, color: 'var(--warning-lite)' },
+        { label: '一般', count: general, color: 'var(--debate-skeptic)' },
       ];
       let arcs = '', acc = 0, legend = '';
       for (const s of segs) {
         if (s.count > 0) {
           const len = (s.count / total) * C;
-          arcs += `<circle cx="40" cy="40" r="30" fill="none" stroke="${s.color}" stroke-width="12" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`;
+          arcs += `<circle cx="40" cy="40" r="30" fill="none" style="stroke:${s.color}" stroke-width="12" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"/>`;
           acc += len;
         }
         const pct = ((s.count / total) * 100).toFixed(1);
@@ -1595,6 +2116,14 @@ function renderFinalReport(report) {
           ${legend}
         </div>
       </div>`;
+    } else {
+      // 台账存在但统计为 0（等级字段缺失/未知）：渲染占位而非静默消失
+      headHtml += `<div class="score-card" style="gap:24px">
+        <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg);flex-shrink:0">
+          <circle cx="40" cy="40" r="30" fill="none" stroke="rgb(30,41,59)" stroke-width="12"/>
+        </svg>
+        <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">风险等级分布（未识别风险事项）</div>
+      </div>`;
     }
   }
 
@@ -1608,7 +2137,7 @@ function renderFinalReport(report) {
       const m = t.match(/(\/local_storage\/[^\s）)\]，,]+\.(?:pdf|xlsx|png))/);
       return !(m && knownPaths.has(m[1]));
     }).join('\n');
-    mdHtml = renderMarkdown(cleaned);
+    mdHtml = renderMarkdownSafe(cleaned);
   }
 
   if (report.images && report.images.length > 0) {
@@ -1648,12 +2177,12 @@ function renderFinalReport(report) {
   }
 
   if (!headHtml && !mdHtml && !attachHtml) {
-    mdHtml = renderMarkdown('✅ 分析完成，但未生成有效内容。');
+    mdHtml = renderMarkdownSafe('✅ 分析完成，但未生成有效内容。');
   }
 
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
-  div.className = 'msg assistant';
+  div.className = 'msg assistant msg-new';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   // 分容器渲染：markdown 区独立容器，其内部未闭合标签被浏览器限制在容器内自动闭合，
@@ -1669,25 +2198,44 @@ function renderFinalReport(report) {
   const metaDiv = document.createElement('div');
   metaDiv.className = 'meta';
   const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  metaDiv.innerHTML = `<span style="color:var(--accent)">${icon('bot')}</span><span>AI 审计专家</span><span>${timeStr}</span>`;
+  metaDiv.innerHTML = `<span style="color:var(--accent)">${icon('bot')}</span><span>AI 风险分析</span><span>${timeStr}</span>`;
   div.appendChild(metaDiv);
 
   area.appendChild(div);
+  // 容器已入 DOM 且有尺寸，此时才能正确初始化 ECharts 画布
+  mountPendingCharts();
   scrollToBottom();
 
   const textForHistory = report.ai_text || '（分析报告已生成）';
-  messages.push({ role: 'assistant', content: textForHistory, time: new Date() });
-  toolCallCount += (report.tool_results || []).length;
-  updateSessionInfo();
+  // _historyReplay=true 时是从 switchSession 历史恢复路径调用，消息已在 messages 中，
+  // 不可再次 push（否则每次切换会话消息指数级增殖）
+  if (!_historyReplay) {
+    // 精简存储：tool_results 截断至 TOOL_CONTENT_LIMIT（防 localStorage 膨胀，
+    // 同时保留工具原文前缀供工具链/参考卡渲染；不完整清空以免旧数据永久丢失）
+    const compactResults = _compactToolResults(report.tool_results);
+    // ai_text 超长截断防 localStorage 溢出（先剥离 JSON 台账再按段落边界安全截断）
+    const storedText = _truncateForStorage(report.ai_text || '');
+    messages.push({ role: 'assistant', content: textForHistory,
+      meta: { report: { tool_results: compactResults, images: report.images, files: report.files, ai_text: storedText } },
+      time: new Date() });
+    toolCallCount += (report.tool_results || []).length;
+    updateSessionInfo();
+    try { persistCurrentSession(); } catch (e) {}
+  }
 }
 
 // ══════════════════════════════════════════════════════════
 // 流式请求公共逻辑（单文件/多文件复用）
 // ══════════════════════════════════════════════════════════
-async function _doStreamRequest(payload) {
+async function _doStreamRequest(payload, originSessionId, threadId) {
+  const origin = originSessionId || currentSessionId;
+  // X-Run-Id 冻结为发起会话的 threadId：多文件循环中途切会话时，
+  // 后续请求仍归属源会话的后端 checkpoint 线程（fetch 包装器不覆盖显式头）
+  const headers = { 'Content-Type': 'application/json' };
+  if (threadId) headers['X-Run-Id'] = threadId;
   const resp = await fetch(`${API_BASE}/stream_run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
     signal: currentController.signal
   });
@@ -1700,7 +2248,24 @@ async function _doStreamRequest(payload) {
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      // 流结束时刷新剩余 buffer（防服务端末尾未加换行导致丢事件）
+      if (buffer.trim()) {
+        const lastLine = buffer.trim();
+        if (lastLine.startsWith('data: ')) {
+          const dataStr = lastLine.slice(6);
+          if (dataStr !== '[DONE]') {
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'final_report') { if (origin === currentSessionId) removeThinkingCard(); delete _streamProgress[origin]; renderFinalReport(data, origin); }
+              else if (data.type === 'error') { if (origin === currentSessionId) removeThinkingCard(); delete _streamProgress[origin]; appendMessageToSession(origin, 'system', `⚠️ ${data.content || '未知错误'}`); }
+            } catch (e) {}
+          }
+        }
+        buffer = '';
+      }
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
@@ -1712,14 +2277,21 @@ async function _doStreamRequest(payload) {
         if (dataStr === '[DONE]') continue;
         try {
           const data = JSON.parse(dataStr);
+          // DOM 类操作（进度/思考卡）仅在源会话仍在前台时执行，
+          // 消息产出则始终写回源会话（已切走时不污染当前视图）
           if (data.type === 'progress') {
-            updateProgress(data.step || '', data.percent || 0);
+            // 始终缓存进度步骤（无论前后台），仅前台时更新 DOM
+            if (!_streamProgress[origin]) _streamProgress[origin] = { start: Date.now(), steps: [] };
+            _streamProgress[origin].steps.push({ step: data.step || '', percent: data.percent || 0 });
+            if (origin === currentSessionId) updateProgress(data.step || '', data.percent || 0);
           } else if (data.type === 'final_report') {
-            removeThinkingCard();
-            renderFinalReport(data);
+            if (origin === currentSessionId) removeThinkingCard();
+            delete _streamProgress[origin]; // 分析完成，清除进度缓存
+            renderFinalReport(data, origin);
           } else if (data.type === 'error') {
-            removeThinkingCard();
-            addMessage('system', `⚠️ ${data.content || '未知错误'}`);
+            if (origin === currentSessionId) removeThinkingCard();
+            delete _streamProgress[origin]; // 分析异常结束，清除进度缓存
+            appendMessageToSession(origin, 'system', `⚠️ ${data.content || '未知错误'}`);
           }
         } catch (e) { /* skip */ }
       }
@@ -1730,8 +2302,35 @@ async function _doStreamRequest(payload) {
 // ══════════════════════════════════════════════════════════
 // Send Message (Streaming with Abort)
 // ══════════════════════════════════════════════════════════
+// ── 隐藏彩蛋（作者署名）：触发口令与署名均不以明文出现，代码里仅存指纹 ──
+const _EE_SIG = 'fd9896de';   // 触发口令的 FNV-1a 指纹
+function _eeHash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16);
+}
+function _eeMatch(t) { return _eeHash(String(t || '').trim().toLowerCase()) === _EE_SIG; }
+function _eeReveal() {
+  const area = document.getElementById('chatArea');
+  if (!area) return;
+  const div = document.createElement('div');
+  div.className = 'msg assistant msg-new';
+  div.innerHTML = '<div class="bubble" style="text-align:center">'
+    + '<div style="font-size:22px;letter-spacing:3px">❄️ ⑨ ❄️</div>'
+    + '<div style="margin-top:6px;font-weight:600;color:var(--text-primary)">最强的彩蛋，被最强的你发现了</div>'
+    + '<div style="margin-top:4px;font-size:12px;color:var(--text-muted)">本作品已嵌入隐藏作者水印 · 仅供审计参考，不构成投资建议</div>'
+    + '</div>';
+  area.appendChild(div);
+  scrollToBottom();
+}
+
 async function sendMessage(presetPrompt) {
   if (isStreaming) {
+    // 停止操作只对“自己会话的分析”生效：其他会话里既不误杀、也不允许另起一路（单流模型）
+    if (streamingSessionId && streamingSessionId !== currentSessionId) {
+      notify('另一会话正在分析中', '请切回该会话终止或等待完成', 'warn');
+      return;
+    }
     if (currentController) currentController.abort();
     return;
   }
@@ -1741,11 +2340,24 @@ async function sendMessage(presetPrompt) {
   // 不经过底部输入框展示；未传时才读取输入框内容
   const hasPreset = typeof presetPrompt === 'string' && presetPrompt.trim().length > 0;
   const text = hasPreset ? presetPrompt.trim() : input.value.trim();
+  // 隐藏彩蛋：触发口令指纹命中即浮现署名卡，不作为真实消息发送
+  if (_eeMatch(text)) { input.value = ''; autoResize(input); _eeReveal(); return; }
   if (!text && uploadedFiles.length === 0) return;
 
   resetStreamState();
 
+  // 冻结发起会话：后续所有异步产出（报告/错误/停止提示）都写回该会话，
+  // 而非回调触发时碰巧显示的会话（修复跨会话状态污染）
+  const originSessionId = currentSessionId;
+  const originThreadId = (currentSession() || {}).threadId || '';
+  // 每次新分析重置进度缓存，防止同会话多次分析步骤串味
+  delete _streamProgress[originSessionId];
+
   let userText = text;
+
+  // 非文件分支的历史快照（在 addMessage 前截取，避免 payload 重复含新消息；
+  // 声明在分支外是因为 payload 在分支后构造，文件分支提前 return 不会走到）
+  let priorHistory = [];
 
   if (uploadedFiles.length > 0) {
     const fileNames = uploadedFiles.map(f => f.name).join(', ');
@@ -1753,7 +2365,8 @@ async function sendMessage(presetPrompt) {
     if (!hasPreset) { input.value = ''; autoResize(input); }
 
     isStreaming = true;
-    updateSendButton(true);
+    streamingSessionId = originSessionId;
+    updateSendButton();
 
     // 批量上传所有文件
     const formData = new FormData();
@@ -1767,17 +2380,17 @@ async function sendMessage(presetPrompt) {
       if (uploadResp.ok) {
         const uploadResult = await uploadResp.json();
         parsedFiles = (uploadResult.files || []).filter(fi => fi.status === 'ok' && fi.extracted_text);
-        // 显示解析失败的文件
+        // 显示解析失败的文件（上传期间用户可能已切走，写回源会话）
         for (const fi of (uploadResult.files || [])) {
           if (fi.status === 'error') {
-            addMessage('system', `⚠️ 文件 ${fi.filename} 处理失败: ${fi.error}`);
+            appendMessageToSession(originSessionId, 'system', `⚠️ 文件 ${fi.filename} 处理失败: ${fi.error}`);
           }
         }
       } else {
-        addMessage('system', `⚠️ 文件上传失败: HTTP ${uploadResp.status}`);
+        appendMessageToSession(originSessionId, 'system', `⚠️ 文件上传失败: HTTP ${uploadResp.status}`);
       }
     } catch (uploadErr) {
-      addMessage('system', `⚠️ 文件上传异常: ${uploadErr.message}`);
+      appendMessageToSession(originSessionId, 'system', `⚠️ 文件上传异常: ${uploadErr.message}`);
     }
 
     uploadedFiles = [];
@@ -1790,11 +2403,13 @@ async function sendMessage(presetPrompt) {
       const instruction = text || '请对该文件进行全方位审计风险分析';
       const fileUserContent = `${instruction}\n\n（分析以下文件，第 ${i + 1}/${parsedFiles.length} 份）：\n\n📄 **文件: ${fileInfo.filename}**\n\n${fileInfo.extracted_text}`;
 
-      showThinkingCard();  // 思考卡已完整承担状态展示，不再另挂空的 typing 气泡
+      // 切走后不往其他会话的 chatArea 追加思考卡
+      if (currentSessionId === originSessionId) showThinkingCard();
 
+      // 历史上下文取自源会话（全局 messages 切会话后属于别的会话，不可直接用）
       const payload = {
         messages: [
-          ...messages.filter(m => m.role !== 'system').map(m => ({
+          ..._sessionMessages(originSessionId).filter(m => m.role !== 'system').map(m => ({
             role: m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content
           })),
@@ -1804,46 +2419,52 @@ async function sendMessage(presetPrompt) {
 
       currentController = new AbortController();
       try {
-        await _doStreamRequest(payload);
+        await _doStreamRequest(payload, originSessionId, originThreadId);
         // 每份文件完成后弹出 Toast 通知
         showFileToast(i + 1, parsedFiles.length, fileInfo.filename);
       } catch (err) {
-        removeThinkingCard();
+        if (currentSessionId === originSessionId) removeThinkingCard();
         if (err.name === 'AbortError') {
-          addMessage('system', '⏹️ 已停止生成');
+          appendMessageToSession(originSessionId, 'system', '⏹️ 已停止生成');
           break;
         } else {
-          addMessage('system', `⚠️ ${fileInfo.filename} 分析失败: ${err.message}`);
+          appendMessageToSession(originSessionId, 'system', `⚠️ ${fileInfo.filename} 分析失败: ${err.message}`);
         }
       }
     }
 
     resetStreamState();
     isStreaming = false;
+    streamingSessionId = null;
     currentController = null;
-    updateSendButton(false);
+    updateSendButton();
     document.getElementById('msgInput').focus();
     return;
 
   } else {
+    // 先快照历史再入栈新消息：否则 _sessionMessages 会含刚 push 的这条，
+    // payload 里同一用户消息出现两次（后端 checkpointer 双份记录，
+    // 串跑时 build_stage_payload 只替换最后一条，第一份拷贝会污染各阶段上下文）
+    priorHistory = _sessionMessages(originSessionId)
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content
+      }));
     addMessage('user', userText);
     input.value = '';
     autoResize(input);
 
     isStreaming = true;
-    updateSendButton(true);
+    streamingSessionId = originSessionId;
+    updateSendButton();
   }
 
   showThinkingCard();  // 思考卡已完整承担状态展示，不再另挂空的 typing 气泡
 
   const payload = {
     messages: [
-      ...messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content
-        })),
+      ...priorHistory,
       { role: 'user', content: flashMode ? `${userText}\n\n（快速模式：跳过图表与辩论复核，仅输出前3条核心风险，各章节从简，速度优先）` : userText }
     ]
   };
@@ -1851,26 +2472,29 @@ async function sendMessage(presetPrompt) {
   currentController = new AbortController();
 
   try {
-    await _doStreamRequest(payload);
+    await _doStreamRequest(payload, originSessionId, originThreadId);
   } catch (err) {
-    removeThinkingCard();
+    if (currentSessionId === originSessionId) removeThinkingCard();
     if (err.name === 'AbortError') {
-      addMessage('system', '⏹️ 已停止生成');
+      appendMessageToSession(originSessionId, 'system', '⏹️ 已停止生成');
     } else {
-      addMessage('system', `⚠️ 请求失败: ${err.message}。请确认后端服务已启动。`);
+      appendMessageToSession(originSessionId, 'system', `⚠️ 请求失败: ${err.message}。请确认后端服务已启动。`);
     }
   } finally {
     resetStreamState();
     isStreaming = false;
+    streamingSessionId = null;
     currentController = null;
-    updateSendButton(false);
+    updateSendButton();
     document.getElementById('msgInput').focus();
   }
 }
 
-function updateSendButton(streaming) {
+function updateSendButton() {
+  // 停止态只在“当前会话就是正在分析的会话”时展示；
+  // 新建/切到其他会话永远是发送态（修复终止按钮跨会话残留）
   const btn = document.getElementById('sendBtn');
-  if (streaming) {
+  if (isStreaming && streamingSessionId === currentSessionId) {
     btn.innerHTML = icon('square', '18');
     btn.className = 'btn-icon btn-stop';
     btn.title = '停止生成';
@@ -1885,21 +2509,53 @@ function updateSendButton(streaming) {
 // Chat Rendering
 // ══════════════════════════════════════════════════════════
 function addMessage(role, content, meta) {
+  // 一旦有真实消息，欢迎页（快捷卡区）立即移除——否则分析结果会堆在快捷卡下方，
+  // 导致「新对话界面」被旧内容污染（P5.4 反馈的核心问题）
+  const _w = document.getElementById('welcomeScreen');
+  if (_w) _w.remove();
   messages.push({ role, content, meta, time: new Date() });
-  renderMessage(role, content, meta);
+  renderMessage(role, content, meta, true);   // 新增消息才带入场动画
   updateSessionInfo();
   scrollToBottom();
 }
 
-function renderMessage(role, content, meta) {
+// 消息写回目标会话：前台会话走 addMessage（渲染+入栈），
+// 后台会话直接写入其存储记录，绝不碰当前视图 DOM（会话隔离核心）
+function appendMessageToSession(sessionId, role, content, meta) {
+  if (sessionId === currentSessionId) { addMessage(role, content, meta); return; }
+  const s = sessions.find(x => x.id === sessionId);
+  if (!s) return;  // 源会话已被删除：产出丢弃
+  if (!Array.isArray(s.messages)) s.messages = [];
+  s.messages.push({ role, content, meta, time: new Date() });
+  s.updatedAt = Date.now();
+  saveSessions();
+  renderSessionList();
+}
+
+// 取指定会话的消息列表（前台会话用全局 messages，后台会话用存储记录），
+// 供流式请求构造历史上下文时使用，避免切会话后误用别的会话的历史
+function _sessionMessages(sessionId) {
+  if (sessionId === currentSessionId) return messages;
+  const s = sessions.find(x => x.id === sessionId);
+  return (s && Array.isArray(s.messages)) ? s.messages : [];
+}
+
+function renderMessage(role, content, meta, isNew) {
   hideWelcome();
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
-  div.className = `msg ${role}`;
+  // isNew：仅新增消息带入场动画；历史恢复/会话切换路径不传，静态呈现
+  div.className = `msg ${role}${isNew ? ' msg-new' : ''}`;
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = role === 'user' ? escapeHtml(content) : renderMarkdown(content);
+  let html = role === 'user' ? escapeHtml(content) : renderMarkdownSafe(content);
+  if (role === 'system') {
+    // UI chrome 字形收编：系统提示的 emoji 前缀换成图标系 SVG（正文内容层不动）
+    html = html.replace(/⚠️\s?/g, `${icon('alert', '13')} `)
+               .replace(/⏹️\s?/g, `${icon('square', '13')} `);
+  }
+  bubble.innerHTML = html;
   div.appendChild(bubble);
 
   if (role !== 'system') {
@@ -1913,6 +2569,7 @@ function renderMessage(role, content, meta) {
   }
 
   area.appendChild(div);
+  mountPendingCharts();   // 普通消息气泡也可能含 echarts 块
   return div;
 }
 
@@ -1985,7 +2642,12 @@ function batchAnalyze() {
 
 // 统一模块入口：点击后弹出二选一弹窗（左：文件上传 / 右：手动输入）
 // modeTitle：可选的模式名称，显示在弹窗标题上，让不同分析模式的入口可区分
-function moduleAction(promptText, modeTitle) {
+function moduleAction(promptText, modeTitle, moduleKey) {
+  // moduleKey（financial/compliance/synthesis）对应后端 MODULE_MARKERS，
+  // 注入到消息首部以命中模块路由（工具子集 + 固定骨架 + 串跑）。
+  // 缺省时不注入标记，走全量工具链路（向后兼容）。
+  const marker = MODULE_MARKERS[moduleKey] || '';
+  const promptWithModule = marker ? `${marker}${promptText}` : promptText;
   // 创建蒙罩层 + 二选一卡片
   const overlay = document.createElement('div');
   overlay.className = 'module-choice-overlay';
@@ -2013,7 +2675,7 @@ function moduleAction(promptText, modeTitle) {
   // 左：文件上传
   overlay.querySelector('#mcUpload').addEventListener('click', () => {
     overlay.remove();
-    _pendingPrompt = promptText;
+    _pendingPrompt = promptWithModule;
     document.getElementById('fileInput').click();
   });
 
@@ -2023,7 +2685,7 @@ function moduleAction(promptText, modeTitle) {
     const val = prompt('请输入要分析的内容（财务数据/公司名/年报摘要）：', '');
     if (val && val.trim()) {
       // 直接以预设指令+用户输入发起，不写入底部输入框
-      sendMessage(`${promptText}\n\n${val.trim()}`);
+      sendMessage(`${promptWithModule}\n\n${val.trim()}`);
     }
   });
 }
@@ -2034,6 +2696,39 @@ function searchPenalty() {
   if (!company || !company.trim()) return;
   // 快捷功能接口：直接发起检索，不写入底部输入框
   sendMessage(`请检索与「${company.trim()}」相关的证监会处罚函、问询函、警示函等监管处罚信息，包括处罚原因、处罚结果和相似案例`);
+}
+
+// 智能投资参考卡（C 端轻量工具）：风险提示定位，非荐股。
+// 【工具:投资参考】标记与后端 main.py 的 LIGHT_MARKERS 字面一致，
+// 命中后走轻量链路（不辩论/不导出 PDF·Excel/不跑全套审计工具）。
+function investmentCard() {
+  const hasAnalysis = Array.isArray(messages) && messages.some(m => m.role === 'assistant');
+  if (hasAnalysis) {
+    sendMessage('【工具:投资参考】请基于本会话已完成的年报分析结果，生成投资参考卡（风险提示定位，非投资建议）');
+    return;
+  }
+  // 无已有分析：输入公司名/股票代码→联网查监管动态与行业新闻出有依据的参考卡；粘贴财务数据→更精准的财务风险参考
+  const val = prompt('当前会话还没有分析结果。输入公司名/股票代码将联网查询其监管动态与行业新闻生成参考卡；粘贴年报财务数据可得到更精准的财务风险参考（也可先上传年报 PDF 完成分析）：', '');
+  if (!val || !val.trim()) return;
+  sendMessage(`【工具:投资参考】请生成投资参考卡（风险提示定位，非投资建议）：若下方为财务数据则做财务分析，若为公司名/股票代码则联网查询监管动态与行业新闻。\n\n${val.trim()}`);
+}
+
+// 行业风向研判（模块D）：在线新闻搜索升级为完整报告模块，固定六章图文并茂输出。
+// 【模块:行业风向研判】标记与后端 main.py 的 MODULE_MARKERS 字面一致，命中后走
+// outlook 模块工具子集（industry_outlook + 法规/监管检索），不跑财务评分/热力图/PDF。
+function outlookAction() {
+  const industry = prompt('请输入行业名称（如：锂电、纺织、白酒、新能源汽车）：', '');
+  if (!industry || !industry.trim()) return;
+  sendMessage(`${MODULE_MARKERS.outlook}请对「${industry.trim()}」行业进行风向研判：先在线检索近期财经新闻并给出景气度温度计，再结合监管法规与行业风险特征交叉佐证，最后按固定六章结构输出图文并茂的行业景气度分析报告（风险提示定位，非投资建议）`);
+}
+
+// 行业风向标（C 端轻量工具）：在线新闻 + 知识库降级，景气度预判
+function industryOutlook() {
+  const industry = prompt('请输入行业名称（如：锂电、纺织、白酒、新能源汽车）：', '');
+  if (!industry || !industry.trim()) return;
+  const company = prompt('可选：输入目标公司名（用于分析行业风险向公司年报的传导影响，留空跳过）：', '') || '';
+  const companyPart = company.trim() ? `，目标公司为「${company.trim()}」` : '';
+  sendMessage(`【工具:行业风向】请分析「${industry.trim()}」行业的近期风向与未来 3-6 个月景气度${companyPart}`);
 }
 
 // 带预设 prompt 的文件上传：先选文件，上传后自动发送对应分析请求
@@ -2047,24 +2742,48 @@ function uploadWithPrompt(prompt) {
 // 之前此处采用「重新赋值 handleFiles」的猴子补丁，但内联 onchange="handleFiles(this.files)"
 // 解析到的仍是原始函数声明，导致补丁不生效、上传后需再次手动点击发送。
 
-function clearChat() {
-  messages = [];
-  toolCallCount = 0;
-  document.getElementById('chatArea').innerHTML = `
+// ── 欢迎页（快捷区）单一数据源 ──
+// 以前 HTML 里与 clearChat 里各维护一份副本，改一处必漏一处；现统一由此函数生成。
+function welcomeHtml() {
+  const core = [
+    ['financial', 'chart', '财务健康度诊断', '三大报表深度解析 · 5 年时序',
+     '请对该年报进行财务健康度诊断：深度解析三大报表，计算核心指标并与行业基准对比，评估盈利质量与持续经营能力'],
+    ['compliance', 'clipboard', '合规与经营风险扫描', '披露合规 · 审计意见 · 监管处罚',
+     '请对该年报进行合规与经营风险扫描：检查信息披露规范性，识别审计意见类型，检索相关法规与监管处罚案例'],
+    ['synthesis', 'target', '综合研判', '串跑三阶段 · 交叉验证 · 量化报告',
+     '请对该年报进行综合研判：依次完成财务健康度诊断与合规风险扫描，交叉验证两者结论，输出量化风险报告'],
+  ].map(([key, ico, title, sub, prompt]) =>
+    `<button class="quick-btn quick-btn-core" onclick="moduleAction('${prompt}','${title}','${key}')">`
+    + `<span class="icon" data-ico="${ico}" data-ico-size="20"></span>`
+    + `<span class="qb-text"><b>${title}</b><i>${sub}</i></span></button>`
+  ).join('');
+  return `
     <div class="welcome" id="welcomeScreen">
-      <div class="welcome-icon" data-ico="chart" data-ico-size="36"></div>
-      <h2>上市公司年报审计风险识别</h2>
-      <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成审计报告。</p>
-      <div class="quick-grid">
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行财务指标分析，计算关键财务比率并识别异常指标','财务指标分析')"><span class="icon" data-ico="chart" data-ico-size="20"></span> <span>财务指标分析</span></button>
-        <button class="quick-btn" onclick="moduleAction('请检查以下年报文本的信息披露规范性，输出合规评分和问题清单','披露规范性检查')"><span class="icon" data-ico="clipboard" data-ico-size="20"></span> <span>披露规范性检查</span></button>
-        <button class="quick-btn" onclick="moduleAction('请对以下年报进行全方位审计风险评估，包括财务指标分析、披露规范性检查，并输出综合风险评分','综合风险评估')"><span class="icon" data-ico="target" data-ico-size="20"></span> <span>综合风险评估</span></button>
-        <button class="quick-btn" onclick="searchPenalty()"><span class="icon" data-ico="scale" data-ico-size="20"></span> <span>监管处罚检索</span></button>
-        <button class="quick-btn" onclick="uploadWithPrompt('请对以下多份年报文件进行批量审计风险分析，逐份输出风险评分并汇总对比')" title="可一次选择多个年报文件"><span class="icon" data-ico="package" data-ico-size="20"></span> <span>批量上传年报</span></button>
+      <div class="welcome-icon" data-ico="search" data-ico-size="36"></div>
+      <h2>上市公司年报风险识别</h2>
+      <p>上传年报 PDF 或输入公司名称，AI 将自动进行财务分析、风险识别、法规检索，并生成风险报告（PDF + Excel）。</p>
+      <div class="quick-group">
+        <div class="quick-group-title">核心分析</div>
+        <div class="quick-grid">${core}</div>
+        <div class="quick-group-title">其他工具</div>
+        <div class="quick-grid quick-grid-tools">
+          <button class="quick-btn quick-btn-core" onclick="investmentCard()" title="风险提示定位，不构成投资建议">
+            <span class="icon" data-ico="chart" data-ico-size="20"></span>
+            <span class="qb-text"><b>智能投资参考</b><i>四档参考位 · 亮点与警示</i></span>
+          </button>
+          <button class="quick-btn quick-btn-core" onclick="outlookAction()" title="在线新闻驱动，失败自动降级知识库">
+            <span class="icon" data-ico="trend" data-ico-size="20"></span>
+            <span class="qb-text"><b>行业风向标</b><i>新闻驱动 · 3-6月景气预判</i></span>
+          </button>
+        </div>
       </div>
+      <p style="font-size:10.5px;color:var(--text-muted);margin-top:8px;opacity:0.45;max-width:540px">数据来源：巨潮资讯网上市公司公开年报、证监会近五年行政处罚决定书、上交所/深交所问询函、中国审计准则及会计准则电子版。所有数据均为合法公开信息。</p>
     </div>`;
-  hydrateIcons(document.getElementById('chatArea'));
-  updateSessionInfo();
+}
+
+// 全局新会话：无论当前在对话区、效果评估页还是弹窗，一律先切回对话视图再开新会话
+function clearChat() {
+  startNewSession();
 }
 
 function exportChat() {
@@ -2091,7 +2810,7 @@ async function downloadFile(url, fileName, evt) {
   const origAction = actionEl ? actionEl.textContent : '';
   const origMeta = metaEl ? metaEl.textContent : '';
 
-  if (actionEl) actionEl.textContent = '下载中...';
+  if (actionEl) actionEl.textContent = '下载中…';
   if (card) { card.style.pointerEvents = 'none'; card.style.opacity = '0.6'; }
 
   try {
@@ -2122,6 +2841,12 @@ async function downloadFile(url, fileName, evt) {
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
+// 窄屏（≤768px 抽屉模式）下选完会话后自动收起侧栏：
+// 浮层侧栏盖着对话区，不收起用户看不到切换结果
+function closeSidebarOnMobile() {
+  if (window.innerWidth <= 768) document.getElementById('sidebar')?.classList.add('collapsed');
+}
+
 // ── 下载统一事件委托：链接/卡片不再内联拼接 JS 参数（消除 &#39; 解码后单引号
 // 炸字符串的语法错误与注入面）；URL 白名单只放行本地产物与 http(s)
 function _safeDownloadUrl(u) {
@@ -2147,20 +2872,21 @@ let flashMode = false;
 function toggleFlashMode() {
   flashMode = !flashMode;
   const btn = document.getElementById('flashToggle');
-  // 用 innerHTML 重建图标+文本（textContent 会抹掉已注入的 SVG 图标）
+  // 用 innerHTML 重建图标+文本（textContent 会抹掉已注入的 SVG 图标）；
+  // 文本必须包在 .btn-label 里，窄屏下靠隐藏该跨度改成图标模式
   if (flashMode) {
     btn.classList.add('active');
-    btn.innerHTML = `${icon('zap')} 快速(开)`;
+    btn.innerHTML = `${icon('zap')} <span class="btn-label">快速(开)</span>`;
   } else {
     btn.classList.remove('active');
-    btn.innerHTML = `${icon('zap')} 快速`;
+    btn.innerHTML = `${icon('zap')} <span class="btn-label">快速</span>`;
   }
 }
 
 async function reloadKB(btn) {
   // innerHTML 重建图标+文本，避免 textContent 抹掉 SVG；状态用文本符号保持跨平台一致
   const idle = `${icon('refresh')} 重载知识库`;
-  btn.innerHTML = `${icon('clock')} 重载中...`;
+  btn.innerHTML = `${icon('clock')} 重载中…`;
   btn.disabled = true;
   try {
     const resp = await fetch(`${API_BASE}/api/reload_kb`);
@@ -2190,7 +2916,7 @@ async function uploadKBFiles(files) {
   // 优化：精准获取上传按钮以显示加载状态
   const btn = document.querySelector('button[onclick="triggerKBUpload()"]');
   const origText = btn ? btn.textContent : '';
-  if (btn) { btn.textContent = '⏳ 上传中...'; btn.disabled = true; }
+  if (btn) { btn.textContent = '上传中…'; btn.disabled = true; }
 
   const formData = new FormData();
   for (const f of files) {
@@ -2208,13 +2934,13 @@ async function uploadKBFiles(files) {
           : `❌ ${f.filename}: ${f.error}`
       ).join('\n');
       // 将结果以系统消息形式推送到聊天区
-      addMessage('system', `📥 知识库文件已添加\n${data.message}\n\n${details}`);
+      notify('知识库已更新', String(data.message || '文件已添加'), 'success');
       checkSystemStatus(); // 刷新侧边栏状态
     } else {
-      addMessage('system', `⚠️ 知识库上传失败: ${data.message}`);
+      notify('知识库上传失败', String(data.message || ''), 'error');
     }
   } catch (e) {
-    addMessage('system', `⚠️ 知识库上传异常: ${e.message}`);
+    notify('知识库上传异常', String(e.message || ''), 'error');
   } finally {
     if (btn) { btn.textContent = origText; btn.disabled = false; }
     document.getElementById('kbFileInput').value = ''; // 清空 input 确保重复选同一文件也能触发
@@ -2231,6 +2957,270 @@ function handleKey(e) {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+}
+
+// ── 通用系统通知 toast（P5.2）──
+// 登录/知识库等系统级反馈不再以消息形式插进对话区（那会污染会话历史），
+// 而是走右下角浮层；分析链路内的错误（解析失败/已停止等）仍保留在对话流，
+// 因为它们是该次分析的组成部分。
+function notify(title, sub, kind) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) { console.log(`[${kind || 'info'}] ${title} ${sub || ''}`); return; }
+  const ICONS_BY_KIND = { success: 'check', warn: 'alert', error: 'alert', info: 'info' };
+  const card = document.createElement('div');
+  card.className = 'toast-card';
+  card.innerHTML = `<div class="toast-icon">${icon(ICONS_BY_KIND[kind] || 'info', '18')}</div>`
+    + `<div class="toast-body"><div class="toast-title">${escapeHtml(String(title || ''))}</div>`
+    + (sub ? `<div class="toast-sub">${escapeHtml(String(sub))}</div>` : '')
+    + `</div><div class="toast-timer"></div>`;
+  stack.appendChild(card);
+  setTimeout(() => { card.style.opacity = '0'; setTimeout(() => card.remove(), 300); }, 3600);
+}
+
+// ── 多会话管理（P5.4 动态历史）──
+// 解决的核心问题：以前分析结果会堆在新对话的快捷卡下方，“新界面”不干净。
+// 现在：每次分析属于一个会话，新对话 = 新 threadId + 空白视图；
+// 侧栏会话列表可切回旧会话，因后端 checkpointer 已持久化（AsyncSqliteSaver），
+// 带同一 X-Run-Id 即可继续追问。
+const SESSIONS_KEY = 'audit_sessions_v1';
+let sessions = [];
+let currentSessionId = null;
+
+function _newThreadId() {
+  // 后端 normalize_run_id 只接受 16-64 位十六进制/连字符，UUID 天然符合
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY);
+    sessions = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(sessions)) sessions = [];
+  } catch (e) { sessions = []; }
+  // 一次性数据修复：旧版恢复渲染 bug（addMessage 重复入栈）会把同一批消息
+  // 成倍写回 localStorage。重复产物的 role/content/time 完全相同（time 精确到毫秒），
+  // 正常重发的消息时间戳必不同，按组合键去重即可安全修复已污染数据。
+  for (const s of sessions) {
+    if (!Array.isArray(s.messages) || s.messages.length < 2) continue;
+    const seen = new Set();
+    s.messages = s.messages.filter(m => {
+      const key = `${m.role}\u0000${m.content}\u0000${m.time || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+}
+
+function saveSessions() {
+  // 最多保留 30 个会话，避免 localStorage 溢出与后端 checkpoint 无限膨胀
+  if (sessions.length > 30) sessions = sessions.slice(0, 30);
+  // 配额溢出渐进式兜底（旧版 catch{} 静默吞掉，此后历史会持续保存失败）：
+  // ① 把最旧会话里的长文本降级为前 2000 字符重试；② 无可降级则删除最旧会话重试；
+  // 循环至写入成功或只剩唯一会话且无可降级项（避免死循环）。
+  for (let round = 0; round < 64; round++) {
+    try {
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      return;
+    } catch (e) {
+      let oldest = null;
+      for (const s of sessions) if (!oldest || (s.updatedAt || 0) < (oldest.updatedAt || 0)) oldest = s;
+      if (!oldest) return;
+      const degrade = [];
+      for (const m of (oldest.messages || [])) {
+        if (typeof m.content === 'string' && m.content.length > 2000) {
+          degrade.push(() => { m.content = m.content.slice(0, 2000) + '…（正文已截断，完整内容见 PDF 报告）'; });
+        }
+        const at = m.meta && m.meta.report && m.meta.report.ai_text;
+        if (typeof at === 'string' && at.length > 2000) {
+          degrade.push(() => { m.meta.report.ai_text = at.slice(0, 2000) + '…（正文已截断，完整内容见 PDF 报告）'; });
+        }
+      }
+      if (degrade.length) { degrade.forEach(f => f()); continue; }
+      if (sessions.length > 1) { sessions = sessions.filter(s => s.id !== oldest.id); continue; }
+      return;   // 仅剩唯一会话且无可降级项：放弃写入，不影响当前使用
+    }
+  }
+}
+
+function currentSession() {
+  return sessions.find(s => s.id === currentSessionId) || null;
+}
+
+function persistCurrentSession() {
+  const s = currentSession();
+  if (!s) return;
+  // 仅当消息数发生变化（即真正发生了操作：发消息 / 收到报告 / 系统提示）才更新 updatedAt。
+  // 纯切换或查看会话不会改变消息数，时间戳保持不变——修复「点进会话没操作，
+  // 列表时间戳却被刷成当前时间」的问题：updatedAt 应反映最后一次操作而非最后一次落盘。
+  const prevCount = Array.isArray(s.messages) ? s.messages.length : 0;
+  if (messages.length !== prevCount) {
+    s.updatedAt = Date.now();
+  }
+  s.messages = messages;
+  s.toolCallCount = toolCallCount;
+  // 标题取首条用户消息（剔除模块标记与快速模式关键词）
+  if (s.title === '新对话') {
+    const firstUser = messages.find(m => m.role === 'user');
+    if (firstUser) {
+      let t = String(firstUser.content || '');
+      Object.values(MODULE_MARKERS).forEach(mk => { t = t.split(mk).join(''); });
+      t = t.replace(/快速模式/g, '').replace(/\s+/g, ' ').trim();
+      if (t) s.title = t.slice(0, 18);
+    }
+  }
+  saveSessions();
+  renderSessionList();
+}
+
+function startNewSession() {
+  // 先把当前会话落盘（避免切走丢内容）
+  persistCurrentSession();
+  // 切走后思考卡 DOM 随 innerHTML 重写消失，计时器须同步停掉避免空转
+  if (_thinkTimer) { clearInterval(_thinkTimer); _thinkTimer = null; }
+  // 无论处于哪个面板，一律切回对话视图并关闭残留弹窗（P5.3）
+  try { togglePanel('chat'); } catch (e) {}
+  document.querySelectorAll('.history-modal, .module-choice-overlay').forEach(el => el.remove());
+
+  _disposeCharts(); // 释放旧图表实例防内存泄漏
+  const s = {
+    id: _newThreadId(), title: '新对话', threadId: _newThreadId(),
+    messages: [], toolCallCount: 0, createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  sessions.unshift(s);
+  currentSessionId = s.id;
+  saveSessions();
+
+  messages = [];
+  toolCallCount = 0;
+  document.getElementById('chatArea').innerHTML = welcomeHtml();
+  hydrateIcons(document.getElementById('chatArea'));
+  renderSessionList();
+  updateSessionInfo();
+  // 新会话不属于正在分析的会话，按钮必须是发送态（修复终止按钮残留）
+  updateSendButton();
+  // 窄屏抽屉模式：新建会话后自动收起侧栏，露出空白欢迎页
+  closeSidebarOnMobile();
+}
+
+function switchSession(id) {
+  if (id === currentSessionId) return;
+  persistCurrentSession();
+  const s = sessions.find(x => x.id === id);
+  if (!s) return;
+  // 思考卡 DOM 即将随 innerHTML 重写消失，先停掉计时器避免空转泄漏
+  if (_thinkTimer) { clearInterval(_thinkTimer); _thinkTimer = null; }
+  _disposeCharts(); // 释放旧会话的 ECharts 实例防内存泄漏
+  currentSessionId = id;
+  // slice() 断开与存储记录的数组别名：否则恢复渲染/后台写回会直接污染同一引用
+  messages = Array.isArray(s.messages) ? s.messages.slice() : [];
+  toolCallCount = s.toolCallCount || 0;
+  try { togglePanel('chat'); } catch (e) {}
+
+  const area = document.getElementById('chatArea');
+  if (!messages.length) {
+    area.innerHTML = welcomeHtml();
+  } else {
+    // 非空会话不显示欢迎页（修正“报告堆在快捷卡下方”的问题）。
+    // 用 renderMessage 仅渲染不入栈：旧版误用 addMessage 会把历史消息
+    // 重复 push 进 messages（N 条变 2N 条，切几次翻几倍），是消息
+    // 指数级重复的根因。
+    area.innerHTML = '';
+    messages.forEach(m => {
+      // 带 meta.report 的消息是完整报告，用 renderFinalReport 重建富格式视图
+      if (m.role === 'assistant' && m.meta && m.meta.report) {
+        renderFinalReport(m.meta.report, currentSessionId, true);
+      } else {
+        renderMessage(m.role, m.content, m.meta);
+      }
+    });
+    scrollToBottom();
+  }
+  // 切入的正是后台分析中的会话：传入 sessionId 让 showThinkingCard 从缓存恢复已完成步骤
+  if (isStreaming && streamingSessionId === id) showThinkingCard(id);
+  hydrateIcons(area);
+  renderSessionList();
+  updateSessionInfo();
+  updateSendButton();
+  // 窄屏抽屉模式：选完会话自动收起，否则浮层盖着对话区看不到切换结果
+  closeSidebarOnMobile();
+}
+
+function deleteSession(id, ev) {
+  if (ev) ev.stopPropagation();
+  // 删除的正是后台分析中的会话：同步终止其分析（产出已无宿主，白跑浪费）
+  if (isStreaming && streamingSessionId === id && currentController) {
+    currentController.abort();
+  }
+  sessions = sessions.filter(s => s.id !== id);
+  saveSessions();
+  if (id === currentSessionId) {
+    if (sessions.length) switchSessionForce(sessions[0].id);
+    else startNewSession();
+  } else {
+    renderSessionList();
+  }
+}
+
+function switchSessionForce(id) {
+  currentSessionId = null;   // 绕过“同 id 直接 return”的短路
+  switchSession(id);
+}
+
+function renderSessionList() {
+  const box = document.getElementById('sessionList');
+  if (!box) return;
+  if (!sessions.length) {
+    box.innerHTML = '<div class="session-empty">暂无历史会话</div>';
+    return;
+  }
+  box.innerHTML = sessions.map(s => {
+    const active = s.id === currentSessionId ? ' active' : '';
+    const n = (s.messages || []).length;
+    const time = new Date(s.updatedAt || s.createdAt).toLocaleString('zh-CN',
+      { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<div class="session-item${active}" onclick="switchSession('${s.id}')" tabindex="0" role="button" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchSession('${s.id}')}" title="${escapeHtml(s.title)}">`
+      + `<div class="session-main"><div class="session-title">${escapeHtml(s.title)}</div>`
+      + `<div class="session-meta">${time} · ${n} 条消息</div></div>`
+      + `<button class="session-del" onclick="deleteSession('${s.id}', event)" title="删除会话" aria-label="删除会话">${icon('trash', '13')}</button>`
+      + `</div>`;
+  }).join('');
+}
+
+function initSessions() {
+  loadSessions();
+  if (sessions.length) {
+    // 恢复最近一个会话（slice 断别名 + renderMessage 仅渲染不入栈，防重复累积）
+    currentSessionId = sessions[0].id;
+    messages = Array.isArray(sessions[0].messages) ? sessions[0].messages.slice() : [];
+    toolCallCount = sessions[0].toolCallCount || 0;
+    if (messages.length) {
+      const area = document.getElementById('chatArea');
+      area.innerHTML = '';
+      messages.forEach(m => {
+        if (m.role === 'assistant' && m.meta && m.meta.report) {
+          renderFinalReport(m.meta.report, currentSessionId, true);
+        } else {
+          renderMessage(m.role, m.content, m.meta);
+        }
+      });
+      hydrateIcons(area);
+    }
+  } else {
+    const s = {
+      id: _newThreadId(), title: '新对话', threadId: _newThreadId(),
+      messages: [], toolCallCount: 0, createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    sessions.push(s);
+    currentSessionId = s.id;
+    saveSessions();
+  }
+  renderSessionList();
+  updateSessionInfo();
 }
 
 function scrollToBottom() {
@@ -2300,7 +3290,7 @@ function updateSessionInfo() {
   document.getElementById('info-runid').textContent = messages.length > 0 ? (messages[0].time ? new Date(messages[0].time).toISOString().slice(11,19).replace(/:/g,'') : '-') : '-';
   const titleEl = document.getElementById('topbar-title');
   if (messages.length > 0) {
-    titleEl.textContent = '审计分析会话';
+    titleEl.textContent = '年报风险分析会话';
     titleEl.title = '当前会话中，点击「新会话」按钮开始新会话';
   } else {
     titleEl.textContent = '新建会话';
@@ -2314,7 +3304,92 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// ── 三模块标记（必须与后端 main.py 的 MODULE_MARKERS 严格一致）──
+// 前端把标记注入消息首部，后端 _detect_module 据此选择工具子集与固定骨架。
+const MODULE_MARKERS = {
+  financial: '【模块:财务健康度诊断】',
+  compliance: '【模块:合规与经营风险扫描】',
+  synthesis: '【模块:综合研判】',
+  outlook: '【模块:行业风向研判】',
+};
+
 // ── Fixed & Enhanced Markdown Renderer ─────────────────────
+/* ── ECharts 图表渲染（本地内置库，无网也能用）──
+ * renderMarkdown 只生成容器并把 spec 排队到 _pendingCharts，
+ * DOM 插入后再由 mountPendingCharts() 统一挂载——因为 echarts.init
+ * 必须在容器已入 DOM 且有尺寸后才能正确计算画布大小。
+ * echarts 库缺失时降级为数据表格，保证不白屏。 */
+let _pendingCharts = [];
+let _echartsInstances = [];
+// 单一全局 resize 监听（替代每个图表单独注册，避免累积泄漏）
+window.addEventListener('resize', () => { _echartsInstances.forEach(c => { try { c.resize(); } catch(e) {} }); });
+function _disposeCharts() { _echartsInstances.forEach(c => { try { c.dispose(); } catch(e) {} }); _echartsInstances = []; }
+
+function _chartFallbackTable(spec) {
+  // 无 echarts 库时的降级展现：把 series 渲染成可读表格
+  const xs = Array.isArray(spec.xAxis) ? spec.xAxis : [];
+  const head = ['类别'].concat(xs.map(x => escapeHtml(String(x))));
+  const rows = (spec.series || []).map(s => {
+    const cells = (s.data || []).map(v => `<td>${escapeHtml(String(v))}</td>`).join('');
+    return `<tr><td><b>${escapeHtml(String(s.name || ''))}</b></td>${cells}</tr>`;
+  }).join('');
+  return `<div class="table-scroll"><table class="echart-fallback"><thead><tr>`
+    + head.map(h => `<th>${h}</th>`).join('')
+    + `</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="echart-hint">未检测到本地 ECharts 库，已降级为表格展示（运行 scripts/fetch_echarts.py 可启用交互图表）</div>`;
+}
+
+function mountPendingCharts() {
+  if (!_pendingCharts.length) return;
+  const queue = _pendingCharts;
+  _pendingCharts = [];
+  const hasEcharts = typeof window.echarts !== 'undefined';
+  for (const { id, spec } of queue) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (!hasEcharts) { el.innerHTML = _chartFallbackTable(spec); continue; }
+    try {
+      const type = spec.type || 'line';
+      const chart = window.echarts.init(el, null, { renderer: 'canvas' });
+      _echartsInstances.push(chart);
+      const common = {
+        backgroundColor: 'transparent',
+        tooltip: { trigger: type === 'pie' ? 'item' : 'axis' },
+        legend: { textStyle: { color: '#8a97ad' }, top: 0 },
+        grid: { left: 56, right: 24, top: 40, bottom: 40 },
+        textStyle: { color: '#8a97ad' },
+      };
+      let option;
+      if (type === 'pie') {
+        const first = (spec.series || [])[0] || {};
+        option = Object.assign({}, common, {
+          series: [{
+            type: 'pie', radius: ['40%', '68%'],
+            data: (first.data || []).map((v, i) => ({
+              value: v, name: String((spec.xAxis || [])[i] ?? i),
+            })),
+            label: { color: '#c9d4e6' },
+          }],
+        });
+      } else {
+        option = Object.assign({}, common, {
+          xAxis: { type: 'category', data: spec.xAxis || [],
+                   axisLine: { lineStyle: { color: 'rgba(255,255,255,.15)' } } },
+          yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(255,255,255,.07)' } },
+                   axisLine: { lineStyle: { color: 'rgba(255,255,255,.15)' } } },
+          series: (spec.series || []).map(s => ({
+            name: s.name, type: type, data: s.data || [],
+            smooth: type === 'line', barMaxWidth: 28,
+          })),
+        });
+      }
+      chart.setOption(option);
+    } catch (err) {
+      el.innerHTML = _chartFallbackTable(spec);
+    }
+  }
+}
+
 function renderMarkdown(text) {
   if (!text) return '';
 
@@ -2333,6 +3408,31 @@ function renderMarkdown(text) {
 
   // 隐藏综合评分原始 JSON 段（评分已由独立评分卡可视化，避免重复展示原文）
   html = html.replace(/&lt;!--COMPREHENSIVE_SCORE--&gt;[\s\S]*?(?=\n\n|$)/, '');
+  // 同理隐藏 C 端轻量卡片的原始 JSON 段（已由投资参考卡/行业风向标卡片渲染；
+  // 工具 JSON 由 json.dumps 生成无空行，首个空行即段落终点，与评分卡契约一致）
+  html = html.replace(/&lt;!--INVESTMENT_CARD--&gt;[\s\S]*?(?=\n\n|$)/, '');
+  html = html.replace(/&lt;!--INDUSTRY_OUTLOOK--&gt;[\s\S]*?(?=\n\n|$)/, '');
+
+  // ── ECharts 图表块：```echarts + 固定 schema JSON → 交互图表容器 ──
+  // 必须放在通用代码块处理之前，否则会被当成普通代码块吞掉。
+  // 此时 html 已过 escapeHtml，需先反转义再 JSON.parse。
+  // 降级策略：JSON 非法 → 原样代码块；echarts 库缺失 → 渲染为数据表格（均不白屏）。
+  html = html.replace(/```echarts\n([\s\S]*?)```/g, (_, raw) => {
+    const jsonText = raw.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+    try {
+      const spec = JSON.parse(jsonText);
+      if (!spec || !Array.isArray(spec.series)) throw new Error('缺少 series');
+      const id = 'ec_' + Math.random().toString(36).slice(2, 10);
+      _pendingCharts.push({ id, spec });
+      return `<div class="echart-block">`
+        + `<div class="echart-head">${icon('chart')} <span>ECHARTS</span>`
+        + `<span class="echart-title">${escapeHtml(String(spec.title || ''))}</span></div>`
+        + `<div class="echart-canvas" id="${id}"></div></div>`;
+    } catch (err) {
+      return `<pre><code class="language-json">${jsonText}</code></pre>`;
+    }
+  });
 
   // Code blocks：超过 12 行的长代码块（如风险台账 JSON）自动折叠，点击展开
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
@@ -2365,24 +3465,32 @@ function renderMarkdown(text) {
   html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
   html = html.replace(/((<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
 
-  // Links — 本地文件链接触发下载，外部链接新窗口打开
+  // Links — 本地文件链接触发下载，外部链接新窗口打开（协议白名单防 XSS）
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
-    if (href.includes('/local_storage/') || href.match(/\.(pdf|xlsx|png|jpg|csv)$/i)) {
-      const fname = href.split('/').pop();
-      return `<a href="javascript:void(0)" class="download-link" data-url="${href}" data-name="${fname}" style="cursor:pointer">${text} ${icon('download')}</a>`;
+    // 协议安全检查：仅允许 http(s) 和站内路径，javascript: 等不安全协议退化为纯文本
+    const trimHref = href.trim();
+    const isSafe = /^https?:\/\//i.test(trimHref) || trimHref.startsWith('/');
+    if (!isSafe) return text; // 不安全协议不生成链接
+    if (trimHref.includes('/local_storage/') || trimHref.match(/\.(pdf|xlsx|png|jpg|csv)$/i)) {
+      const fname = trimHref.split('/').pop();
+      return `<a href="javascript:void(0)" class="download-link" data-url="${escapeHtml(trimHref)}" data-name="${escapeHtml(fname)}" style="cursor:pointer">${text} ${icon('download')}</a>`;
     }
-    return `<a href="${href}" target="_blank">${text}</a>`;
+    return `<a href="${escapeHtml(trimHref)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
   });
-  // 裸露的 URL（非 href 内的）
-  html = html.replace(/(?<!href=")(?<!data-url=")(https?:\/\/[^\s<]+)/g, (url) => {
+  // 裸露的 URL（兼容方案：不用 lookbehind，在回调中检查前缀排除已在属性中的）
+  html = html.replace(/(https?:\/\/[^\s<]+)/g, (url, _m, offset, full) => {
+    const prefix = full.slice(Math.max(0, offset - 12), offset);
+    if (/href="$/i.test(prefix) || /data-url="$/i.test(prefix)) return url;
     if (url.includes('/local_storage/')) {
       const fname = url.split('/').pop();
       return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
     }
-    return `<a href="${url}" target="_blank">${url}</a>`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
   // 裸露的 /local_storage/ 相对路径
-  html = html.replace(/(?<!href=")(?<!data-url=")(\/local_storage\/[^\s<>"]+)/g, (url) => {
+  html = html.replace(/(\/local_storage\/[^\s<>"]+)/g, (url, _m, offset, full) => {
+    const prefix = full.slice(Math.max(0, offset - 12), offset);
+    if (/href="$/i.test(prefix) || /data-url="$/i.test(prefix)) return url;
     const fname = url.split('/').pop();
     return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
   });
@@ -2394,7 +3502,7 @@ function renderMarkdown(text) {
       const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
       return `<tr>${cells}</tr>`;
     }).join('');
-    return `<table><thead><tr>${thCells}</tr></thead><tbody>${rows}</tbody></table>`;
+    return `<div class="table-scroll"><table><thead><tr>${thCells}</tr></thead><tbody>${rows}</tbody></table></div>`;
   });
 
   // Risk badges (use negative lookahead to avoid replacing inside HTML tags)
@@ -2403,7 +3511,7 @@ function renderMarkdown(text) {
   html = html.replace(/重要(?![^<]*>)/g, '<span class="risk-important">重要</span>');
   html = html.replace(/一般(?![^<]*>)/g, '<span class="risk-general">一般</span>');
   html = html.replace(/极高风险(?![^<]*>)/g, '<span class="risk-bad">极高风险</span>');
-  html = html.replace(/(?<!极)高风险(?![^<]*>)/g, '<span class="risk-bad">高风险</span>');
+  html = html.replace(/([^极]|^)高风险(?![^<]*>)/g, '$1<span class="risk-bad">高风险</span>');
   html = html.replace(/中等风险(?![^<]*>)/g, '<span class="risk-general">中等风险</span>');
   html = html.replace(/低风险(?![^<]*>)/g, '<span class="risk-good">低风险</span>');
 
@@ -2415,29 +3523,68 @@ function renderMarkdown(text) {
   const _cleanStep = (s) => s.trim()
     .replace(/^(?:<\/strong>)?\s*[:：]?\s*/, '')          // 段首残留的 </strong>：
     .replace(/\s*\d+\.\s*(?:<strong>)?\s*$/, '')          // 段尾下一步的序号与半截 <strong>
+    // 段内 (1)(2)… 子编号条目独立成行（全/半角均支持）：LLM 常把多个子条目写成
+    // 一整行，步骤卡变成密集文字墙（实测截图：数据发现/法规依据章挤成一团）。
+    // 前置 (.) 保证段首编号不切；后顾汉字/《避免误伤「（2019修订）」这类数字串。
+    .replace(/(.)\s*((?:（|\()\d{1,2}(?:）|\)))(?=[\u4e00-\u9fff《「])/g, '$1<br>$2')
     .trim();
   html = html.replace(/【数据发现】([\s\S]*?)【指标异常】([\s\S]*?)【法规依据】([\s\S]*?)【案例对照】([\s\S]*?)【风险判定】([\s\S]*?)(?=【数据发现】|$)/g,
     (m0, s1, s2, s3, s4, s5) => {
+      try {
+      // 【风险判定】捕获组一路吃到下一条风险/文末：LLM 冗余输出的字段列表、
+      // 审计建议列表、风险台账 JSON 折叠面板等后续内容会被整段吞进最后一步
+      // （实测事故①：重复列表塞进卡片；事故②：台账 JSON 折叠面板嵌进「风险判定」）——
+      // 先在首个边界处截断，卡片只收纯思维链正文，截下的尾巴另行处理。
+      // 边界 = 块级标签（含 JSON 折叠 <details>）或文本级边界（有序列表行/标题行/重复的字段项目符号）
+      let s5core = s5, tail = '';
+      let cut = s5.search(/<(?:ul|ol|h[1-6]|table|blockquote|pre|div|details|summary|section|figure)\b/i);
+      // 文本级边界（收敛版）：编号行仅在「前有空行」或「连续两个编号行」时才视为列表块起始，
+      // 避免「风险判定」段内合法编号内容（如 1.建议关注…）被拦腰切断（实测：卡片被截残）；
+      // 标题行与重复的五步标签项目符号保持无条件边界。
+      const textCut = s5.search(new RegExp(
+        '\\n\\s*\\n\\s*\\d+[.、)]\\s' +
+        '|\\n\\d+[.、)]\\s[^\\n]*\\n\\s*\\d+[.、)]\\s' +
+        '|(?:^|\\n)\\s*(?:#{1,4}\\s|-\\s+\\*{0,2}(?:指标异常|法规依据|案例对照|风险判定|数据发现)\\*{0,2}\\s*[:：])'
+      ));
+      if (textCut !== -1 && (cut === -1 || textCut < cut)) cut = textCut;
+      if (cut !== -1) { s5core = s5.slice(0, cut); tail = s5.slice(cut); }
       // LLM 偶尔把思维链输出为 Markdown 表格；表格在本正则之前已转为 <table> HTML，
       // 此时跨单元格抓取会撕裂表格结构（实测事故：列错位/卡片嵌进单元格）——
-      // 捕获段含表格标签时放弃卡片化，保持表格原样（表格本身也可读）
-      if (/<\/?t(?:able|head|body|r|d|h)\b/.test(m0)) return m0;
+      // 链正文含表格标签时放弃卡片化，保持原样（表格本身也可读）
+      if (/<\/?t(?:able|head|body|r|d|h)\b/.test(s1 + s2 + s3 + s4 + s5core)) return m0;
+      // 去重：尾巴首部列表若逐项都是五步标签的复述（与卡片内容完全重复），
+      // 整段丢弃；否则保留在卡片之后照常渲染。
+      const CHAIN_LABELS = ['数据发现', '指标异常', '法规依据', '案例对照', '风险判定'];
+      tail = tail.replace(/^(\s*<ul>[\s\S]*?<\/ul>)/, (ulBlock) => {
+        const items = ulBlock.match(/<li>[\s\S]*?<\/li>/g) || [];
+        if (!items.length) return ulBlock;
+        const allDup = items.every(li => {
+          const t = li.replace(/<[^>]+>/g, '').trim();
+          return CHAIN_LABELS.some(l => t.startsWith(l + '：') || t.startsWith(l + ':'));
+        });
+        return allDup ? '' : ulBlock;
+      });
       const steps = [
         { icon: '📊', bg: '#3b82f6', label: '数据发现', detail: _cleanStep(s1) },
         { icon: '📈', bg: '#f59e0b', label: '指标异常', detail: _cleanStep(s2) },
         { icon: '📜', bg: '#10b981', label: '法规依据', detail: _cleanStep(s3) },
         { icon: '⚖️', bg: '#8b5cf6', label: '案例对照', detail: _cleanStep(s4) },
-        { icon: '🎯', bg: '#ef4444', label: '风险判定', detail: _cleanStep(s5) },
+        { icon: '🎯', bg: '#ef4444', label: '风险判定', detail: _cleanStep(s5core) },
       ];
       let rc = `<div class="reasoning-chain" onclick="this.classList.toggle('open')">`;
-      rc += `<div class="reasoning-chain-header"><span class="arrow">▶</span> ${icon('branch')} 思维链推理过程（5步）</div>`;
+      rc += `<div class="reasoning-chain-header" tabindex="0" role="button" aria-label="展开/折叠思维链" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.parentElement.classList.toggle('open')}"><span class="arrow"></span> ${icon('branch')} 思维链推理过程（5步）</div>`;
       rc += `<div class="reasoning-chain-body">`;
       for (const st of steps) {
         rc += `<div class="rc-step"><div class="rc-step-icon" style="background:${st.bg}">${st.icon}</div>`;
         rc += `<div class="rc-step-content"><div class="rc-step-label">${st.label}</div>${st.detail}</div></div>`;
       }
       rc += `</div></div>`;
-      return rc;
+      return rc + tail;
+      } catch (e) {
+        // 卡片渲染异常兜底：宁失卡片不丢内容，原文照常展示（不因渲染 bug 吞掉用户可见正文）
+        console.warn('思维链卡片渲染失败，回退原文:', e);
+        return m0;
+      }
     });
 
   // Paragraphs
@@ -2453,15 +3600,26 @@ function renderMarkdown(text) {
   return html + reviewHtml;
 }
 
+// 渲染兜底：renderMarkdown 正则链任一环节异常时降级为纯文本展示，
+// 杜绝整条气泡空白/输出残缺（宁丑不丢：内容永远可见）。
+function renderMarkdownSafe(text) {
+  try {
+    return renderMarkdown(text);
+  } catch (e) {
+    console.warn('renderMarkdown 异常，降级纯文本渲染:', e);
+    return '<pre style="white-space:pre-wrap">' + escapeHtml(String(text == null ? '' : text)) + '</pre>';
+  }
+}
+
 // ══════════════════════════════════════════════════════════
 // 多智能体辩论复核卡片渲染（三段式折叠面板）
 // ══════════════════════════════════════════════════════════
 function renderReviewCard(reviewText) {
   // 解析三段式辩论结果：【风险关注方】/【风险否定方】/【裁判仲裁】
   const debateSections = [
-    { key: 'advocate', label: '【风险关注方】', title: '<span class="debate-dot" style="background:#f87171"></span> 风险关注方意见', cls: 'debate-advocate' },
-    { key: 'skeptic', label: '【风险否定方】', title: '<span class="debate-dot" style="background:#60a5fa"></span> 风险否定方反驳', cls: 'debate-skeptic' },
-    { key: 'arbiter', label: '【裁判仲裁】', title: '<span class="debate-dot" style="background:#c4b5fd"></span> 裁判仲裁结论', cls: 'debate-arbiter' },
+    { key: 'advocate', label: '【风险关注方】', title: '<span class="debate-dot" style="background:var(--debate-advocate)"></span> 风险关注方意见', cls: 'debate-advocate' },
+    { key: 'skeptic', label: '【风险否定方】', title: '<span class="debate-dot" style="background:var(--debate-skeptic)"></span> 风险否定方反驳', cls: 'debate-skeptic' },
+    { key: 'arbiter', label: '【裁判仲裁】', title: '<span class="debate-dot" style="background:var(--debate-arbiter)"></span> 裁判仲裁结论', cls: 'debate-arbiter' },
   ];
 
   const parsed = {};
@@ -2506,9 +3664,9 @@ function renderReviewCard(reviewText) {
   }
 
   const flowChips = [
-    { icon: '<span class="debate-dot" style="background:#f87171"></span>', name: '关注方', color: '#f87171', n: countPoints(parsed.advocate) },
-    { icon: '<span class="debate-dot" style="background:#60a5fa"></span>', name: '否定方', color: '#60a5fa', n: countPoints(parsed.skeptic) },
-    { icon: '<span class="debate-dot" style="background:#c4b5fd"></span>', name: '仲裁', color: '#c4b5fd', n: countPoints(parsed.arbiter) },
+    { icon: '<span class="debate-dot" style="background:var(--debate-advocate)"></span>', name: '关注方', color: 'var(--debate-advocate)', n: countPoints(parsed.advocate) },
+    { icon: '<span class="debate-dot" style="background:var(--debate-skeptic)"></span>', name: '否定方', color: 'var(--debate-skeptic)', n: countPoints(parsed.skeptic) },
+    { icon: '<span class="debate-dot" style="background:var(--debate-arbiter)"></span>', name: '仲裁', color: 'var(--debate-arbiter)', n: countPoints(parsed.arbiter) },
   ];
 
   let html = `<div class="review-card">`;
@@ -2532,9 +3690,9 @@ function renderReviewCard(reviewText) {
   for (const s of debateSections) {
     const content = parsed[s.key];
     if (!content) continue;
-    // 三段均默认折叠（摘要条已承担结论速览，详情按需展开）
+    // 三段均默认折叠（摘要条已承担结论速览，详情按需展开）；头部可键盘展开
     html += `<div class="debate-section ${s.cls}" onclick="this.classList.toggle('open')">`;
-    html += `<div class="debate-section-header"><span class="arrow">▶</span> ${s.title}</div>`;
+    html += `<div class="debate-section-header" tabindex="0" role="button" aria-label="展开/折叠辩论意见" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.parentElement.classList.toggle('open')}"><span class="arrow"></span> ${s.title}</div>`;
     html += `<div class="debate-section-body">${escapeHtml(content)}</div>`;
     html += `</div>`;
   }
@@ -2613,7 +3771,8 @@ function renderReviewContent(text) {
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
 
-  // ── 生成开屏粒子效果 ──
+  // ── 生成开屏粒子效果（每次加载都播放：开屏是产品门面，按用户意愿保留完整仪式感；
+  // 运动敏感用户的降级由 prefers-reduced-motion 块接管：粒子隐藏/动画静止）──
   (function initSplashParticles() {
     const container = document.getElementById('splashParticles');
     if (!container) return;
@@ -2639,7 +3798,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   })();
 
-  // ── 开屏自动关闭：2.5 秒后淡出过渡到主界面 ──
+  // ── 开屏自动关闭：2.5 秒后淡出过渡到主界面（每次加载都完整播放，用户明确保留）──
   setTimeout(() => {
     const splash = document.getElementById('splashOverlay');
     if (!splash) return;
@@ -2744,7 +3903,7 @@ async function doAuth(kind) {
       currentUser = { username: data.username, user_id: data.user_id };
       document.getElementById('authOverlay').remove();
       renderAccount();
-      addMessage('system', `🔐 欢迎，${data.username}！后续分析将自动保存到你的专属历史。`);
+      notify('登录成功', `欢迎 ${data.username}，后续分析将自动保存到你的专属历史`, 'success');
     } else {
       msgEl.textContent = data.message || '操作失败';
     }
@@ -2965,9 +4124,24 @@ function _tooltipLabel(key) {
 
 let currentPanel = 'chat';
 
+// 顶栏「本页内容解说」文案：按当前面板给一句话的用途说明，避免用户对着空界面猜该干什么
+const PANEL_HINTS = {
+  chat: '上传年报 PDF 或输入公司名，选模块开始分析，自动出风险报告与审计底稿',
+  eval: '量化效果评估：召回率 / F1 / 各风险维度准确率，并与规则引擎、零样本 LLM 基线对比',
+};
+
+function setPanelHint(type) {
+  const el = document.getElementById('topbarHint');
+  if (!el) return;
+  const text = PANEL_HINTS[type] || PANEL_HINTS.chat;
+  el.textContent = text;
+  el.title = text;   // 宽屏被省略号截断时，悬停仍能看全文
+}
+
 /** 切换主面板：对话 / 效果评估 */
 function togglePanel(type) {
   currentPanel = type;
+  setPanelHint(type);
   const chatArea = document.getElementById('chatArea');
   const inputArea = document.querySelector('.input-area');
   const evalPanel = document.getElementById('evalPanel');
@@ -2995,7 +4169,7 @@ async function loadEvaluation() {
   const statusDiv = document.getElementById('evalStatus');
   const contentDiv = document.getElementById('evalContent');
   statusDiv.style.display = '';
-  statusDiv.textContent = '加载评估数据中...';
+  statusDiv.textContent = '加载评估数据中…';
   contentDiv.style.display = 'none';
 
   try {
@@ -3030,9 +4204,9 @@ async function runEvaluationTool() {
   const btn = document.getElementById('btnRunEval');
   const statusDiv = document.getElementById('evalStatus');
   btn.disabled = true;
-  btn.textContent = '⏳ 评估中...';
+  btn.textContent = '评估中…';
   statusDiv.style.display = '';
-  statusDiv.textContent = '正在运行评估...';
+  statusDiv.textContent = '正在运行评估…';
 
   try {
     const res = await fetch(API_BASE + '/api/evaluate/run?mode=tool', { method: 'POST' });
@@ -3148,7 +4322,8 @@ function renderDimensionRadar(dims) {
     labelEls += `
       <g>
         <rect x="${lx2}" y="${ly2}" width="${lblW}" height="${lblH}" rx="8" fill="rgba(11,15,25,0.75)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-        <text x="${lx}" y="${ly - 5}" text-anchor="middle" fill="#94a3b8" font-size="10.5">${icons[i]} ${labels[i]}</text>
+        <circle cx="${lx2 + 12}" cy="${ly - 5}" r="4" fill="${dotColor}"/>
+        <text x="${lx2 + 22}" y="${ly - 2}" fill="#94a3b8" font-size="10.5">${labels[i]}</text>
         <text x="${lx}" y="${ly + 12}" text-anchor="middle" fill="${dotColor}" font-size="13" font-weight="bold">${v}%</text>
       </g>`;
   });
@@ -3308,5 +4483,6 @@ function renderEvalResults(data) {
 }
 
 </script>
+
 </body>
 </html>

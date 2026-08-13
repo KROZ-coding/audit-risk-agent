@@ -29,12 +29,36 @@ class TestRiskScorer:
         result = calculate_comprehensive_score.invoke(payload)
         return json.loads(result)
 
-    def test_all_empty_is_low_risk(self):
-        """三维度均为空时：财务0 + 披露默认30 + 校验0 → 综合分低风险"""
+    def test_all_empty_is_unavailable(self):
+        """三维度均为空（无数据）→ score=None、等级"未获取/无法判定"（N 补丁）。
+
+        旧行为：空维度给默认分 30/20/50 算出 9.0 低风险——把"无数据"说成"低风险"
+        比崩溃更隐蔽（实测缺陷：披露工具失败仍计 30 分）。
+        """
         result = self._invoke()
-        # 0*0.5 + 30*0.3 + 0*0.2 = 9.0
-        assert result["score"] == 9.0
-        assert result["level_key"] == "low"
+        assert result["score"] is None
+        assert result["level_key"] == "unavailable"
+        assert result["breakdown"] == {"financial": "未获取", "disclosure": "未获取",
+                                        "validation": "未获取"}
+
+    def test_partial_missing_reweights(self):
+        """部分维度未获取：剩余维度权重按比例重归一化（N 补丁）。"""
+        result = self._invoke(disclosure={"risk_score": 30})
+        # 仅披露可用：30 * 0.3/0.3 = 30.0
+        assert result["score"] == 30.0
+        assert result["breakdown"]["disclosure"] == 30.0
+        assert result["breakdown"]["financial"] == "未获取"
+
+    def test_partial_missing_notes_renormalization(self):
+        """50d：维度未获取时 notes 含归一化说明（评分透明化，防「分数无法解释」误读）。"""
+        result = self._invoke(
+            financial={"alerts": ["存贷双高异常"]},
+            validation={"failed_checks": 0},
+        )
+        notes = "；".join(str(n) for n in (result.get("notes") or []))
+        assert "披露合规维度未获取" in notes
+        assert "归一化" in notes
+        assert "归一化" in str(result.get("summary", ""))
 
     def test_high_risk_all_dimensions(self):
         """三维度均高风险时应合成为极高风险(critical)"""
@@ -53,23 +77,25 @@ class TestRiskScorer:
         severe = self._invoke(financial={"alerts": ["持续经营存在重大不确定性"]})
         assert severe["breakdown"]["financial"] > plain["breakdown"]["financial"]
 
-    def test_invalid_json_falls_back(self):
-        """非法 JSON 输入应降级为默认值而非抛异常"""
+    def test_invalid_json_returns_unavailable(self):
+        """非法 JSON 输入 → 维度未获取（score=None），不抛异常（N 补丁）。"""
         result = calculate_comprehensive_score.invoke({
             "financial_analysis_json": "not-a-json",
             "disclosure_check_json": "also-bad",
             "validation_json": "{broken",
         })
         data = json.loads(result)
-        # 财务50*0.5 + 披露30*0.3 + 校验20*0.2 = 25+9+4 = 38.0
-        assert data["score"] == 38.0
-        assert data["level_key"] == "medium"
+        assert data["score"] is None
+        assert data["level_key"] == "unavailable"
 
     def test_output_structure(self):
         """输出应包含分数、等级、三维度分解与权重字段"""
         result = self._invoke(validation={"failed_checks": 1})
         assert set(result["breakdown"].keys()) == {"financial", "disclosure", "validation"}
-        assert result["weights"]["financial"] == 0.50
+        # 50d：权重输出归一化（仅校验维度可用 → 权重 1.0，未获取维度 0）
+        assert result["weights"]["validation"] == 1.0
+        assert result["weights"]["financial"] == 0.0
+        assert result["weights"]["disclosure"] == 0.0
         assert 0 <= result["score"] <= 100
         assert result["summary"]
 
@@ -78,3 +104,71 @@ class TestRiskScorer:
         result = self._invoke(validation={"data_validation": {"failed_checks": 2}})
         # min(2*30,100)=60 → breakdown.validation 应为 60
         assert result["breakdown"]["validation"] == 60.0
+
+    # ── 畸形入参回归（串跑第三阶段 LLM 从摘要重构入参的真实事故形态）──
+    # 修复前：json.loads("27.5") 得到 float，后续 float.get 抛 AttributeError，
+    # 被 langgraph ToolNode 上抛后炸掉整条 SSE 流（见 app.log 2026-07-30 22:46 事故）
+
+    def test_scalar_inputs_do_not_crash(self):
+        """三个入参均为标量 JSON（数字/字符串）时：不抛异常，维度未获取。"""
+        result = calculate_comprehensive_score.invoke({
+            "financial_analysis_json": "27.5",
+            "disclosure_check_json": '"高风险"',
+            "validation_json": "0",
+        })
+        data = json.loads(result)
+        assert data["score"] is None
+        assert data["level_key"] == "unavailable"
+        assert "level" in data
+
+    def test_list_inputs_do_not_crash(self):
+        """入参为列表时同样不应崩溃（维度未获取）。"""
+        result = calculate_comprehensive_score.invoke({
+            "financial_analysis_json": '["alert1", "alert2"]',
+            "disclosure_check_json": "[1, 2, 3]",
+            "validation_json": "[]",
+        })
+        data = json.loads(result)
+        assert data["score"] is None or 0 <= data["score"] <= 100
+        assert "level_key" in data
+
+    def test_scalar_nested_fields_do_not_crash(self):
+        """嵌套字段为标量（如 data_validation: 0、alerts: 数字）时不崩溃。"""
+        result = self._invoke(
+            financial={"alerts": 3},              # alerts 不是列表
+            disclosure={"risk_score": {"a": 1}},  # risk_score 不是数字
+            validation={"data_validation": 0},    # 嵌套字段是标量
+        )
+        assert result["score"] is None or 0 <= result["score"] <= 100
+
+    def test_malformed_risk_models_and_opinion_do_not_crash(self):
+        """可选的模型/意见入参为标量时不崩溃且不抬升（三维度空 → 未获取）。"""
+        result = calculate_comprehensive_score.invoke({
+            "financial_analysis_json": "{}",
+            "disclosure_check_json": "{}",
+            "validation_json": "{}",
+            "risk_models_json": "9.9",
+            "audit_opinion_json": "null",
+        })
+        data = json.loads(result)
+        assert data["escalation"] == 0.0
+        assert data["score"] is None  # 三维度空 → 未获取（N 补丁），未被畸形可选入参扰动
+
+    def test_scalar_nested_model_fields_do_not_crash(self):
+        """模型/意见结构体内的嵌套字段为标量分值（实测事故形态）时：
+        不走顶层降级兜底，维度级守卫直接消化，无 error 字段"""
+        result = calculate_comprehensive_score.invoke({
+            "financial_analysis_json": "{}",
+            "disclosure_check_json": "{}",
+            "validation_json": "{}",
+            "risk_models_json": json.dumps({
+                "risk_models": {"altman_z_score": 1.2, "beneish_m_score": -2.8}
+            }),
+            "audit_opinion_json": json.dumps({
+                "audit_opinion": "保留意见", "going_concern": 1
+            }),
+        })
+        data = json.loads(result)
+        assert "error" not in data          # 维度级守卫生效，未落入顶层降级
+        assert data["escalation"] == 0.0    # 标量字段无法判定抬升，安全忽略
+        assert data["score"] is None        # 三维度空 → 未获取

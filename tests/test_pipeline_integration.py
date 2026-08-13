@@ -21,6 +21,7 @@
 """
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -30,7 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import agents.agent as agent_module
-from agents.agent import _AgentWrapper
+from agents.agent import _AgentWrapper, _drop_stale_validation_risks
 from tools.domain_guard import (
     CALCULATE_TOOL,
     DISCLOSURE_TOOL,
@@ -42,13 +43,23 @@ from tools.domain_guard import (
     ToolCallOrderViolation,
 )
 
-# 完整声明链路的正序（导出对为并行步骤，彼此无先后约束）
+# 完整声明链路的正序（与 main.TOOL_PIPELINE 锚点声明顺序一致，导出对为并行步骤）
 FULL_ORDER = [
+    "parse_pdf_report",
     VALIDATE_TOOL,
     CALCULATE_TOOL,
+    "calculate_risk_models",
     DISCLOSURE_TOOL,
+    "identify_audit_opinion",
     SEARCH_TOOL,
+    "search_regulatory_inquiries",
+    "industry_outlook",
+    "compare_multi_year",
     SCORE_TOOL,
+    "generate_risk_heatmap",
+    "generate_radar_chart",
+    "generate_trend_chart",
+    "investment_advisor",
     EXPORT_PDF_TOOL,
     EXPORT_EXCEL_TOOL,
 ]
@@ -157,17 +168,19 @@ def _build_messages(tool_order, final_text):
 def hermetic_env(monkeypatch):
     """隔离外部副作用：关闭多智能体辩论（避免真实 LLM 调用），
     并用 mock 替换 PDF/Excel 导出与图表工具（避免真实文件 I/O 与 matplotlib 绘图），
-    返回四个 recorder（pdf, excel, heatmap, radar）。"""
+    返回五个 recorder（pdf, excel, heatmap, radar, trend）。"""
     monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
     pdf_mock = _RecordingExportTool("http://local/report.pdf")
     excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
     heatmap_mock = _RecordingExportTool("/local_storage/charts/heatmap.png")
     radar_mock = _RecordingExportTool("/local_storage/charts/radar.png")
+    trend_mock = _RecordingExportTool("/local_storage/charts/trend.png")
     monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
     monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
     monkeypatch.setattr(agent_module, "generate_risk_heatmap", heatmap_mock)
     monkeypatch.setattr(agent_module, "generate_radar_chart", radar_mock)
-    return pdf_mock, excel_mock, heatmap_mock, radar_mock
+    monkeypatch.setattr(agent_module, "generate_trend_chart", trend_mock)
+    return pdf_mock, excel_mock, heatmap_mock, radar_mock, trend_mock
 
 
 class TestToolOrderGate:
@@ -175,7 +188,7 @@ class TestToolOrderGate:
 
     def test_full_correct_order_passes(self, hermetic_env):
         """完整声明链路正序 + 成对导出齐全：后处理应正常完成，不触发兜底导出。"""
-        pdf_mock, excel_mock, _hm, _rd = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(FULL_ORDER, "分析完成")))
         result = wrapper.invoke({"messages": []})
         assert result is not None
@@ -277,21 +290,46 @@ class TestChartBackfill:
     """图表兜底：图表已从 LLM 链路摘除，由 _post_process 并行补生（快速模式除外）。"""
 
     def test_charts_backfilled_in_normal_mode(self, hermetic_env):
-        """普通模式：LLM 未调图表 → 热力图/雷达图各兜底补生一次，URL 追加到正文。"""
-        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        """普通模式：LLM 未调图表 → 热力图/雷达图各兜底补生一次；
+        趋势图缺多年数据时降级为可见警告而非静默缺失。"""
+        _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
         result = wrapper.invoke({"messages": []})
         assert len(heatmap_mock.calls) == 1
         assert len(radar_mock.calls) == 1
+        # 无多年数据：不调用工具，附可见警告
+        assert trend_mock.calls == []
         text = _last_ai_text(result)
         assert "风险热力图" in text and "/local_storage/charts/heatmap.png" in text
         assert "财务雷达图" in text and "/local_storage/charts/radar.png" in text
+        assert "趋势折线图生成失败" in text
+
+    def test_trend_backfilled_from_multi_year_data(self, hermetic_env):
+        """多年对比已调用（含 ≥2 年数据）→ 趋势折线图由系统兜底生成并附 URL。"""
+        _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
+        my_data = json.dumps({
+            "years_analyzed": ["2023", "2024"],
+            "indicators_by_year": {
+                "2023": {"revenue": 100, "net_profit": 10, "operating_cashflow": 5},
+                "2024": {"revenue": 120, "net_profit": 12, "operating_cashflow": 8},
+            },
+        }, ensure_ascii=False)
+        msgs = [HumanMessage(content="请分析年报")]
+        msgs.extend(_tool_msgs([VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                                SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]))
+        msgs.append(ToolMessage(content=my_data, name="compare_multi_year", tool_call_id="call_my", id="tm_my"))
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        assert len(trend_mock.calls) == 1
+        text = _last_ai_text(result)
+        assert "趋势折线图" in text and "/local_storage/charts/trend.png" in text
 
     def test_charts_not_backfilled_in_fast_mode(self, hermetic_env):
         """快速模式（消息含关键词）：保持零图表定位，不补图。"""
-        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
         msgs = [HumanMessage(content="请分析年报\n\n（快速模式：速度优先）")]
@@ -301,17 +339,246 @@ class TestChartBackfill:
         wrapper.invoke({"messages": []})
         assert heatmap_mock.calls == []
         assert radar_mock.calls == []
+        assert trend_mock.calls == []
 
     def test_llm_called_charts_not_duplicated(self, hermetic_env):
         """LLM 已自行调用图表（如多年趋势场景）：兜底不重复补生。"""
-        _pdf, _xls, heatmap_mock, radar_mock = hermetic_env
+        _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL,
                  SCORE_TOOL, "generate_risk_heatmap", "generate_radar_chart",
+                 "generate_trend_chart",
                  EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
         wrapper.invoke({"messages": []})
         assert heatmap_mock.calls == []
         assert radar_mock.calls == []
+        assert trend_mock.calls == []
+
+
+class TestDisclaimerBackfill:
+    """AI 生成声明系统兜底：sp 要求回复末尾附声明，LLM 漏附时系统补上，
+    已附时不得重复追加（防合规声明缺失 / 重复刷屏）。"""
+
+    def test_disclaimer_backfilled_when_missing(self, hermetic_env):
+        """LLM 回复未附声明 → 系统在末尾追加声明。"""
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert "AI 辅助生成" in text
+        assert "不构成专业审计意见或投资建议" in text
+
+    def test_disclaimer_not_duplicated_when_present(self, hermetic_env):
+        """LLM 已附声明 → 系统不重复追加（保持原样）。"""
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
+        final_text = (_RISK_JSON +
+                      "\n\n⚠️ 以上分析由 AI 辅助生成，仅供审计参考，不构成专业审计意见或投资建议。")
+        msgs = [HumanMessage(content="请分析年报")]
+        msgs.extend(_tool_msgs([VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                                SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]))
+        msgs.append(AIMessage(content=final_text))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert text.count("AI 辅助生成") == 1
+
+
+class TestStaleValidationCleanup:
+    """幽灵数据清洗：引用已通过校验项的过期风险条目移出明细（防跨版本数据串用）。"""
+
+    def test_stale_check_reference_dropped(self):
+        """条目 evidence 精确引用已通过（passed=True）的校验项 → 剔除并留痕。"""
+        report = {"risk_details": [
+            {"risk_id": "R007", "title": "勾稽差异及担保披露问题可能触发监管关注",
+             "evidence": "校验项：现金流勾稽，差异：45541.0（16.71%）"},
+            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +67.18%"},
+        ]}
+        vd = {"data_validation": {"all_checks": [
+            {"check": "现金流勾稽", "passed": True,
+             "message": "现金流勾稽成立，无异常", "difference_pct": "0.34%"},
+        ]}}
+        n = _drop_stale_validation_risks(report, vd)
+        assert n == 1
+        assert [r["risk_id"] for r in report["risk_details"]] == ["R001"]
+        assert report["excluded_items"][0]["risk_id"] == "R007"
+
+    def test_stale_message_substring_dropped(self):
+        """条目整段引用已通过 check 的 message（≥8 字）→ 剔除。"""
+        report = {"risk_details": [
+            {"risk_id": "V001",
+             "title": "现金流勾稽不成立，差45541.00（16.71%），存在数据可靠性风险",
+             "evidence": "校验项：现金流勾稽，差异：45541.0"},
+        ]}
+        vd = {"data_validation": {"all_checks": [
+            {"check": "现金流勾稽", "passed": True,
+             "message": "现金流勾稽不成立，差45541.00（16.71%），存在数据可靠性风险"},
+        ]}}
+        assert _drop_stale_validation_risks(report, vd) == 1
+        assert report["risk_details"] == []
+
+    def test_failed_check_reference_kept(self):
+        """条目引用未通过（passed=False）的校验项 → 保守保留。"""
+        report = {"risk_details": [
+            {"risk_id": "V001", "title": "现金流勾稽不成立", "evidence": "校验项：现金流勾稽"},
+        ]}
+        vd = {"data_validation": {"all_checks": [
+            {"check": "现金流勾稽", "passed": False,
+             "message": "现金流勾稽不成立，差45541.00（16.71%），存在数据可靠性风险"},
+        ]}}
+        assert _drop_stale_validation_risks(report, vd) == 0
+        assert len(report["risk_details"]) == 1
+
+    def test_unmatched_evidence_kept(self):
+        """无法对应到具体校验项 → 保守保留（防误删真实风险）。"""
+        report = {"risk_details": [
+            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +67.18%"},
+        ]}
+        vd = {"data_validation": {"all_checks": [
+            {"check": "现金流勾稽", "passed": True, "message": "现金流勾稽成立，无异常"},
+        ]}}
+        assert _drop_stale_validation_risks(report, vd) == 0
+        assert len(report["risk_details"]) == 1
+
+
+class TestScoreLedgerBackfill:
+    """L 下沉：系统评分快照回写台账层（comprehensive_score 字段 + overall_assessment 文本），
+    辩论/导出读到的 risk_json 不再含 LLM 写入的旧评分（v23 实证：辩论引用台账 15.7 与系统 12.6 矛盾）。"""
+
+    def test_stale_score_overwritten_in_ledger(self, hermetic_env, monkeypatch):
+        """LLM 台账旧评分 15.7 → 导出兜底收到的台账 comprehensive_score=12.6，
+        overall_assessment 旧分数表述被吞净替换。"""
+        import json as _json
+        import tools.risk_scorer as rs_mod
+        from unittest.mock import MagicMock
+
+        pdf_mock, _excel, _hm, _rd, _tr = hermetic_env
+        monkeypatch.setattr(rs_mod, "calculate_comprehensive_score",
+                            MagicMock(invoke=MagicMock(return_value=_json.dumps(
+                                {"score": 12.6, "level": "低风险", "level_key": "low",
+                                 "base_score": 12.6, "escalation": 0.0,
+                                 "breakdown": {"financial": 21.0, "disclosure": 7.1,
+                                                "validation": 0.0}},
+                                ensure_ascii=False))))
+        ledger = ('{"company_info": {"company_name": "测试公司", "report_year": "2025"}, '
+                  '"comprehensive_score": {"score": 15.7, "level": "中等风险"}, '
+                  '"overall_assessment": "整体风险中等（综合评分15.7分，中等风险），建议关注。", '
+                  '"risk_details": []}')
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, ledger)))
+        wrapper.invoke({"messages": []})
+
+        exported = _json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert exported["comprehensive_score"]["score"] == 12.6
+        assert exported["comprehensive_score"]["level"] == "低风险"
+        # 旧分数表述被吞净替换（L 下沉到字段层）
+        assert "15.7" not in exported["overall_assessment"]
+        assert "12.6分（低风险）" in exported["overall_assessment"]
+        # 渲染层快照同步就位（导出端 L 补丁可直接使用）
+        assert exported["comprehensive_score_snapshot"]["score"] == 12.6
+
+    def test_message_layer_rewritten_for_frontend(self, hermetic_env, monkeypatch):
+        """L 下沉·消息层：前端直接展示的 last_ai.content 也被回写——正文旧分表述
+        替换 + 内嵌 ```json 台账块 comprehensive_score 覆盖（v24 实证：正文 18.5 与
+        系统评分卡 14.8 同屏矛盾，用户多次反馈的根因）。"""
+        import json as _json
+        import tools.risk_scorer as rs_mod
+        from unittest.mock import MagicMock
+
+        _pdf, _excel, _hm, _rd, _tr = hermetic_env
+        monkeypatch.setattr(rs_mod, "calculate_comprehensive_score",
+                            MagicMock(invoke=MagicMock(return_value=_json.dumps(
+                                {"score": 12.6, "level": "低风险", "level_key": "low",
+                                 "base_score": 12.6, "escalation": 0.0,
+                                 "breakdown": {"financial": 21.0, "disclosure": 7.1,
+                                                "validation": 0.0}},
+                                ensure_ascii=False))))
+        ledger = ('{"company_info": {"company_name": "测试公司", "report_year": "2025"}, '
+                  '"comprehensive_score": {"score": 18.5, "level": "低风险"}, '
+                  '"overall_assessment": "整体处于低风险水平（综合评分18.5分），财务结构稳健。", '
+                  '"risk_details": []}')
+        final_text = ("整体处于低风险水平（综合评分18.5分），财务结构稳健。\n\n"
+                      "```json\n" + ledger + "\n```")
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL]
+        msgs = [HumanMessage(content="请分析年报")]
+        msgs.extend(_tool_msgs(order))
+        msgs.append(AIMessage(content=final_text))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        text = str(final_ai.content)
+        # 正文旧分表述被替换（吞全 span）
+        assert "18.5" not in text
+        assert "综合风险评分 12.6分（低风险）" in text
+        # 内嵌台账块 comprehensive_score 已覆盖为系统值
+        block = re.search(r"```json\s*(\{.*\})\s*```", text, re.S)
+        assert block, "消息中应保留 ```json 台账块"
+        embedded = _json.loads(block.group(1))
+        assert embedded["comprehensive_score"]["score"] == 12.6
+        assert embedded["comprehensive_score"]["level"] == "低风险"
+
+
+class TestToolPipelineAnchors:
+    """进度锚点与工具注册表的同步（新增工具必须同步进度映射）
+
+    进度条靠 TOOL_PIPELINE 把工具名映射为阶段名 + 百分比。若新增工具未登记锚点，
+    用户会看到进度条卡在前一个阶段长时间不动（实测为“卡死”观感）；
+    若锚点百分比不递增，进度条会回退。本组用例把两者固定下来。
+    """
+
+    def _pipeline(self):
+        from main import TOOL_PIPELINE
+        return TOOL_PIPELINE
+
+    def _registered_tool_names(self):
+        """取全量注册工具名（module=None 即不裁剪）。
+
+        同时覆盖 MODULE_TOOLS（四模块子集）与 LIGHT_MODULE_TOOLS（C 端轻量子集），
+        否则新增轻量工具（如 investment_advisor）漏锚点不会被测出。
+        """
+        from agents.agent import MODULE_TOOLS, LIGHT_MODULE_TOOLS
+        names = set()
+        for subset in {**MODULE_TOOLS, **LIGHT_MODULE_TOOLS}.values():
+            names |= set(subset)
+        return names
+
+    def test_anchor_percentages_ascend(self):
+        pcts = [p for _n, _s, p in self._pipeline()]
+        assert pcts == sorted(pcts), "锚点百分比必须单调递增，否则进度条会回退"
+        assert all(0 < p < 100 for p in pcts), "锚点不得占用 0/100 两个终态值"
+
+    def test_anchor_names_unique(self):
+        names = [n for n, _s, _p in self._pipeline()]
+        assert len(names) == len(set(names))
+
+    def test_new_tools_have_anchors(self):
+        """P3 新增的两个工具必须有进度锚点（它们均为耗时可见步骤）。"""
+        names = {n for n, _s, _p in self._pipeline()}
+        assert "calculate_risk_models" in names
+        assert "identify_audit_opinion" in names
+
+    def test_every_module_tool_is_anchored(self):
+        """三个模块子集里的工具全部需有锚点，否则该模块运行时进度条会断档。"""
+        anchored = {n for n, _s, _p in self._pipeline()}
+        missing = self._registered_tool_names() - anchored
+        assert not missing, f"以下模块工具缺少进度锚点：{sorted(missing)}"
+
+    def test_anchor_order_matches_declared_chain(self):
+        """锚点顺序必须与领域声明链路一致（校验→指标→披露→法规→评分→导出）。"""
+        names = [n for n, _s, _p in self._pipeline()]
+        idx = {n: i for i, n in enumerate(names)}
+        for earlier, later in zip(FULL_ORDER, FULL_ORDER[1:]):
+            assert idx[earlier] < idx[later], f"{earlier} 锚点应早于 {later}"
+
+    def test_anchor_steps_are_chinese_labels(self):
+        """阶段名面向用户展示，不得遗留工具原名这类未翻译文本。"""
+        for name, step, _p in self._pipeline():
+            assert step and step != name
+            assert any("\u4e00" <= ch <= "\u9fff" for ch in step)
 
 
 class TestPairedExportGate:
@@ -319,7 +586,7 @@ class TestPairedExportGate:
 
     def test_missing_excel_is_backfilled(self, hermetic_env):
         """LLM 仅导出 PDF、遗漏 Excel：兜底应补调 Excel，PDF 不重复调用。"""
-        pdf_mock, excel_mock, _hm, _rd = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
         # 正序但缺 export_excel_report
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL]
@@ -332,7 +599,7 @@ class TestPairedExportGate:
 
     def test_missing_pdf_is_backfilled(self, hermetic_env):
         """LLM 仅导出 Excel、遗漏 PDF：兜底应补调 PDF，Excel 不重复调用。"""
-        pdf_mock, excel_mock, _hm, _rd = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_EXCEL_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
@@ -342,9 +609,516 @@ class TestPairedExportGate:
 
     def test_both_missing_are_backfilled(self, hermetic_env):
         """LLM 完全遗漏导出：兜底应同时补调 PDF 与 Excel，保证成对齐全。"""
-        pdf_mock, excel_mock, _hm, _rd = hermetic_env
+        pdf_mock, excel_mock, _hm, _rd, _tr = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL, SCORE_TOOL]
         wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
         wrapper.invoke({"messages": []})
         assert len(pdf_mock.calls) == 1
         assert len(excel_mock.calls) == 1
+
+
+class TestPdfModuleBackfill:
+    """模块裁剪产物：兜底 PDF 导出必须透传当前模块，点单模块只出对应专项报告，
+    避免选财务健康却收到全套三份（产物过滤逻辑在 pdf_export 内，此处验证接线）。"""
+
+    @pytest.mark.parametrize("module,expected", [
+        ("financial", "financial"),
+        ("compliance", "compliance"),
+        ("synthesis", "synthesis"),
+        (None, ""),   # 未指定模块：透传空串 → 导出全部三份
+    ])
+    def test_backfill_pdf_passes_module(self, hermetic_env, module, expected):
+        pdf_mock, _excel, _hm, _rd, _tr = hermetic_env
+        # 正序但完全未导出，触发 PDF 兜底补调
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL, SCORE_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)), module=module)
+        wrapper.invoke({"messages": []})
+        assert len(pdf_mock.calls) == 1
+        assert pdf_mock.calls[0].get("module") == expected
+
+
+class _FakeResp:
+    """模拟 ChatOpenAI.invoke 返回的响应对象（仅需 .content 属性）。"""
+
+    def __init__(self, content):
+        self.content = content
+
+
+# 仲裁裁定：R001 等级 重大→重要（等级实际变更，触发图表重生）
+_ARBITER_LEVEL_CHANGE = (
+    "【逐条裁定】R001 采纳否定方意见，降为重要\n"
+    '【裁定JSON】{"adjustments":[{"risk_id":"R001","final_level":"重要",'
+    '"reason":"央企背景，整体风险可控"}],"verdict":"需补充"}'
+)
+
+# 仲裁裁定：新增披露类风险 R006（信披合规维度，触发一致性注记）
+_ARBITER_NEW_DISCLOSURE = (
+    '【裁定JSON】{"adjustments":[{"risk_id":"R006","final_level":"重要",'
+    '"dimension":"信披合规","title":"关联交易披露不够充分",'
+    '"evidence":"年报未完整披露关联交易定价","confidence":0.6,'
+    '"reason":"遗漏补充"}],"verdict":"需补充"}'
+)
+
+
+def _debate_env(monkeypatch, arbiter_text):
+    """开启辩论（mock 三轮 LLM）并 mock 全部导出/图表工具，返回五个 recorder。"""
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
+    fake = MagicMock()
+    fake.invoke.side_effect = [
+        _FakeResp("关注方意见"), _FakeResp("否定方意见"), _FakeResp(arbiter_text),
+    ]
+    monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: fake)
+    pdf_mock = _RecordingExportTool("http://local/report.pdf")
+    excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
+    heatmap_mock = _RecordingExportTool("/local_storage/charts/heatmap.png")
+    radar_mock = _RecordingExportTool("/local_storage/charts/radar.png")
+    trend_mock = _RecordingExportTool("/local_storage/charts/trend.png")
+    monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+    monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
+    monkeypatch.setattr(agent_module, "generate_risk_heatmap", heatmap_mock)
+    monkeypatch.setattr(agent_module, "generate_radar_chart", radar_mock)
+    monkeypatch.setattr(agent_module, "generate_trend_chart", trend_mock)
+    return pdf_mock, excel_mock, heatmap_mock, radar_mock, trend_mock
+
+
+class TestArbiterChartRegen:
+    """50b：仲裁改级后（applied>0 且有 level 实际变更），热力图/雷达图须用仲裁后
+    台账强制重生（即使 LLM 主运行阶段已调用过图表工具），且回复注明「仲裁后更新版」。"""
+
+    def test_charts_regen_when_arbiter_changes_level(self, monkeypatch):
+        pdf_mock, excel_mock, heatmap_mock, radar_mock, trend_mock = \
+            _debate_env(monkeypatch, _ARBITER_LEVEL_CHANGE)
+        # 图表工具已在「LLM」阶段调用（called 含图表工具名）——无仲裁改级时不会重生
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL, SCORE_TOOL,
+                 "generate_risk_heatmap", "generate_radar_chart"]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, _RISK_JSON)))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 仲裁改级 → 图表强制重生且注明更新版
+        assert "（仲裁后更新版）" in text
+        assert len(heatmap_mock.calls) == 1
+        assert len(radar_mock.calls) == 1
+        # 重生输入须为仲裁后台账（R001 已降为重要）
+        regen_ledger = json.loads(heatmap_mock.calls[0].get("risk_report_json") or "{}")
+        r1 = next(r for r in regen_ledger["risk_details"] if r["risk_id"] == "R001")
+        assert r1["level"] == "重要"
+        assert r1["original_level"] == "重大"
+
+
+class TestDisclosureConsistencyNote:
+    """50b：仲裁新增披露类风险 + 披露检查满分/无缺失 → 生成一致性注记，
+    写入导出台账并前置到网页回复。"""
+
+    def test_note_generated_and_written_to_ledger(self, monkeypatch):
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _ARBITER_NEW_DISCLOSURE)
+        # 披露检查结果：满分 100 且无问题、无缺失章节（与仲裁新增信披风险矛盾）
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 100, "risk_score": 0,
+                                            "checked_items": 14, "passed_items": 14,
+                                            "issues": [], "sections_missing": [],
+                                            "reconciliation_checks": 0}, ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 网页回复前置可见提示
+        assert "披露合规一致性提示" in text
+        assert "仲裁阶段补充披露类风险 1 条" in text
+        # 注记写入导出 PDF 的台账（Excel 同一份）
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert "仲裁阶段补充披露类风险 1 条" in exported["disclosure_consistency_note"]
+
+    def test_no_note_when_check_not_full_score(self, monkeypatch):
+        """披露检查未满分（含问题）时不生成注记。"""
+        pdf_mock, _excel, _hm, _rd, _tr = _debate_env(monkeypatch, _ARBITER_NEW_DISCLOSURE)
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 80, "risk_score": 20,
+                                            "checked_items": 14, "passed_items": 13,
+                                            "issues": ["缺失必要章节：公司治理"],
+                                            "sections_missing": ["公司治理"],
+                                            "reconciliation_checks": 0}, ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper.invoke({"messages": []})
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert "disclosure_consistency_note" not in exported
+
+
+# 仲裁裁定：R004 一般→重要 + 新增 R005 重要（最终 5 个重要级，触发等级底线）
+_FLOOR_ARBITER = (
+    '【裁定JSON】{"adjustments":['
+    '{"risk_id":"R004","final_level":"重要","reason":"油价下行叠加减值风险"},'
+    '{"risk_id":"R005","final_level":"重要","dimension":"经营与财务",'
+    '"title":"油气资产减值测试不充分","evidence":"油气资产规模庞大",'
+    '"confidence":0.6,"reason":"遗漏补充"}],"verdict":"需补充"}'
+)
+
+# 含 4 条风险（3 重要 + 1 一般）的台账，仲裁后变为 5 重要（与 17:59 版同构）
+_FIVE_IMPORTANT_LEDGER = json.dumps({
+    "company_info": {"company_name": "集成测试公司", "report_year": "2025"},
+    "risk_details": [
+        {"risk_id": "R001", "dimension": "财务错报风险", "level": "重要", "title": "应收激增"},
+        {"risk_id": "R002", "dimension": "财务错报风险", "level": "重要", "title": "存贷双高"},
+        {"risk_id": "R003", "dimension": "关联交易风险", "level": "重要", "title": "关联交易规模大"},
+        {"risk_id": "R004", "dimension": "持续经营风险", "level": "一般", "title": "油价下行盈利承压"},
+    ],
+    "overall_assessment": "整体风险可控，综合风险评分10.5分（低风险）。",
+}, ensure_ascii=False)
+
+
+def _score_stub_json():
+    """构造系统评分兑底使用的确定性评分 JSON（10.5 低风险，将被底线规则上调）。"""
+    return json.dumps({
+        "score": 10.5, "level": "低风险", "level_key": "low",
+        "base_score": 10.5, "escalation": 0.0, "escalation_reasons": [],
+        "breakdown": {"financial": 10.0, "disclosure": 10.0, "validation": 10.0},
+        "weights": {"financial": 0.5, "disclosure": 0.3, "validation": 0.2},
+    }, ensure_ascii=False)
+
+
+class TestLevelFloorIntegration:
+    """50c：仲裁后 5 个重要级 → 风险等级底线触发（评分卡重建 + 消息重刷 + 台账注记）。
+
+    实测 17:59 版同构场景：4 条风险（3 重要 + 1 一般）经仲裁变 5 个重要级，
+    系统评分仍为 10.5 低风险——底线规则须强制上调为 51 分高风险。"""
+
+    def test_floor_escalates_after_arbitration(self, monkeypatch):
+        from unittest.mock import MagicMock
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _FLOOR_ARBITER)
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=f"分析完成，风险台账如下：\n```json\n{_FIVE_IMPORTANT_LEDGER}\n```"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 底线触发：评分卡重建为 51 分高风险 + 原评分作废警示可见
+        assert "风险等级底线规则" in text
+        assert "51.0分（高风险）" in text
+        # 50e 两段式：辩论前预锁 10.5→26（中等），仲裁后 5 项重要→51（高），
+        # 第二阶段警示为「原模型评分 26 分已作废」（预锁后 26 成为新基准）
+        assert "原模型评分 26 分已作废" in text
+        # 消息层旧分表述重刷为高风险定级
+        assert "10.5分（低风险）" not in text
+        # PDF 载荷含底线注记与新评分（Excel 同一份台账）
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert "风险等级底线规则" in exported["level_floor_note"]
+        assert exported["comprehensive_score"]["score"] == 51
+        assert exported["comprehensive_score"]["level"] == "高风险"
+        assert exported["comprehensive_score"]["base_score"] == 51
+
+
+class TestCashflowPenetrationNote:
+    """50c：应收背离告警 → 跨期穿透注记写入台账并前置到回复可见区。"""
+
+    def test_penetration_note_written_and_visible(self, monkeypatch):
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
+        pdf_mock = _RecordingExportTool("http://local/report.pdf")
+        excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
+        heatmap_mock = _RecordingExportTool("/local_storage/charts/heatmap.png")
+        radar_mock = _RecordingExportTool("/local_storage/charts/radar.png")
+        trend_mock = _RecordingExportTool("/local_storage/charts/trend.png")
+        monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+        monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap", heatmap_mock)
+        monkeypatch.setattr(agent_module, "generate_radar_chart", radar_mock)
+        monkeypatch.setattr(agent_module, "generate_trend_chart", trend_mock)
+
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps(
+                {"indicators": {}, "alerts": [
+                    "应收账款增速(67.18%)显著高于营收增速(-6.74%)，可能存在提前确认收入或放宽信用政策"]},
+                ensure_ascii=False), name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 网页回复可见警示
+        assert "跨期穿透提示" in text
+        assert "经营性应付项目变动" in text
+        # PDF 载荷写入确定性注记（Excel 同源）
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert "应收账款增速显著高于营收增速" in exported["cashflow_penetration_note"]
+
+    def test_no_note_without_ar_alert(self, monkeypatch):
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
+        pdf_mock = _RecordingExportTool("http://local/report.pdf")
+        excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
+        monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+        monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": ["资产负债率 = 75%，超过 70%，财务杠杆较高"]},
+                                           ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper.invoke({"messages": []})
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert "cashflow_penetration_note" not in exported
+
+
+class TestArbiterVerdictMarking:
+    """50d：仲裁 verdict=需补充 时降级可见状态标记（不阻断输出，adjustments 仍应用）。"""
+
+    def test_incomplete_verdict_marked_in_reply_and_ledger(self, monkeypatch):
+        from unittest.mock import MagicMock
+        # _ARBITER_LEVEL_CHANGE 的 verdict 为「需补充」→ 触发状态标记
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _ARBITER_LEVEL_CHANGE)
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 50e：补全重试失败（mock 仅 3 次 invoke）→ 横幅替换，「需补充」不穿透
+        assert "仲裁状态：仲裁未完成" in text
+        assert "仲裁未完成（系统补全重试失败" in text
+        assert "需补充" not in text
+        # 台账写入仲裁状态字段（PDF/Excel 同源）
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        assert exported["arbiter_incomplete"] is True
+        assert exported["arbiter_verdict"] == "需补充"
+        # 50d：semantic_id 已写入导出台账
+        for r in exported["risk_details"]:
+            assert r.get("semantic_id")
+
+
+class TestScorePlaceholderAndIndexInjection:
+    """50e：正文评分占位符回填 + 风险索引表注入（JSON 驱动）。"""
+
+    def _env(self, monkeypatch, arbiter_text):
+        from unittest.mock import MagicMock
+        llm = MagicMock()
+        llm.invoke.side_effect = [
+            _FakeResp("关注方意见"), _FakeResp("否定方意见"), _FakeResp(arbiter_text),
+        ]
+        monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: llm)
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+        pdf_mock = _RecordingExportTool("http://local/report.pdf")
+        monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+        monkeypatch.setattr(agent_module, "export_excel_report",
+                            _RecordingExportTool("http://local/workpaper.xlsx"))
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+        return pdf_mock
+
+    def _msgs(self, ai_body):
+        msgs = [HumanMessage(content="请分析该公司年报")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=ai_body))
+        return msgs
+
+    def test_placeholder_backfilled_with_final_score(self, monkeypatch):
+        """正文占位符「系统兜底计算 | —」→ 回填底线分（修复 V4 寻宝缺陷）。
+        场景：3 项重要 → 底线 26 中等风险；仲裁 R001 重要→重要（无级变）→ 维持 26。"""
+        self._env(monkeypatch, _ARBITER_LEVEL_CHANGE)
+        ai_body = ("四、量化风险评分\n| 评分模型 | 分值 | 判定 |\n"
+                   "| 综合评分 | 系统兜底计算 | — | 以系统结果为准 |\n\n"
+                   f"```json\n{_FIVE_IMPORTANT_LEDGER}\n```")
+        wrapper = _AgentWrapper(_FakeAgent(self._msgs(ai_body)))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert "系统兜底计算" not in text
+        assert "26.0分（中等风险）" in text
+
+    def test_risk_index_table_injected(self, monkeypatch):
+        """风险索引表注入最终消息（含仲裁新增条目，修复 R006 脱节）。"""
+        self._env(monkeypatch, _ARBITER_NEW_DISCLOSURE)
+        ai_body = f"分析完成：\n```json\n{_RISK_JSON}\n```"
+        wrapper = _AgentWrapper(_FakeAgent(self._msgs(ai_body)))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert "最终风险清单（系统生成，与审计底稿同源）" in text
+        # 仲裁新增披露合规条目出现在索引表（维度前缀 DIS-）
+        assert "DIS-001" in text
+
+
+class TestArbiterCompletionRetry:
+    """50e：仲裁补全重试（verdict 需补充 → 重试一轮）。"""
+
+    def test_retry_success_clears_incomplete(self, monkeypatch):
+        """重试返回 verdict=通过 → 未完成状态清除，无横幅。"""
+        from unittest.mock import MagicMock
+        llm = MagicMock()
+        llm.invoke.side_effect = [
+            _FakeResp("关注方意见"), _FakeResp("否定方意见"),
+            _FakeResp('【仲裁结论】需补充\n【裁定JSON】{"adjustments":[],"verdict":"需补充"}'),
+            _FakeResp('【仲裁结论】通过\n【裁定JSON】{"adjustments":[],"verdict":"通过"}'),
+        ]
+        monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: llm)
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+        monkeypatch.setattr(agent_module, "export_pdf_report",
+                            _RecordingExportTool("http://local/report.pdf"))
+        monkeypatch.setattr(agent_module, "export_excel_report",
+                            _RecordingExportTool("http://local/workpaper.xlsx"))
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+        msgs = [HumanMessage(content="请分析")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=f"```json\n{_RISK_JSON}\n```"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert "仲裁补全重试" in text              # 保留重试记录
+        assert "仲裁未完成" not in text              # 重试成功 → 无横幅
+        assert "仲裁状态：需补充" not in text
+
+
+class TestPendingVerificationMarking:
+    """50d：confidence < 0.5 的条目标记 pending_verification（不动等级与统计），
+    并写入待核实注记（实测 18:37 版 R005 置信度 0.45 却强行定级「一般」）。"""
+
+    def test_low_confidence_marked_pending(self, monkeypatch):
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
+        pdf_mock = _RecordingExportTool("http://local/report.pdf")
+        excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
+        monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+        monkeypatch.setattr(agent_module, "export_excel_report", excel_mock)
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+
+        ledger = json.dumps({"company_info": {"company_name": "集成测试公司", "report_year": "2025"},
+                             "risk_details": [
+                                 {"risk_id": "R005", "dimension": "持续经营风险", "level": "一般",
+                                  "title": "海外子公司净资产为负", "confidence": 0.45},
+                                 {"risk_id": "R001", "dimension": "财务错报风险", "level": "重要",
+                                  "title": "应收激增", "confidence": 0.62},
+                             ], "overall_assessment": "存在风险信号"}, ensure_ascii=False)
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=f"分析完成，风险台账如下：\n```json\n{ledger}\n```"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper.invoke({"messages": []})
+        assert len(pdf_mock.calls) == 1
+        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
+        r005 = next(r for r in exported["risk_details"] if r["risk_id"] == "R005")
+        assert r005["pending_verification"] is True
+        assert "R005" in exported["pending_verification_note"]
+        # 等级与统计不动（仍是「一般」）
+        assert r005["level"] == "一般"
+        r001 = next(r for r in exported["risk_details"] if r["risk_id"] == "R001")
+        assert "pending_verification" not in r001

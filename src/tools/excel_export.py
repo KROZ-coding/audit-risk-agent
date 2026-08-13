@@ -11,10 +11,11 @@ import os
 import json
 import uuid
 import logging
+import math
 import tempfile
 from datetime import datetime
 
-from utils.filename import resolve_company_year, sanitize_filename
+from utils.filename import build_file_prefix as _build_file_prefix
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -27,31 +28,114 @@ logger = logging.getLogger(__name__)
 # AI 辅助生成免责声明，强制出现在封面和整体评估 Sheet 中
 AI_DISCLAIMER = "【AI 辅助生成】本报告由大语言模型基于公开数据自动生成，可能存在幻觉或偏差，请务必结合人工专业判断进行复核。"
 
+# 风险等级别名归一表：与 pdf_export 保持一致，LLM 非标准取值统一归为三档后统计
+_LEVEL_ALIASES = {
+    "重大": "重大", "高风险": "重大", "极高风险": "重大", "严重": "重大", "高": "重大",
+    "重要": "重要", "中等风险": "重要", "中": "重要",
+    "一般": "一般", "低风险": "一般", "轻微": "一般", "低": "一般",
+}
 
-def _build_file_prefix(report: dict) -> str:
-    """根据报告内容生成统一的文件名前缀：日期_公司名_年份。
 
-    使用 sanitize_filename 清洗公司名和年份，移除 Windows 非法字符。
+def _level_counts(risks: list) -> dict:
+    """统计风险列表等级分布（重大/重要/一般），非标准等级取值归一后计数。"""
+    c = {"重大": 0, "重要": 0, "一般": 0}
+    for r in risks or []:
+        lv = str(r.get("level") or r.get("risk_level") or "").strip()
+        lv = _LEVEL_ALIASES.get(lv)
+        if lv:
+            c[lv] += 1
+    return c
+
+
+def _reconcile_risk_summary(report: dict) -> None:
+    """以 risk_details 为唯一事实源实时重算 risk_summary（总数/等级分布/维度分布）。
+
+    背景：risk_summary 由 LLM 生成，仲裁回写与勾稽校验条目并入（V 系列）之后
+    不会自动更新，导致底稿首页摘要与明细清单脱节（实测缺陷：摘要 7 条 vs
+    明细 9 条）。导出前强制按明细动态聚合，摘要恒与明细一致。
+    """
+    rd = report.get("risk_details") or []
+    rs = report.get("risk_summary")
+    if not isinstance(rs, dict):
+        rs = report["risk_summary"] = {}
+    c = _level_counts(rd)
+    rs["total_risks"] = len(rd)
+    rs["major_risks"] = c["重大"]
+    rs["important_risks"] = c["重要"]
+    rs["general_risks"] = c["一般"]
+    # 维度分布同步按明细重算（修复非五维度条目如市场风险/数据可靠性风险漏计；
+    # 键经 _norm_dim 归一化，防止"财务错报"与"财务错报风险"分裂成两行）
+    from tools.pdf_export import _norm_dim
+    dim_counts = {}
+    for r in rd:
+        if isinstance(r, dict):
+            d = _norm_dim(r.get("dimension", "") or "") or "未分类"
+            dim_counts[d] = dim_counts.get(d, 0) + 1
+    rs["risk_dimensions"] = dim_counts
+
+
+def _display_width(text: str) -> int:
+    """计算字符串的显示宽度：CJK 及全角字符计 2，其余计 1。
+
+    Excel 列宽单位约等于 ASCII 字符数，而一个汉字视觉宽度约为两个 ASCII 字符，
+    估算换行行数时需区分对待，否则纯中文内容会被低估行数导致行高偏矮。
 
     Args:
-        report: 包含 company_info 的风险台账字典
+        text: 待计算宽度的字符串
 
     Returns:
-        格式为 "YYYYMMDD_公司名_年份" 的安全文件名前缀；
-        若无年份信息则省略年份部分
+        以 ASCII 字符为 1 个单位的显示宽度
     """
-    ci = report.get("company_info", {})
-    # 别名兼容：LLM 可能用 name/report_period 等键名，避免文件名变「未知公司_未知」
-    raw_company, raw_year = resolve_company_year(ci)
-    company = sanitize_filename(raw_company or "未知公司")
-    year = sanitize_filename(raw_year) if raw_year else ""
-    date_str = datetime.now().strftime("%Y%m%d")
-    if year:
-        return f"{date_str}_{company}_{year}"
-    return f"{date_str}_{company}"
+    width = 0
+    for ch in text:
+        code = ord(ch)
+        if (0x4E00 <= code <= 0x9FFF        # CJK 统一汉字
+                or 0x3400 <= code <= 0x4DBF     # CJK 扩展 A
+                or 0x3000 <= code <= 0x303F     # CJK 符号与标点
+                or 0xFF00 <= code <= 0xFFEF     # 全角/半角形
+                or 0x2E80 <= code <= 0x2EFF):   # CJK 部首补充
+            width += 2
+        else:
+            width += 1
+    return width
 
 
-def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
+def _estimate_row_height(values, col_widths, line_h=15, min_h=30, max_h=400):
+    """根据单元格内容与列宽估算自适应行高，避免长文本被固定行高裁剪。
+
+    openpyxl 一旦设置显式行高，Excel 打开时不会再自动增高，因此需在写入时
+    按内容估算。口径：按 _display_width 折算各列显示宽度，除以列宽（预留 8%
+    边距）向上取整得行数，显式换行分段累加；取各列最大行数乘行高，再夹取到
+    [min_h, max_h]，防止空行过矮或超长内容撑出畸形高行。
+
+    Args:
+        values: 该行各列的值列表（与 col_widths 逐一配对）
+        col_widths: 各列宽度列表（openpyxl 列宽单位，约等于字符数）
+        line_h: 单行行高（磅），默认 15
+        min_h: 行高下限（磅）
+        max_h: 行高上限（磅）
+
+    Returns:
+        估算出的行高（磅）
+    """
+    max_lines = 1
+    for val, width in zip(values, col_widths):
+        if val is None or width <= 0:
+            continue
+        text = val if isinstance(val, str) else str(val)
+        if not text:
+            continue
+        effective = max(1.0, width * 0.92)   # 预留边距，防边界字符被挤到下一行
+        total_lines = 0
+        for segment in text.split("\n"):
+            total_lines += max(1, math.ceil(_display_width(segment) / effective))
+        max_lines = max(max_lines, total_lines)
+    return max(min_h, min(max_h, max_lines * line_h))
+
+
+def _export_excel_impl(risk_report_json: str, output_path: str = None,
+                       validation_json: str = "", financial_indicators_json: str = "",
+                       disclosure_check_json: str = "", audit_opinion_json: str = "") -> str:
     """将风险台账 JSON 导出为 Excel 审计底稿的核心实现。
 
     完整流程：
@@ -131,12 +215,18 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
         ("审计意见", company_info.get("audit_opinion", "未提供")),
         ("生成时间", datetime.now().strftime("%Y-%m-%d %H:%M")),
     ]
+    # Q 补丁：构建版本戳——产物可追溯（旧实例/旧代码产物一眼可辨）
+    from tools.pdf_export import _build_hash
+    _run_id = str(company_info.get("run_id", "") or "")
+    info_rows.append(("构建信息", f"构建 {_build_hash()} | 实例 {_run_id[:8] if _run_id else '—'}"))
+    # 封面信息：A 列标签（加粗）、B 列值（常规），相邻排列消除原来的中间空列
     for i, (label, value) in enumerate(info_rows, start=3):
-        # A 列放标签（加粗），C 列放值（常规）
         ws_summary[f"A{i}"] = label
         ws_summary[f"A{i}"].font = Font(name="微软雅黑", size=10, bold=True)
-        ws_summary[f"C{i}"] = value
-        ws_summary[f"C{i}"].font = normal_font
+        ws_summary[f"B{i}"] = value
+        ws_summary[f"B{i}"].font = normal_font
+    ws_summary.column_dimensions["A"].width = 14
+    ws_summary.column_dimensions["B"].width = 40
 
     # ── AI 辅助生成声明行（红色加粗，合并 A~F 列）──
     disclaimer_row = len(info_rows) + 4
@@ -147,6 +237,9 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
     ws_summary.row_dimensions[disclaimer_row].height = 36
 
     # ── 风险统计摘要：显示风险总数和各级别数量 ──
+    # P3: 摘要禁止读静态缓存——导出前按明细实时聚合（仲裁回写/勾稽校验条目并入后
+    # LLM 的 risk_summary 已过时，直接读取会导致首页摘要与内页明细脱节，实测缺陷）
+    _reconcile_risk_summary(report)
     risk_summary = report.get("risk_summary", {})
     # 摘要起始行 = 封面信息行数 + 6（预留声明行和间隔）
     summary_start = len(info_rows) + 6
@@ -164,18 +257,18 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
     for i, (label, value) in enumerate(summary_data, start=summary_start + 1):
         ws_summary[f"A{i}"] = label
         ws_summary[f"A{i}"].font = Font(name="微软雅黑", size=10, bold=True)
-        ws_summary[f"C{i}"] = value
-        ws_summary[f"C{i}"].font = normal_font
+        ws_summary[f"B{i}"] = value
+        ws_summary[f"B{i}"].font = normal_font
 
     # ═══════════════════════════════════════════════════════
     # Sheet 2：风险明细表 —— 每条风险的 11 列详细信息
     # ═══════════════════════════════════════════════════════
     ws_detail = wb.create_sheet("风险明细")
 
-    # 定义表头和各列宽度（共 11 列，新增推理思维链）
+    # 定义表头和各列宽度（共 12 列：新增推理思维链 + 系统量化事实）
     headers = ["风险ID", "风险维度", "风险标题", "风险等级", "证据", "数据分析",
-               "法规依据", "案例参考", "审计建议", "置信度", "推理思维链"]
-    col_widths = [10, 15, 25, 10, 40, 40, 35, 35, 40, 10, 50]
+               "法规依据", "案例参考", "审计建议", "置信度", "推理思维链", "系统量化事实"]
+    col_widths = [10, 15, 25, 10, 40, 40, 35, 35, 40, 10, 50, 50]
 
     # 写入表头行（第 1 行），设置深蓝色背景 + 白色粗体
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
@@ -187,9 +280,23 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
         ws_detail.column_dimensions[get_column_letter(col_idx)].width = width
 
     ws_detail.row_dimensions[1].height = 25
+    # 冻结表头：滚动查看长明细时首行表头始终可见
+    ws_detail.freeze_panes = "A2"
 
     # 逐行写入风险明细数据（从第 2 行开始）
     risk_details = report.get("risk_details", [])
+    # S4 事实层注入：复用 pdf_export 的确定性量化事实（工具 JSON 传入时）
+    from tools.pdf_export import _system_facts_text
+    # 50d：风险编号展示复用 pdf_export 的语义编号并列格式（主编号+semantic_id）
+    from tools.pdf_export import _risk_id_label as _risk_id_cell
+
+    def _facts_text(risk):
+        try:
+            return _system_facts_text(risk, validation_json, financial_indicators_json,
+                                      disclosure_check_json, audit_opinion_json)
+        except Exception:
+            return ""
+
     for row_idx, risk in enumerate(risk_details, start=2):
         level = risk.get("level", "")
         # 按表头顺序组装 11 列数据（新增推理思维链列）
@@ -203,7 +310,7 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
         else:
             chain_text = ""
         row_data = [
-            risk.get("risk_id", ""),        # 风险编号（如 R001）
+            _risk_id_cell(risk),            # 风险编号（50d：主编号+语义编号并列）
             risk.get("dimension", ""),       # 风险维度（五大维度之一）
             risk.get("title", ""),           # 风险标题
             level,                           # 风险等级（重大/重要/一般）
@@ -214,6 +321,7 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
             risk.get("audit_suggestion", ""), # 审计核查建议
             risk.get("confidence", 0),       # 置信度（0~1 的浮点数）
             chain_text,                      # 推理思维链
+            _facts_text(risk),               # 系统量化事实（确定性计算，供核对）
         ]
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws_detail.cell(row=row_idx, column=col_idx, value=value)
@@ -231,8 +339,8 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
             if col_idx == 10 and isinstance(value, (int, float)):
                 cell.number_format = "0.00"
 
-        # 设置行高为 60，确保长文本内容可见
-        ws_detail.row_dimensions[row_idx].height = 60
+        # 行高自适应：按各列内容与列宽估算，避免固定行高裁剪长文本
+        ws_detail.row_dimensions[row_idx].height = _estimate_row_height(row_data, col_widths)
 
     # ═══════════════════════════════════════════════════════
     # Sheet 3：整体评估 —— 风险结论 + AI 声明 + 行业基准对比
@@ -243,28 +351,63 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
     ws_assessment.merge_cells("A1:B1")
     ws_assessment["A1"] = "整体风险评估结论"
     ws_assessment["A1"].font = Font(name="微软雅黑", size=12, bold=True)
-    ws_assessment["A3"] = report.get("overall_assessment", "")
+    overall_text = report.get("overall_assessment", "")
+    # L 补丁：评分快照替换（吞全 span），杜绝整体评估与封面双分矛盾
+    from tools.pdf_export import _apply_score_snapshot
+    overall_text = _apply_score_snapshot(overall_text, report)
+    # 系统排除提示：正文由 LLM 基于原始分析生成，可能引用已被系统复核排除的条目
+    # （如归母口径复核移入备查录的未分配利润勾稽条目），与最终清单口径冲突（实测缺陷）
+    _excluded = report.get("excluded_items", []) or []
+    if _excluded:
+        _ids = "、".join(str(r.get("risk_id", "")) for r in _excluded
+                         if isinstance(r, dict) and r.get("risk_id"))
+        overall_text = (str(overall_text) + "\n\n【系统复核提示】正文结论由 LLM 基于原始分析生成，"
+                        f"可能引用已被系统复核排除的条目（{_ids}，详见风险总览备查说明）；"
+                        "风险清单与统计以最终明细为准。")
+    ws_assessment["A3"] = overall_text
     ws_assessment["A3"].font = normal_font
     ws_assessment["A3"].alignment = wrap_alignment
     ws_assessment.column_dimensions["A"].width = 100
-    ws_assessment.row_dimensions[3].height = 150
+    ws_assessment.column_dimensions["B"].width = 40
+    # 行高自适应：整体结论通常为大段文本，按内容估算防裁剪（下限/上限放宽）
+    ws_assessment.row_dimensions[3].height = _estimate_row_height(
+        [overall_text], [100], min_h=150, max_h=600)
+
+    # 注记区（50b/50c）：信披一致性 + 风险等级底线 + 跨期穿透三条确定性注记，
+    # 动态行号依次写入，AI 声明与行业基准行号随之下移。
+    _note_row = 4
+    _notes = [
+        ("【披露合规一致性提示】", report.get("disclosure_consistency_note", "") or ""),
+        ("【风险等级底线提示】", report.get("level_floor_note", "") or ""),
+        ("【跨期穿透提示】", report.get("cashflow_penetration_note", "") or ""),
+    ]
+    for _label, _text in _notes:
+        if not _text:
+            continue
+        ws_assessment.merge_cells(f"A{_note_row}:B{_note_row}")
+        ws_assessment[f"A{_note_row}"] = f"{_label}{_text}"
+        ws_assessment[f"A{_note_row}"].font = Font(name="微软雅黑", size=9, bold=True, color="CC6600")
+        ws_assessment[f"A{_note_row}"].alignment = wrap_alignment
+        ws_assessment.row_dimensions[_note_row].height = 28
+        _note_row += 1
 
     # AI 辅助生成声明行（与风险总览 Sheet 保持一致）
-    ws_assessment.merge_cells("A5:B5")
-    ws_assessment["A5"] = AI_DISCLAIMER
-    ws_assessment["A5"].font = Font(name="微软雅黑", size=9, bold=True, color="CC0000")
-    ws_assessment["A5"].alignment = Alignment(wrap_text=True, vertical="center")
-    ws_assessment.row_dimensions[5].height = 36
+    ws_assessment.merge_cells(f"A{_note_row}:B{_note_row}")
+    ws_assessment[f"A{_note_row}"] = AI_DISCLAIMER
+    ws_assessment[f"A{_note_row}"].font = Font(name="微软雅黑", size=9, bold=True, color="CC0000")
+    ws_assessment[f"A{_note_row}"].alignment = Alignment(wrap_text=True, vertical="center")
+    ws_assessment.row_dimensions[_note_row].height = 36
+    _note_row += 1
 
     # ── 行业基准对比（可选）：仅当报告数据中包含 industry_benchmark 时写入 ──
     if "industry_benchmark" in report:
         benchmark = report["industry_benchmark"]
-        # 行业基准从第 8 行开始（第 5 行为声明，6~7 行留间隔）
-        start_row = 8
+        # 行业基准从注记/声明行之后开始（留一行间隔）
+        start_row = _note_row + 1
         ws_assessment[f"A{start_row}"] = "行业基准对比"
         ws_assessment[f"A{start_row}"].font = Font(name="微软雅黑", size=12, bold=True)
         start_row += 1
-        # 遍历基准数据（嵌套字典：大类 → 子项 → 值）
+        # 遍历基准数据（嵌套字典：大类 → 子项 → 值；标量/列表直接写为字符串）
         for key, val in benchmark.items():
             if isinstance(val, dict):
                 # 写入大类标题（加粗）
@@ -278,6 +421,13 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
                     ws_assessment[f"A{start_row}"].font = normal_font
                     ws_assessment[f"B{start_row}"].font = normal_font
                     start_row += 1
+            else:
+                # 非字典值（标量/列表）：键值同行写入，避免被静默跳过
+                ws_assessment[f"A{start_row}"] = key
+                ws_assessment[f"B{start_row}"] = str(val)
+                ws_assessment[f"A{start_row}"].font = Font(name="微软雅黑", size=10, bold=True)
+                ws_assessment[f"B{start_row}"].font = normal_font
+                start_row += 1
 
     # ── 保存文件并上传到存储 ──
     # 生成统一文件名前缀
@@ -297,6 +447,8 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = thin_border
         ws_suggestions.column_dimensions[get_column_letter(col_idx)].width = width
+    # 冻结表头：滚动查看审计建议时首行表头始终可见
+    ws_suggestions.freeze_panes = "A2"
     # 逐行写入每条风险的审计建议
     sug_row = 2
     for risk in risk_details:
@@ -315,7 +467,10 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
             sug_cell.alignment = wrap_alignment
             for c in range(1, 5):
                 ws_suggestions.cell(row=sug_row, column=c).border = thin_border
-            ws_suggestions.row_dimensions[sug_row].height = 40
+            # 行高自适应：审计建议列（80 宽）内容通常较长，按内容估算防裁剪
+            ws_suggestions.row_dimensions[sug_row].height = _estimate_row_height(
+                [risk.get("risk_id", ""), risk.get("title", ""), lv, suggestion],
+                sug_widths, min_h=40)
             sug_row += 1
 
     # 若未指定输出路径，使用系统临时目录
@@ -358,7 +513,10 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None) -> str:
 
 
 @tool
-def export_excel_report(risk_report_json: str) -> str:
+def export_excel_report(risk_report_json: str, validation_json: str = "",
+                        financial_indicators_json: str = "",
+                        disclosure_check_json: str = "",
+                        audit_opinion_json: str = "") -> str:
     """将风险台账 JSON 数据导出为 Excel 审计底稿文件，上传到对象存储并返回可下载 URL。
 
     生成的 Excel 包含三个工作表：
@@ -377,4 +535,7 @@ def export_excel_report(risk_report_json: str) -> str:
     Returns:
         含下载链接的提示文本，或错误信息
     """
-    return _export_excel_impl(risk_report_json)
+    return _export_excel_impl(risk_report_json, validation_json=validation_json,
+                              financial_indicators_json=financial_indicators_json,
+                              disclosure_check_json=disclosure_check_json,
+                              audit_opinion_json=audit_opinion_json)
