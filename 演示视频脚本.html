@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年报风险识别 · 5 分钟演示视频脚本</title>
+<style>
+  :root{
+    --bg:#0a0e17; --bg2:#0f1522; --glass:rgba(255,255,255,.045);
+    --glass-border:rgba(255,255,255,.09); --txt:#e6ebf5; --muted:#8a97ad;
+    --accent:#4dd0e1; --accent2:#7c6cff; --gold:#ffb454; --green:#5ee6a8; --hot:#ff6b8b;
+    --shadow:0 8px 32px rgba(0,0,0,.45);
+    --font-display:"Source Han Serif SC","Noto Serif SC","STZhongsong","SimSun",serif;
+  }
+  /* Hallmark · macrostructure: Long Document · genre: atmospheric-docs · design-system: docs/design.md */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(1200px 800px at 15% -10%,#16203a 0,transparent 55%),
+               radial-gradient(1000px 700px at 100% 0,#1a1330 0,transparent 50%),
+               var(--bg);
+    color:var(--txt); line-height:1.75; min-height:100vh;
+  }
+  code{font-family:"Cascadia Code",Consolas,monospace;font-size:.88em;background:rgba(124,108,255,.14);color:#c7bdff;padding:.1em .42em;border-radius:5px;border:1px solid rgba(124,108,255,.22)}
+  .wrap{display:grid;grid-template-columns:280px 1fr;max-width:1440px;margin:0 auto}
+  aside{position:sticky;top:0;height:100vh;overflow-y:auto;padding:26px 18px;background:linear-gradient(180deg,rgba(15,21,34,.9),rgba(10,14,23,.7));border-right:1px solid var(--glass-border);backdrop-filter:blur(12px)}
+  aside .brand{font-family:var(--font-display);font-size:17px;color:#f2f6ff}
+  aside .brand small{display:block;font-family:"Segoe UI";font-size:11px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-top:4px}
+  aside h2{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:22px 6px 10px;font-weight:600}
+  .nav a{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;color:var(--muted);font-size:13px;transition:.18s;border:1px solid transparent;margin-bottom:2px}
+  .nav a:hover{background:var(--glass);color:var(--txt);border-color:var(--glass-border)}
+  .nav a .tc{font-family:"Cascadia Code",monospace;font-size:10.5px;color:var(--accent);flex:0 0 62px}
+  main{padding:34px 46px 120px;max-width:1000px}
+  header.hero{margin-bottom:26px;padding-bottom:22px;border-bottom:1px solid var(--glass-border)}
+  .hero .kicker{color:var(--accent);font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
+  .hero h1{font-family:var(--font-display);font-size:32px;margin:10px 0 8px;color:#f2f6ff}
+  .hero p.sub{color:var(--muted);font-size:14.5px}
+  .meta-chips{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:12px;padding:4px 12px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-border);color:var(--muted)}
+  .chip b{color:var(--accent);font-weight:600}
+  /* 时间轴总览 */
+  .timeline{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:6px 0 24px;border:1px solid var(--glass-border)}
+  .timeline span{display:block;font-size:0}
+  .tl1{background:#ff6b8b;flex:20} .tl2{background:#7c6cff;flex:50} .tl3{background:#4dd0e1;flex:100}
+  .tl4{background:#5ee6a8;flex:50} .tl5{background:#ffb454;flex:30} .tl6{background:#9b8cff;flex:20}
+  /* 段卡 */
+  .seg{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;padding:20px 24px;margin-bottom:20px;box-shadow:var(--shadow);scroll-margin-top:20px;position:relative}
+  .seg::before{content:"";position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:16px 0 0 16px}
+  .seg.s1::before{background:var(--hot)} .seg.s2::before{background:var(--accent2)}
+  .seg.s3::before{background:var(--accent)} .seg.s4::before{background:var(--green)}
+  .seg.s5::before{background:var(--gold)} .seg.s6::before{background:#9b8cff}
+  .seg .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .seg .time{font-family:"Cascadia Code",monospace;font-size:13px;font-weight:700;background:rgba(77,208,225,.14);color:var(--accent);padding:3px 10px;border-radius:7px}
+  .seg h3{font-family:var(--font-display);font-size:19px;color:#f2f6ff}
+  .seg .dur{font-size:11px;color:var(--muted);margin-left:auto}
+  .block{margin-top:12px}
+  .block .lbl{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+  .lbl.screen{color:var(--accent)} .lbl.voice{color:var(--green)} .lbl.tip{color:var(--gold)}
+  .block.screen{background:rgba(77,208,225,.05);border-left:2px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 14px}
+  .block.voice{background:rgba(94,230,168,.05);border-left:2px solid var(--green);border-radius:0 8px 8px 0;padding:8px 14px}
+  .block.tip{background:rgba(255,180,84,.05);border-left:2px solid var(--gold);border-radius:0 8px 8px 0;padding:8px 14px}
+  .block p{font-size:14px;margin:3px 0}
+  .voice .quote{color:#eef3ff;font-style:italic;font-size:14.5px}
+  strong{color:#fff;font-weight:650}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--glass-border);padding:8px 12px;text-align:left}
+  th{background:rgba(255,255,255,.04);color:var(--accent);font-weight:600}
+  .sec-label{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;font-weight:600;margin:28px 0 12px;padding-left:4px}
+  .rules{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;padding:18px 24px;box-shadow:var(--shadow)}
+  .rules li{margin:8px 0;padding-left:22px;position:relative;font-size:14px;list-style:none}
+  .rules li::before{content:"⚑";position:absolute;left:0;color:var(--gold)}
+  footer{color:var(--muted);font-size:12.5px;text-align:center;padding:30px;border-top:1px solid var(--glass-border);margin-top:20px}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}aside{display:none}main{padding:22px 18px 80px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside>
+  <div class="brand">演示视频脚本<small>Demo · ≤ 5 min · 1080P</small></div>
+  <h2>分镜时间轴</h2>
+  <nav class="nav">
+    <a href="#s1"><span class="tc">0:00-0:20</span>开场出镜</a>
+    <a href="#s2"><span class="tc">0:20-1:40</span>问题+架构</a>
+    <a href="#s3"><span class="tc">1:40-3:20</span>实机演示</a>
+    <a href="#s4"><span class="tc">3:20-4:10</span>效果+亮点</a>
+    <a href="#s5"><span class="tc">4:10-4:40</span>伦理+安全</a>
+    <a href="#s6"><span class="tc">4:40-5:00</span>团队收尾</a>
+  </nav>
+  <h2>拍摄</h2>
+  <nav class="nav">
+    <a href="#rules"><span class="tc">✓</span>录制要点清单</a>
+  </nav>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="kicker">2026 数智会计竞赛 · 初赛提交物之二 · 介绍视频</div>
+  <h1>5 分钟演示视频脚本（分镜 + 旁白）</h1>
+  <p class="sub">规格：MP4 · 1080P 以上 · 5 分钟以内 · 队员出镜介绍 + 方案陈述（手册硬要求）</p>
+  <div class="meta-chips">
+    <span class="chip">节奏：<b>前 30 秒定生死</b></span>
+    <span class="chip">核心：<b>1:40-3:20 实机演示 100 秒</b></span>
+    <span class="chip">demo 用例：<b>招商银行 / 茅台</b></span>
+  </div>
+  <div class="timeline">
+    <span class="tl1"></span><span class="tl2"></span><span class="tl3"></span><span class="tl4"></span><span class="tl5"></span><span class="tl6"></span>
+  </div>
+</header>
+
+<section class="seg s1" id="s1">
+  <div class="top"><span class="time">0:00-0:20</span><h3>开场出镜</h3><span class="dur">20 秒</span></div>
+  <div class="block screen"><div class="lbl screen">画面</div><p>队员真人出镜（手册要求出镜）→ 快切系统开屏（雪花 Logo + v4.3 GA）</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"大家好，我们是 XX 队。AI 写代码越来越快——但谁来替审计师把风险兜住？我们做了一个让智能体走进 CPA 审计现场的系统。"</p></div>
+  <div class="block tip"><div class="lbl tip">要点</div><p>钩子要在 10 秒内抛出，盲审评委的注意力就在开头。</p></div>
+</section>
+
+<section class="seg s2" id="s2">
+  <div class="top"><span class="time">0:20-1:40</span><h3>问题定义 + 架构讲解</h3><span class="dur">80 秒</span></div>
+  <div class="block screen"><div class="lbl screen">画面</div><p>0:20-0:50 痛点文字动画；0:50-1:40 <strong>主架构图</strong>逐层高亮（预处理并行 → ReAct Agent → 分级门禁 → 三方辩论 → 评分导出）</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"年报几百页、风险点分散、全靠经验。我们用 LangGraph 搭了一个多智能体系统：它自己决定调用哪些工具，走一条固定审计链路——校验、算指标、查披露、检索法规、综合评分。更关键的是，识别完还有三个智能体互相辩论、最后仲裁定级。"</p></div>
+  <div class="block tip"><div class="lbl tip">要点</div><p>架构图这段是技术创新分（25）的主战场，讲清 <strong>RAG / 思维链 / 辩论 / Agent-as-a-Judge</strong> 四个词。</p></div>
+</section>
+
+<section class="seg s3" id="s3">
+  <div class="top"><span class="time">1:40-3:20</span><h3>实机演示（核心 100 秒）</h3><span class="dur">100 秒 · 最重要</span></div>
+  <div class="block screen"><div class="lbl screen">画面（全程录屏）</div>
+    <p>① 上传招商银行年报 → ② 工具调用链胶囊实时点亮 → ③ 展开思维链五步卡 → ④ 三方辩论摘要条 + 仲裁定级 → ⑤ 综合风险评分饼图 → ⑥ 下载 PDF 报告 + Excel 底稿</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"现在实时跑一份真实年报。可以看到工具链依次执行……这是每条风险的五步推理链，从数据发现到法规依据全部可追溯。三方辩论后综合评分出来了，一键导出 PDF 审计报告和 Excel 底稿——全部是结构化产物。"</p></div>
+  <div class="block tip"><div class="lbl tip">要点</div><p>手册硬要求「现场能实时处理样例数据」。<strong>提前跑通掐表</strong>，flash 出结果的等待时间用剪辑加速；用招行/茅台这种知名公司评委有直观认知。</p></div>
+</section>
+
+<section class="seg s4" id="s4">
+  <div class="top"><span class="time">3:20-4:10</span><h3>效果评估 + 工程亮点</h3><span class="dur">50 秒</span></div>
+  <div class="block screen"><div class="lbl screen">画面</div><p>效果评估面板（五维雷达图 + 盲测命中）→ 分级门禁「自愈」示意 → 性能对比条形图</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"我们用了 22 个合成用例加康得新、康美等 5 个真实爆雷案例做盲测，给出真实的准确率和召回率。工程上还有个亮点：当模型偷懒漏做数据校验，系统会自动代跑补救而不是报错——这是我们从真实故障里迭代出来的。"</p></div>
+  <div class="block tip"><div class="lbl tip">要点</div><p>效果评估（15 分）必须出现具体数字/对比图；「自愈门禁」是差异化记忆点。</p></div>
+</section>
+
+<section class="seg s5" id="s5">
+  <div class="top"><span class="time">4:10-4:40</span><h3>伦理合规 + 安全</h3><span class="dur">30 秒</span></div>
+  <div class="block screen"><div class="lbl screen">画面</div><p>AI 生成声明角标 + 审慎措辞示例 + 「安全扫描修复 6 洞 / 228 测试」字幕</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"所有结论都标注 AI 辅助生成、用审慎的审计术语，不做定性判断。我们还用安全扫描修复了 6 个漏洞，228 个测试全绿——这是一个能负责任地交付的系统。"</p></div>
+</section>
+
+<section class="seg s6" id="s6">
+  <div class="top"><span class="time">4:40-5:00</span><h3>团队亮相 + 收尾</h3><span class="dur">20 秒</span></div>
+  <div class="block screen"><div class="lbl screen">画面</div><p>全体成员出镜合影 / 分工字幕 → 系统 Logo + 一句 slogan 定格</p></div>
+  <div class="block voice"><div class="lbl voice">旁白</div><p class="quote">"从业务建模到工程落地，这就是我们的答案——让 AI 帮审计师看得更快，也看得更稳。谢谢！"</p></div>
+</section>
+
+<div class="sec-label" id="rules">拍摄与剪辑要点</div>
+<div class="rules">
+  <ul style="margin:0">
+    <li><strong>出镜是硬要求</strong>：开场和收尾必须有真人出镜，否则不合规</li>
+    <li><strong>实机演示提前彩排</strong>：录屏前先跑通一次，把 flash 等待时间记下来，剪辑时加速处理</li>
+    <li><strong>掐表控时长</strong>：≤5 分钟是红线，实机演示段最多 100 秒，超了先砍这里</li>
+    <li><strong>1080P 起步</strong>：录屏用 60fps 更顺滑；字幕用无衬线大字保证投影可读</li>
+    <li><strong>demo 数据用知名公司</strong>：招行/茅台，评委一眼有认知，不用解释背景</li>
+    <li><strong>旁白脚本先过一遍</strong>：写完可用写作规范审口吻，避免口语废话</li>
+    <li><strong>六维全覆盖</strong>：每段对应评分维度（见颜色条），别漏掉伦理合规这 5 分</li>
+  </ul>
+</div>
+
+<footer>年报风险识别 v4.3 GA · 5 分钟演示视频脚本 · 2026 北京市大学生数智会计创新应用竞赛</footer>
+</main>
+</div>
+</body>
+</html>

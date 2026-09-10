@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>审计风险识别系统 · 操作指南 v4.0</title>
+    <title>年报风险识别系统 · 操作指南 v5.0 GA</title>
     <style>
         :root {
             --bg-deep: #0a0f1a;
@@ -166,10 +166,10 @@
     <!-- ═══ HERO ═══ -->
     <div class="hero glass-card visible">
         <span class="main-icon">📊</span>
-        <h1>审计风险识别系统 · 操作指南</h1>
-        <div class="version-tag">v4.0 · AI Agent 智能审计分析平台</div>
+        <h1>年报风险识别系统 · 操作指南</h1>
+        <div class="version-tag">v5.0 GA · AI Agent 智能审计分析平台</div>
         <p style="color: var(--text-muted); margin-top: 10px; max-width: 640px; margin-left: auto; margin-right: auto;">
-            基于 LangGraph Multi-Agent 架构的上市公司年报审计风险智能识别系统。<br>
+            基于 LangGraph Multi-Agent 架构的上市公司年报风险智能识别系统。<br>
             一键部署、五大核心模块、多智能体辩论、量化效果评估。<br>
             <strong style="color: var(--accent-light);">适用于 2026 年北京市大学生数智会计创新应用竞赛 · 智能审计赛道</strong>
         </p>
@@ -453,7 +453,7 @@
 
         <h3>Q2: 启动后页面全是 ❌ 状态（服务频繁重启）</h3>
         <p>这是 uvicorn 热重载机制导致的问题。当 <code>app.log</code> 写入日志时触发热重载 → 重启后再次写日志 → 死循环。</p>
-        <p>解决方法：确保启动命令中包含 reload 白名单配置（v4.0 版本已默认修复）。</p>
+        <p>解决方法：确保启动命令中包含 reload 白名单配置（v4.0 及以后版本已默认修复）。</p>
         <div class="alert alert-info">
             💡 如果仍遇到此问题，请在 <code>src/main.py</code> 中确认 <code>uvicorn.run()</code> 包含
             <code>reload_includes=["*.py"]</code> 参数。
@@ -512,8 +512,13 @@ uv --version</span></pre>
 │   │   ├── <span class="comment">excel_export.py</span>           # Excel 审计底稿导出
 │   │   ├── <span class="comment">batch_processor.py</span>        # 多公司批量并行分析
 │   │   ├── <span class="comment">multi_year_comparison.py</span>  # 多年财务对比
+│   │   ├── <span class="comment">audit_opinion.py</span>          # 审计意见识别（v4.5）
+│   │   ├── <span class="comment">risk_models.py</span>            # 风险模型测算（v4.5）
+│   │   ├── <span class="comment">regulatory_inquiry.py</span>     # 交易所问询函检索（v4.5）
+│   │   ├── <span class="comment">industry_outlook.py</span>       # 行业展望分析（v4.5）
+│   │   ├── <span class="comment">investment_advisor.py</span>     # 投资建议顾问（v4.5）
 │   │   └── <span class="comment">upload_helper.py</span>          # 文件上传处理
-│   ├── <span class="key">web/</span><span class="comment">index.html</span>             # Web 前端界面
+│   ├── <span class="key">web/</span><span class="comment">index.html</span>             # Web 前端界面（ECharts 可视化）
 │   ├── <span class="key">storage/</span>                    # SQLite + S3 + 内存存储
 │   └── <span class="comment">main.py</span>                    # FastAPI 服务入口
 ├── <span class="key">tests/</span>
@@ -569,7 +574,7 @@ uv --version</span></pre>
         </div>
 
         <div class="alert alert-success" style="margin-top: 20px;">
-            🎉 <strong>恭喜！</strong> 你已经掌握了审计风险识别系统的全部部署与使用方法。<br>
+            🎉 <strong>恭喜！</strong> 你已经掌握了年报风险识别系统的全部部署与使用方法。<br>
             如需了解更详细的开发文档和 API 接口说明，请查看项目源代码。
         </div>
 

@@ -26,24 +26,26 @@
 4. 三类图表：风险热力图、财务雷达图、趋势折线图（`local_storage/charts/*.png`）。
 5. 回复中**完整展示**上述所有产物的可访问 URL。
 
-## 固定工具链（顺序不可颠倒）
+## 固定工具链（硬约束不可违背）
 
-以 `sp` 的「强制规则 / 执行流程」为准，进度映射见 `src/main.py` 的 `TOOL_PIPELINE`。
+以 `sp` 的「强制规则 / 执行流程」为准，进度映射见 `src/main.py` 的 `TOOL_PIPELINE`，
+顺序门禁实现见 `src/tools/domain_guard.py`（硬约束 fail-closed，软约束仅告警）。
 
-| 步 | 工具 | 作用 | 硬约束 |
+| 步 | 工具 | 作用 | 约束 |
 |----|------|------|--------|
 | 0 | `parse_pdf_report` | 解析 PDF 年报为结构化数据（Excel 输入可跳过） | 仅 PDF 输入时执行 |
-| 1 | `validate_financial_data` | 校验财务数据勾稽/完整性 | **必须先于**步骤 2 |
-| 2 | `calculate_financial_indicators` | 计算 16 项财务指标 | 严禁在校验前调用 |
-| 3 | `check_disclosure_compliance` | 披露合规性检查 | 与财务分析须同时覆盖 |
+| 1 | `validate_financial_data` | 校验财务数据勾稽/完整性 | **硬约束：必须先于**步骤 2，违反即中断分析 |
+| 2 | `calculate_financial_indicators` | 计算四维财务指标 | 严禁在校验前调用 |
+| 3 | `check_disclosure_compliance` | 披露合规性检查 | 与步骤 4 共享同一优先级，**可并行**（软约束，颠倒仅告警） |
 | 4 | `search_regulations` | 每条风险检索法规条款 + 同类案例 | 无检索依据不得出结论 |
-| 5 | `calculate_comprehensive_score` | 汇总三模块，输出 0-100 分 + 等级 | 依赖步骤 2/3/4 结果 |
-| 6a | `export_pdf_report` | 导出 PDF 报告 | **与 6b 成对**，缺一不可 |
-| 6b | `export_excel_report` | 导出 Excel 底稿 | **与 6a 成对**，缺一不可 |
-| 7 | `generate_risk_heatmap` / `generate_radar_chart` / `generate_trend_chart` | 三类可视化图表 | 三张齐全 |
+| 5 | `identify_audit_opinion` / `calculate_risk_models` / `search_regulatory_inquiries` | 信号增强：审计意见识别、风险模型测算、交易所问询函检索 | 按需调用，结果联动风险判定（见 `sp` 信号联动规则） |
+| 6 | `calculate_comprehensive_score` | 汇总各模块，输出 0-100 分 + 等级 | 依赖步骤 2/3/4 结果 |
+| 7 | 系统后处理自动导出（`_post_process`） | PDF 报告 + Excel 底稿成对导出 | **导出工具不再注册给 LLM**，由系统兜底执行，LLM 无需（也无法）主动调用 |
+| 8 | `generate_risk_heatmap` / `generate_radar_chart` / `generate_trend_chart` | 三类可视化图表 | 三张齐全；LLM 未调用时系统兜底补生成 |
 
-> 顺序摘要：`parse → validate → calculate → check_disclosure → search → score → export_pdf + export_excel → 图表`。
-> `agent.py` 含兜底导出机制防止 PDF/Excel 遗漏，但不可依赖兜底跳过正常调用。
+> 顺序摘要：`parse → validate → calculate → (check_disclosure ∥ search) → [信号增强工具] → score → 系统兜底导出 → 图表`。
+> PDF/Excel 由 `agent.py` 的 `_post_process` 兜底导出（保证以完整数据生成报告）；
+> 三类图表同样有兜底补生成机制。
 
 ## 措辞与声明约束（不可违背）
 
@@ -56,7 +58,7 @@
 分析结束前逐项确认：
 
 - [ ] 工具调用顺序符合上表，`validate` 早于 `calculate`。
-- [ ] `export_pdf_report` 与 `export_excel_report` **均**已调用且返回 URL。
+- [ ] 回复末尾出现 PDF 报告与 Excel 底稿的可访问 URL（系统兜底导出产物）。
 - [ ] 三类图表均已生成且 URL 在回复中展示。
 - [ ] 输出 JSON 含 `comprehensive_score`（`score` / `level` / `breakdown`）。
 - [ ] 每条风险含 `regulatory_basis` 与 `case_reference`（来自 `search_regulations`）。

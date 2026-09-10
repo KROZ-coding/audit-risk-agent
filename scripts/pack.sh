@@ -10,7 +10,7 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-PACK_NAME="audit-ai_v3.0_${TIMESTAMP}.tar.gz"
+PACK_NAME="audit-ai_v5.0GA_${TIMESTAMP}.tar.gz"
 
 cd "$PROJECT_DIR"
 

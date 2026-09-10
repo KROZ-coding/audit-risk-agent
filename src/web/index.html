@@ -716,6 +716,41 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   margin-left: 4px;
 }
 .review-verdict.pass { background: var(--success-bg); color: var(--success-lite); border: 1px solid var(--success-border); }
+/* 这三个卡片必须纵向堆叠（display:block）。它们与 .score-card 同时使用，而
+   .score-card 是 flex 且定义在文件更后面，同优先级下后者覆盖前者——实测元数据/
+   审查门禁/指标表被压成 21px 宽竖排文字、表格错位。用复合选择器提高优先级，
+   避免依赖规则先后顺序（调整样式顺序不再复发）。 */
+.score-card.review-gate-card { display:block; }
+.review-gate-head, .review-gate-meta { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; }
+.review-gate-head .pass { color:var(--success-lite); }
+.review-gate-head .warn { color:var(--warning-lite); }
+.review-gate-count, .review-gate-meta, .review-gate-note { color:var(--text-muted); font-size:12px; }
+.review-gate-meta { margin-top:10px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle); }
+.review-gate-card .table-scroll { margin-top:10px; }
+.c1-status-block { margin-top:10px; padding-top:2px; }
+.c1-status-title { color:var(--text-secondary); font-size:12px; font-weight:700; margin-bottom:7px; }
+.score-card.artifact-manifest-card { display:block; margin-top:12px; }
+/* 报告元数据与完整性：版本/编号用等宽网格，数据源缺失原因逐项列出 */
+.score-card.report-meta-card { display:block; }
+.report-meta-grid { display:flex; flex-wrap:wrap; gap:8px 22px; margin-bottom:8px; }
+.report-meta-item { display:flex; gap:8px; align-items:baseline; font-size:12px; }
+.report-meta-item span { color:var(--text-muted); }
+.report-meta-item b { color:var(--text-primary); font-weight:600; }
+.report-meta-details { margin-top:8px; }
+.report-meta-details summary { cursor:pointer; color:var(--text-secondary); font-size:12px; font-weight:700; margin-bottom:6px; }
+/* 指标计算过程表：列多且含长算式，等宽小字 + 横向滚动，避免挤压变形 */
+.score-card.metric-view-card { display:block; }
+.metric-table { font-size:11px; }
+.metric-table td, .metric-table th { white-space:normal; vertical-align:top; }
+.metric-table .metric-group { color:var(--text-muted); font-weight:700; white-space:nowrap; }
+.metric-table .metric-formula { font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:var(--text-secondary); }
+.metric-table .metric-subst { font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:var(--text-primary); }
+.metric-table .metric-thr-src { color:var(--text-muted); }
+/* 运行中的产物清单（思考卡内）：三态可见，避免中途只看到“分析中” */
+.thinking-artifacts { margin-top:10px; padding-top:8px; border-top:1px dashed var(--border-subtle); }
+.thinking-artifacts .ta-title { color:var(--text-secondary); font-size:12px; font-weight:700; margin-bottom:6px; }
+.thinking-artifacts .ta-row { display:flex; justify-content:space-between; gap:12px; font-size:12px; color:var(--text-muted); padding:2px 0; }
+.thinking-artifacts .ta-row b { color:var(--warning-lite); font-weight:600; }
 .review-verdict.supplement { background: var(--warning-bg); color: var(--warning-lite); border: 1px solid var(--warning-border); }
 .review-verdict.redo { background: var(--danger-bg); color: var(--danger-lite); border: 1px solid var(--danger-border); }
 
@@ -1398,7 +1433,7 @@ body.splash-active .main {
     <div class="splash-loading">
       <span></span><span></span><span></span>
     </div>
-    <div class="splash-version">v4.5 GA · 载入中…</div>
+    <div class="splash-version">v5.0 GA · 载入中…</div>
   </div>
 </div>
 
@@ -1464,7 +1499,7 @@ body.splash-active .main {
 
     <div class="sidebar-footer">
     <div>本地模式 · LangGraph + DeepSeek</div>
-    <div style="margin-top:4px">v4.5 GA · © 2026</div>
+    <div style="margin-top:4px">v5.0 GA · © 2026</div>
     <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
       <button onclick="triggerKBUpload()" class="kb-btn" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）" data-ico="paperclip"> 添加知识库</button>
       <button onclick="reloadKB(this)" class="kb-btn" title="重新加载知识库文件" data-ico="refresh"> 重载知识库</button>
@@ -1810,6 +1845,25 @@ function updateProgress(step, percent) {
   scrollToBottom();
 }
 
+// 产物生成状态（运行中）：登记本次应生成的 PDF/Excel/图表并显示「生成中」，
+// 最终报告会以真实存在且可访问的结果覆盖为已生成/生成失败，并给出任务级状态。
+function updateArtifactProgress(artifacts, taskStatus) {
+  const cards = document.querySelectorAll('.thinking-card');
+  const card = cards[cards.length - 1];
+  if (!card || !Array.isArray(artifacts) || !artifacts.length) return;
+  let box = card.querySelector('.thinking-artifacts');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'thinking-artifacts';
+    card.appendChild(box);
+  }
+  const names = { generating: '生成中', success: '已生成', failed: '生成失败' };
+  const taskNames = { running: '生成中', completed: '全部完成', partial: '部分完成', failed: '生成失败' };
+  box.innerHTML = `<div class="ta-title">产物生成状态：${escapeHtml(taskNames[taskStatus] || '生成中')}</div>` +
+    artifacts.map(a => `<div class="ta-row"><span>${escapeHtml(String(a.label || a.name || a.kind || '产物'))}</span><b>${escapeHtml(names[a.status] || a.status || '')}</b></div>`).join('');
+  scrollToBottom();
+}
+
 function removeThinkingCard() {
   if (_thinkTimer) { clearInterval(_thinkTimer); _thinkTimer = null; }
 
@@ -1897,7 +1951,13 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
       if (!Array.isArray(s.messages)) s.messages = [];
       const _bgStored = _truncateForStorage(report.ai_text || '');
       s.messages.push({ role: 'assistant', content: report.ai_text || '（分析报告已生成）',
-        meta: { report: { tool_results: _compactToolResults(report.tool_results), images: report.images, files: report.files, ai_text: _bgStored } },
+        meta: { report: { tool_results: _compactToolResults(report.tool_results), images: report.images, files: report.files, ai_text: _bgStored,
+          risk_ledger: report.risk_ledger, accepted_risk_details: report.accepted_risk_details,
+          pending_items: report.pending_items, review_gate: report.review_gate,
+          semantic_review: report.semantic_review, c1_review: report.c1_review,
+          artifact_manifest: report.artifact_manifest,
+          report_metadata: report.report_metadata, indicator_view: report.indicator_view,
+          task_status: report.task_status } },
         time: new Date() });
       s.toolCallCount = (s.toolCallCount || 0) + (report.tool_results || []).length;
       s.updatedAt = Date.now();
@@ -1915,6 +1975,65 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
   let headHtml = '';
   let mdHtml = '';
   let attachHtml = '';
+
+  // ── 分区一：报告元数据与完整性（核心分析之前先交代本次运行的数据边界）──
+  // 版本号/分析编号用于区分同名历史产物（旧报告不得靠改名冒充新结果）；
+  // 数据源逐项标注已使用或未获取原因，避免前端从模型散文推断覆盖率。
+  const rmeta = report.report_metadata;
+  if (rmeta) {
+    const srcList = Array.isArray(rmeta.data_sources) ? rmeta.data_sources : [];
+    const srcRows = srcList.map(s => `<tr><td>${escapeHtml(String(s.name || ''))}</td><td>${s.used ? '已使用' : '未获取'}</td><td>${escapeHtml(String(s.note || ''))}</td></tr>`).join('');
+    const gateNames = { passed: '已通过结构化门禁', not_passed: '未通过，需人工复核', not_run: '未执行审查' };
+    const metaBits = [
+      ['公司', rmeta.company_name], ['股票代码', rmeta.stock_code],
+      ['报告年度', rmeta.report_year], ['行业', rmeta.industry],
+      ['审计意见', rmeta.audit_opinion], ['分析编号', rmeta.analysis_id],
+      ['数据版本', rmeta.data_version], ['规则版本', rmeta.rule_version],
+    ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '');
+    const metaRows = metaBits.map(([k, v]) => `<div class="report-meta-item"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
+    const usedText = (rmeta.source_total ? `数据源 ${rmeta.source_used_count}/${rmeta.source_total} 已获取` : '');
+    headHtml += `<div class="score-card report-meta-card">
+      <div class="c1-status-title">报告元数据与完整性</div>
+      <div class="report-meta-grid">${metaRows}</div>
+      <div class="review-gate-meta"><span>审查门禁：${escapeHtml(gateNames[rmeta.review_gate_status] || rmeta.review_gate_status || '未记录')}</span><span>${escapeHtml(usedText)}</span></div>
+      ${srcRows ? `<details class="report-meta-details" open><summary>数据来源与完整性说明</summary><div class="table-scroll"><table><thead><tr><th>数据源</th><th>状态</th><th>未获取原因</th></tr></thead><tbody>${srcRows}</tbody></table></div></details>` : ''}
+    </div>`;
+  }
+
+  // ── 分区二：四项能力及补充分析（指标计算过程，与 PDF/Excel 同源）──
+  // 每个指标展示公式→输入值及单位→期间与口径→代入过程→结果→阈值及来源→状态
+  // →原文定位；未计算指标单列原因，不以中性值补齐。
+  const iview = report.indicator_view;
+  if (iview && iview.available && Array.isArray(iview.groups) && iview.groups.length) {
+    let metricRows = '';
+    for (const g of iview.groups) {
+      const items = Array.isArray(g.metrics) ? g.metrics : [];
+      items.forEach((m, i) => {
+        const thr = (m.threshold === null || m.threshold === undefined || m.threshold === '') ? '—' : String(m.threshold);
+        metricRows += `<tr>
+          <td class="metric-group">${i === 0 ? escapeHtml(String(g.label || '')) : ''}</td>
+          <td>${escapeHtml(String(m.name || ''))}</td>
+          <td>${escapeHtml(String(m.display_value || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.formula || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.inputs_text || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.period_scope || ''))}</td>
+          <td class="metric-subst">${escapeHtml(String(m.substitution || ''))}</td>
+          <td>${escapeHtml(thr)}${m.threshold_source ? `<span class="metric-thr-src">（${escapeHtml(String(m.threshold_source))}）</span>` : ''}</td>
+          <td>${escapeHtml(String(m.status || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.source_ref || ''))}</td>
+        </tr>`;
+      });
+    }
+    const uncalc = Array.isArray(iview.uncalculated) ? iview.uncalculated : [];
+    const uncalcHtml = uncalc.length ? `<div class="review-gate-note">未计算指标（不以中性值补齐）：${uncalc.map(u => `${escapeHtml(String(u.name || ''))}（${escapeHtml(String(u.status || ''))}：${escapeHtml(String(u.reason || '未说明原因'))}）`).join('；')}</div>` : '';
+    headHtml += `<div class="score-card metric-view-card">
+      <div class="c1-status-title">四项能力及补充分析（指标计算过程与依据）</div>
+      <div class="review-gate-meta"><span>期间与口径：${escapeHtml([iview.period, iview.scope].filter(Boolean).join(' · ') || '未标注')}</span><span>金额单位：${escapeHtml(String(iview.amount_unit || '未声明'))}</span><span>已计算 ${escapeHtml(String(iview.metric_count || 0))} 项</span></div>
+      <div class="table-scroll"><table class="metric-table"><thead><tr><th>能力</th><th>指标</th><th>结果</th><th>公式</th><th>输入值及单位</th><th>期间/口径</th><th>代入过程（含结果）</th><th>阈值及来源</th><th>状态</th><th>原文定位</th></tr></thead><tbody>${metricRows}</tbody></table></div>
+      ${uncalcHtml}
+      ${iview.note ? `<div class="review-gate-note">${escapeHtml(String(iview.note))}</div>` : ''}
+    </div>`;
+  }
 
   // 工具调用链可视化：序号胶囊 + 连续重复合并（如 法规检索 ×3）+ 总调用计数
   if (report.tool_results && report.tool_results.length > 0) {
@@ -2056,7 +2175,7 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
 
   // 风险等级分布饼图：优先从 risk_summary 提取重大/重要/一般计数，缺失或为 0 时
   // 回退解析 risk_details 台账逐条统计（与后端 PDF 环形图同源逻辑），保证卡片恒渲染。
-  function extractRiskLevelCounts(text) {
+  function extractRiskLevelCounts(text, reportData) {
     const mMajor = text.match(/"major_risks"\s*:\s*(\d+)/);
     const mImportant = text.match(/"important_risks"\s*:\s*(\d+)/);
     const mGeneral = text.match(/"general_risks"\s*:\s*(\d+)/);
@@ -2064,10 +2183,28 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
     let important = mImportant ? parseInt(mImportant[1]) : 0;
     let general = mGeneral ? parseInt(mGeneral[1]) : 0;
     if (major + important + general > 0) return { major, important, general, total: major + important + general };
-    // 回退：从 ```json 代码块的风险台账逐条统计（兼容 LLM 等级别名：高→重大、中→重要等）
     const aliases = { '重大': '重大', '高风险': '重大', '极高风险': '重大', '严重': '重大', '高': '重大',
       '重要': '重要', '中等风险': '重要', '中': '重要',
       '一般': '一般', '低风险': '一般', '轻微': '一般', '低': '一般' };
+    // 后端门禁明确给出 accepted_risk_details 时，只统计正式风险；空数组也
+    // 是有效结果，不能回退到正文 JSON 把待复核条目重新算入正式总数。
+    if (reportData && Array.isArray(reportData.accepted_risk_details)) {
+      major = 0; important = 0; general = 0;
+      const seen = new Set();
+      for (const r of reportData.accepted_risk_details) {
+        const id = String(r.risk_id || r.semantic_id || '');
+        if (id && seen.has(id)) continue;
+        if (id) seen.add(id);
+        const lv = aliases[String(r.level ?? r.risk_level ?? '').trim()];
+        if (lv) {
+          if (lv === '重大') major++;
+          else if (lv === '重要') important++;
+          else if (lv === '一般') general++;
+        }
+      }
+      return { major, important, general, total: major + important + general };
+    }
+    // 回退：从 ```json 代码块逐条统计（兼容旧历史记录）
     try {
       const blocks = text.match(/```json\s*([\s\S]*?)```/g) || [];
       for (const block of blocks) {
@@ -2087,7 +2224,7 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
   }
 
   if (report.ai_text && /"risk_details"|"risk_summary"|"major_risks"/.test(report.ai_text)) {
-    const counts = extractRiskLevelCounts(report.ai_text);
+    const counts = extractRiskLevelCounts(report.ai_text, report);
     const major = counts.major, important = counts.important, general = counts.general;
     const total = counts.total;
     if (total > 0) {
@@ -2125,6 +2262,60 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
         <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">风险等级分布（未识别风险事项）</div>
       </div>`;
     }
+  }
+
+  // 结构化审查卡：展示门禁状态、C2 对齐结果、C1 阶段状态和待处理事项。
+  // 这些信息来自后端台账，不从模型散文推断“复核通过”。
+  if (report.review_gate || report.pending_items || report.risk_ledger) {
+    const gate = report.review_gate || { status: 'not_run' };
+    const ledger = report.risk_ledger || {};
+    const allRisks = Array.isArray(ledger.risk_details) ? ledger.risk_details : [];
+    const accepted = Array.isArray(report.accepted_risk_details) ? report.accepted_risk_details.length : 0;
+    const pending = Array.isArray(report.pending_items) ? report.pending_items : [];
+    const gateText = gate.status === 'passed' ? '已通过结构化门禁' : gate.status === 'not_passed' ? '未通过，需人工复核' : '未测试';
+    const gateClass = gate.status === 'passed' ? 'pass' : 'warn';
+    const c2 = report.semantic_review || {};
+    const c2Text = c2.status === 'completed' ? `${c2.overall_status === 'consistent' ? '两次判断一致' : '存在分歧或未对齐'} · ${c2.calls || 2} 次` : '未完成';
+    const c1 = report.c1_review || ledger.c1_review || {};
+    const c1StatusNames = { completed: '已完成', completed_without_verdict: '已完成但缺少裁定', running: '进行中', failed: '失败', not_run: '未执行', not_started: '未开始' };
+    const c1Phases = c1 && c1.phases && typeof c1.phases === 'object' ? c1.phases : {};
+    const c1PhaseRows = (c1.stage_order || ['advocate', 'skeptic', 'arbiter']).map(key => {
+      const phase = c1Phases[key] || {};
+      const label = phase.label || ({ advocate: '风险关注方', skeptic: '风险否定方', arbiter: '裁判仲裁' }[key] || key);
+      const verdict = key === 'arbiter' && phase.verdict ? ` · ${phase.verdict}` : '';
+      return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(c1StatusNames[phase.status] || phase.status || '未记录')}</td><td>${phase.output_available ? '已生成' : '无可用输出'}</td><td>${escapeHtml(`${phase.output_chars || 0} 字${verdict}`)}</td></tr>`;
+    }).join('');
+    const c1Html = c1 && (c1.status || Object.keys(c1Phases).length) ? `<div class="c1-status-block"><div class="c1-status-title">C1 串行复核：${escapeHtml(c1StatusNames[c1.status] || c1.status || '未记录')} · 仲裁调整 ${escapeHtml(String(c1.adjustment_count || 0))} 条</div><div class="table-scroll"><table><thead><tr><th>阶段</th><th>状态</th><th>输出</th><th>记录</th></tr></thead><tbody>${c1PhaseRows || '<tr><td colspan="4">暂无阶段记录</td></tr>'}</tbody></table></div></div>` : '';
+    const pendingRows = pending.slice(0, 12).map(r => `<tr><td>${escapeHtml(String(r.risk_id || ''))}</td><td>${escapeHtml(String(r.verification_status || r.status || '待处理'))}</td><td>${escapeHtml(String(r.c2_status || 'not_run'))}</td><td>${escapeHtml(String((r.evidence_ids || r.evidence_id || []).toString() || '未引用'))}</td><td>${escapeHtml(String(r.pending_reason || r.title || ''))}</td></tr>`).join('');
+    // 审查预算：次数/限时/补证轮次与用量逐项可见；耗尽即转人工，不冒充复核通过
+    const rbudget = gate.review_budget || {};
+    const budgetText = rbudget.max_calls ? `审查预算 ${rbudget.calls_used || 0}/${rbudget.max_calls} 次 · 阶段限时 ${rbudget.stage_timeout_seconds || 0}s · 补证 ${rbudget.supplement_rounds_used || 0}/${rbudget.supplement_round_limit || 0} 轮 · 单次超时 ${rbudget.call_timeout_seconds || 0}s` : '';
+    const humanNote = gate.human_review_required ? `<div class="review-gate-note">转人工复核：${escapeHtml(String(gate.pending_reason || '审查异常或预算耗尽'))}</div>` : '';
+    headHtml += `<div class="score-card review-gate-card">
+      <div class="review-gate-head"><span class="${gateClass}">${icon(gate.status === 'passed' ? 'check-circle' : 'alert')} ${escapeHtml(gateText)}</span><span class="review-gate-count">正式风险 ${accepted} 条 · 待处理 ${pending.length} 条</span></div>
+      <div class="review-gate-meta"><span>C2 关键语义：${escapeHtml(c2Text)}</span><span>C1：${escapeHtml(gate.c1_status || '未测试')}（正方 → 反方 → 仲裁）</span></div>
+      ${budgetText ? `<div class="review-gate-meta"><span>${escapeHtml(budgetText)}</span></div>` : ''}
+      ${humanNote}
+      ${c1Html}
+      ${pendingRows ? `<div class="table-scroll"><table><thead><tr><th>风险ID</th><th>处理状态</th><th>C2</th><th>证据引用</th><th>分歧/待处理原因</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : (allRisks.length ? '<div class="review-gate-note">所有已列风险均有结构化记录；详细证据见风险台账与下载底稿。</div>' : '')}
+    </div>`;
+  }
+
+  // 产物清单：成功项才显示下载入口，失败项只显示状态与原因。
+  if (Array.isArray(report.artifact_manifest) && report.artifact_manifest.length) {
+    // 三态分开：生成中（尚未产出）/ 已生成 / 生成失败；任务级可显示「部分完成」，
+    // 下载入口只对「实际存在且可访问」的产物开放。
+    const artifactStatus = { success: '已生成', failed: '生成失败', generating: '生成中', running: '生成中' };
+    const taskNames = { completed: '全部完成', partial: '部分完成', failed: '生成失败', running: '生成中', not_run: '未生成产物' };
+    const taskStatus = report.task_status || '';
+    const okCount = report.artifact_manifest.filter(a => a.status === 'success' && a.accessible !== false && a.url).length;
+    const artifactRows = report.artifact_manifest.map(a => {
+      const ok = a.status === 'success' && a.accessible !== false && a.url;
+      const name = a.name || a.label || a.kind || '产物';
+      const action = ok ? `<a href="${escapeHtml(a.url)}" download>${icon('download')} 下载</a>` : '不可下载';
+      return `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(artifactStatus[a.status] || a.status || '未记录')}</td><td>${action}</td><td>${escapeHtml(a.error || '')}</td></tr>`;
+    }).join('');
+    headHtml += `<div class="score-card artifact-manifest-card"><div class="c1-status-title">产物生成状态${taskStatus ? `：${escapeHtml(taskNames[taskStatus] || taskStatus)}` : ''}</div>${taskStatus ? `<div class="review-gate-meta"><span>可下载 ${okCount} / ${report.artifact_manifest.length} 项</span><span>版本：${escapeHtml(report.report_metadata?.data_version || '未记录')} · ${escapeHtml(report.report_metadata?.rule_version || '未记录')}</span></div>` : ''}<div class="table-scroll"><table><thead><tr><th>产物</th><th>状态</th><th>操作</th><th>说明</th></tr></thead><tbody>${artifactRows}</tbody></table></div></div>`;
   }
 
   if (report.ai_text) {
@@ -2216,7 +2407,13 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
     // ai_text 超长截断防 localStorage 溢出（先剥离 JSON 台账再按段落边界安全截断）
     const storedText = _truncateForStorage(report.ai_text || '');
     messages.push({ role: 'assistant', content: textForHistory,
-      meta: { report: { tool_results: compactResults, images: report.images, files: report.files, ai_text: storedText } },
+      meta: { report: { tool_results: compactResults, images: report.images, files: report.files, ai_text: storedText,
+        risk_ledger: report.risk_ledger, accepted_risk_details: report.accepted_risk_details,
+        pending_items: report.pending_items, review_gate: report.review_gate,
+        semantic_review: report.semantic_review, c1_review: report.c1_review,
+        artifact_manifest: report.artifact_manifest,
+        report_metadata: report.report_metadata, indicator_view: report.indicator_view,
+        task_status: report.task_status } },
       time: new Date() });
     toolCallCount += (report.tool_results || []).length;
     updateSessionInfo();
@@ -2258,6 +2455,7 @@ async function _doStreamRequest(payload, originSessionId, threadId) {
             try {
               const data = JSON.parse(dataStr);
               if (data.type === 'final_report') { if (origin === currentSessionId) removeThinkingCard(); delete _streamProgress[origin]; renderFinalReport(data, origin); }
+              else if (data.type === 'artifact_status') { updateArtifactProgress(data.artifacts || [], data.task_status); }
               else if (data.type === 'error') { if (origin === currentSessionId) removeThinkingCard(); delete _streamProgress[origin]; appendMessageToSession(origin, 'system', `⚠️ ${data.content || '未知错误'}`); }
             } catch (e) {}
           }
@@ -2288,6 +2486,8 @@ async function _doStreamRequest(payload, originSessionId, threadId) {
             if (origin === currentSessionId) removeThinkingCard();
             delete _streamProgress[origin]; // 分析完成，清除进度缓存
             renderFinalReport(data, origin);
+          } else if (data.type === 'artifact_status') {
+            updateArtifactProgress(data.artifacts || [], data.task_status);
           } else if (data.type === 'error') {
             if (origin === currentSessionId) removeThinkingCard();
             delete _streamProgress[origin]; // 分析异常结束，清除进度缓存

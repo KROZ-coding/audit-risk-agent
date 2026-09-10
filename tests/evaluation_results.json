@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-25T16:22:05.253103",
+  "generated_at": "2026-08-13T19:36:13.932157",
   "test_suite": {
     "total_cases": 22,
     "dimensions": [
@@ -13,7 +13,7 @@
   "results": {
     "tool": {
       "mode": "tool",
-      "evaluation_time": "2026-07-25T16:22:05.271045",
+      "evaluation_time": "2026-08-13T19:36:13.950443",
       "test_count": 22,
       "metrics": {
         "average_precision": 1.0,
@@ -73,7 +73,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.0,
+            "elapsed_sec": 0.001,
             "expected_dimensions": [
               "related_party"
             ],
@@ -106,7 +106,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.001,
+            "elapsed_sec": 0.0,
             "expected_dimensions": [
               "going_concern",
               "financial_misstatement"
@@ -152,7 +152,7 @@
             "actual_count": 0,
             "correct": true,
             "alerts": [],
-            "elapsed_sec": 0.0,
+            "elapsed_sec": 0.001,
             "expected_dimensions": [],
             "dimension_hits": {
               "financial_misstatement": true,
@@ -223,7 +223,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.012,
+          "elapsed_sec": 0.011,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern"
@@ -285,7 +285,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -312,7 +312,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -385,7 +385,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "going_concern",
             "financial_misstatement"
@@ -412,7 +412,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -545,7 +545,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -571,7 +571,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -641,7 +641,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -703,7 +703,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.001,
           "expected_dimensions": [
             "disclosure_compliance"
           ],
@@ -755,7 +755,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.0,
           "expected_dimensions": [
             "regulatory_penalty"
           ],

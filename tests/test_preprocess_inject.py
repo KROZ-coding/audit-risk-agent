@@ -39,18 +39,20 @@ def _service_with_mock_extract(monkeypatch, extract_result):
 class TestPreprocessInject:
 
     def test_injects_valid_tool_trajectory(self, monkeypatch):
-        """提取成功：注入 1 条 AIMessage(3 tool_calls) + 3 条 ToolMessage，顺序正确。"""
+        """提取成功：注入 1 条 AIMessage(5 tool_calls) + 5 条 ToolMessage，顺序正确。"""
         svc = _service_with_mock_extract(monkeypatch, _FAKE_DATA)
         payload = {"messages": [{"role": "user", "content": _LONG_TEXT}]}
         msgs = asyncio.run(svc._preprocess_inject(payload))
-        assert msgs is not None and len(msgs) == 4
+        assert msgs is not None and len(msgs) == 6
         ai = msgs[0]
         assert isinstance(ai, AIMessage)
         names = [tc["name"] for tc in ai.tool_calls]
-        # 顺序 validate → calculate → disclosure：满足硬约束「先校验后计算」
+        # 顺序 validate → calculate → disclosure → risk_models → score：硬约束「先校验后计算」
         assert names == ["validate_financial_data",
                          "calculate_financial_indicators",
-                         "check_disclosure_compliance"]
+                         "check_disclosure_compliance",
+                         "calculate_risk_models",
+                         "calculate_comprehensive_score"]
         tool_msgs = msgs[1:]
         assert all(isinstance(m, ToolMessage) for m in tool_msgs)
         assert [m.name for m in tool_msgs] == names

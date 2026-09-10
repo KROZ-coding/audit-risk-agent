@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    停止审计风险识别系统后端服务（Windows PowerShell）
+    停止上市公司年报风险识别后端服务（Windows PowerShell）
 
 .DESCRIPTION
     按端口查找并终止占用该端口的进程，默认端口 5000。

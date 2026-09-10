@@ -31,7 +31,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import agents.agent as agent_module
-from agents.agent import _AgentWrapper, _drop_stale_validation_risks
+from agents.agent import (
+    ADVOCATE_SYSTEM_PROMPT,
+    ARBITER_SYSTEM_PROMPT,
+    C2_SEMANTIC_SYSTEM_PROMPT,
+    SKEPTIC_SYSTEM_PROMPT,
+    _AgentWrapper,
+    _drop_stale_validation_risks,
+)
 from tools.domain_guard import (
     CALCULATE_TOOL,
     DISCLOSURE_TOOL,
@@ -522,6 +529,72 @@ class TestScoreLedgerBackfill:
         assert embedded["comprehensive_score"]["level"] == "低风险"
 
 
+class TestReviewGateLedgerSync:
+    """门禁后台账必须同步回消息层——网页「报告元数据与完整性」的唯一来源
+
+    实测缺陷（中国石油 2025 年半年度）：C1 辩论三轮与 C2 语义复核都已执行、仲裁也
+    回写了 3 条等级调整，网页却显示「审查门禁：未执行审查」。根因是证据门禁
+    （review_gate / accepted_risk_details / formal_status）在仲裁回写之后才写入导出
+    台账，消息层台账仍停在仲裁前版本，而网页报告元数据读的正是消息层台账，
+    与三份 PDF/Excel 的导出台账自相矛盾。
+    """
+
+    def test_gate_outcome_written_back_into_message_ledger(self, hermetic_env):
+        import json as _json
+
+        ledger = _json.dumps({
+            "company_info": {"company_name": "门禁回刷公司", "report_year": "2025"},
+            "risk_details": [{
+                "risk_id": "R001", "dimension": "financial_misstatement",
+                "title": "应收账款激增", "level": "重要", "confidence": 0.7,
+                "evidence": "应收账款同比增长 67.2%，显著高于营收增速",
+            }],
+            "overall_assessment": "存在需关注事项，建议结合人工专业判断复核确认。",
+        }, ensure_ascii=False)
+        final_text = "分析完成。\n\n```json\n" + ledger + "\n```"
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, final_text)))
+        result = wrapper.invoke({"messages": []})
+
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        block = re.search(r"```json\s*(\{.*\})\s*```", str(final_ai.content), re.S)
+        assert block, "消息中应保留 ```json 台账块"
+        embedded = _json.loads(block.group(1))
+        assert "review_gate" in embedded, "门禁结论未同步回消息层台账"
+        assert embedded["review_gate"]["status"] in ("passed", "not_passed")
+        assert embedded["accepted_risk_details"] == []
+        assert embedded["risk_details"][0]["formal_status"] == "unaccepted"
+
+    def test_web_report_metadata_reflects_gate_outcome(self, hermetic_env):
+        """网页报告元数据的门禁状态取自消息层台账：不得再是 not_run。"""
+        import json as _json
+
+        from main import GraphService
+
+        ledger = _json.dumps({
+            "company_info": {"company_name": "门禁回刷公司", "report_year": "2025"},
+            "risk_details": [{
+                "risk_id": "R001", "dimension": "financial_misstatement",
+                "title": "应收账款激增", "level": "重要", "confidence": 0.7,
+                "evidence": "应收账款同比增长 67.2%，显著高于营收增速",
+            }],
+            "overall_assessment": "存在需关注事项，建议结合人工专业判断复核确认。",
+        }, ensure_ascii=False)
+        final_text = "分析完成。\n\n```json\n" + ledger + "\n```"
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL]
+        wrapper = _AgentWrapper(_FakeAgent(_build_messages(order, final_text)))
+        result = wrapper.invoke({"messages": []})
+
+        final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
+        report = GraphService()._build_final_report_from_messages(
+            [{"type": "ai", "content": str(final_ai.content)}])
+        assert report["report_metadata"]["review_gate_status"] == "not_passed"
+        assert report["review_gate"]["status"] == "not_passed"
+        assert report["accepted_risk_details"] == []
+
+
 class TestToolPipelineAnchors:
     """进度锚点与工具注册表的同步（新增工具必须同步进度映射）
 
@@ -644,11 +717,63 @@ class _FakeResp:
         self.content = content
 
 
-# 仲裁裁定：R001 等级 重大→重要（等级实际变更，触发图表重生）
+def _review_llm(*, advocate="关注方意见", skeptic="否定方意见", arbiter="",
+                other="", c2='{"checks": []}'):
+    """构造按系统提示词分派的复核假 LLM。
+
+    覆盖 C2 两次隔离判断（线程池并发）+ C1 正方/反方/仲裁三轮串行，以及
+    仲裁补全重试（other 分支）。按 SystemMessage 分派而非依赖调用顺序：
+    并发执行的 C2 若按顺序派发会产生竞态。
+
+    arbiter/other 可传字符串序列以模拟多轮裁定（不足时复用最后一个）。
+    """
+    from unittest.mock import MagicMock
+
+    seq = {
+        "arbiter": [arbiter] if isinstance(arbiter, str) else list(arbiter),
+        "other": [other] if isinstance(other, str) else list(other),
+    }
+
+    def _next(kind):
+        values = seq[kind]
+        if len(values) > 1:
+            return values.pop(0)
+        return values[0] if values else ""
+
+    def _dispatch(messages):
+        system = str(getattr(messages[0], "content", "")) if messages else ""
+        if system == C2_SEMANTIC_SYSTEM_PROMPT:
+            return _FakeResp(c2)
+        if system == ADVOCATE_SYSTEM_PROMPT:
+            return _FakeResp(advocate)
+        if system == SKEPTIC_SYSTEM_PROMPT:
+            return _FakeResp(skeptic)
+        if system == ARBITER_SYSTEM_PROMPT:
+            return _FakeResp(_next("arbiter"))
+        return _FakeResp(_next("other"))
+
+    llm = MagicMock()
+    llm.invoke.side_effect = _dispatch
+    return llm
+
+
+# 仲裁裁定：R005 一般→重要（既有条目等级变更，触发底线与图表重生）
 _ARBITER_LEVEL_CHANGE = (
-    "【逐条裁定】R001 采纳否定方意见，降为重要\n"
+    "【逐条裁定】R005 升级重要\n"
+    '【裁定JSON】{"adjustments":[{"risk_id":"R005","final_level":"重要",'
+    '"reason":"油价下行叠加减值风险"}],"verdict":"通过"}'
+)
+
+# 50f：仲裁烂尾场景（verdict 需重新分析 + 重试失败 → 未完成标记）
+# 放宽后「需补充」视为已通过但建议追加程序，仅「需重新分析」触发未完成
+_ARBITER_INCOMPLETE = (
+    '【裁定JSON】{"adjustments":[],"verdict":"需重新分析"}'
+)
+
+# 图表重生场景：R001 重大→重要（既有条目等级变更，verdict 通过）
+_ARBITER_R001_DOWNGRADE = (
     '【裁定JSON】{"adjustments":[{"risk_id":"R001","final_level":"重要",'
-    '"reason":"央企背景，整体风险可控"}],"verdict":"需补充"}'
+    '"reason":"趋势优先于绝对值"}],"verdict":"通过"}'
 )
 
 # 仲裁裁定：新增披露类风险 R006（信披合规维度，触发一致性注记）
@@ -656,18 +781,14 @@ _ARBITER_NEW_DISCLOSURE = (
     '【裁定JSON】{"adjustments":[{"risk_id":"R006","final_level":"重要",'
     '"dimension":"信披合规","title":"关联交易披露不够充分",'
     '"evidence":"年报未完整披露关联交易定价","confidence":0.6,'
-    '"reason":"遗漏补充"}],"verdict":"需补充"}'
+    '"reason":"遗漏补充"}],"verdict":"通过"}'
 )
 
 
-def _debate_env(monkeypatch, arbiter_text):
-    """开启辩论（mock 三轮 LLM）并 mock 全部导出/图表工具，返回五个 recorder。"""
-    from unittest.mock import MagicMock
+def _debate_env(monkeypatch, arbiter_text, *, c2=None):
+    """开启辩论（mock 复核链路）并 mock 全部导出/图表工具，返回五个 recorder。"""
     monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
-    fake = MagicMock()
-    fake.invoke.side_effect = [
-        _FakeResp("关注方意见"), _FakeResp("否定方意见"), _FakeResp(arbiter_text),
-    ]
+    fake = _review_llm(arbiter=arbiter_text, **({"c2": c2} if c2 is not None else {}))
     monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: fake)
     pdf_mock = _RecordingExportTool("http://local/report.pdf")
     excel_mock = _RecordingExportTool("http://local/workpaper.xlsx")
@@ -688,7 +809,7 @@ class TestArbiterChartRegen:
 
     def test_charts_regen_when_arbiter_changes_level(self, monkeypatch):
         pdf_mock, excel_mock, heatmap_mock, radar_mock, trend_mock = \
-            _debate_env(monkeypatch, _ARBITER_LEVEL_CHANGE)
+            _debate_env(monkeypatch, _ARBITER_R001_DOWNGRADE)
         # 图表工具已在「LLM」阶段调用（called 含图表工具名）——无仲裁改级时不会重生
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL, SEARCH_TOOL, SCORE_TOOL,
                  "generate_risk_heatmap", "generate_radar_chart"]
@@ -765,24 +886,47 @@ class TestDisclosureConsistencyNote:
         assert "disclosure_consistency_note" not in exported
 
 
-# 仲裁裁定：R004 一般→重要 + 新增 R005 重要（最终 5 个重要级，触发等级底线）
-_FLOOR_ARBITER = (
-    '【裁定JSON】{"adjustments":['
-    '{"risk_id":"R004","final_level":"重要","reason":"油价下行叠加减值风险"},'
-    '{"risk_id":"R005","final_level":"重要","dimension":"经营与财务",'
-    '"title":"油气资产减值测试不充分","evidence":"油气资产规模庞大",'
-    '"confidence":0.6,"reason":"遗漏补充"}],"verdict":"需补充"}'
-)
+# 等级底线用例的正式风险须带可追溯证据：证据门禁下，无可回指 evidence_ids 的
+# 条目一律进「待处理事项」，不计入正式风险等级分布（与报告口径一致）。
+_FLOOR_RISK_IDS = [f"R{i:03d}" for i in range(1, 6)]
 
-# 含 4 条风险（3 重要 + 1 一般）的台账，仲裁后变为 5 重要（与 17:59 版同构）
+
+def _floor_evidence_catalog():
+    return [
+        {"evidence_id": f"E-{rid}", "source_type": "annual_report",
+         "source_document": "集成测试公司2025年年度报告.pdf", "page": "12",
+         "locator": "第三节 管理层讨论与分析", "excerpt": "年报原文摘录",
+         "fact_ids": [f"F-{rid}"], "verified": True, "status": "verified"}
+        for rid in _FLOOR_RISK_IDS
+    ]
+
+
+def _c2_aligned_payload():
+    """两次隔离判断内容一致的 C2 输出：证据齐备的正式风险据此通过语义门禁。"""
+    return json.dumps({"checks": [
+        {"risk_id": rid, "decision": "supported", "conditions_aligned": True,
+         "evidence_ids": [f"E-{rid}"], "reason": "证据支持"}
+        for rid in _FLOOR_RISK_IDS
+    ]}, ensure_ascii=False)
+
+
+# 含 5 条已采信风险（R001-R004 重要 + R005 一般）的台账，仲裁把 R005 升为重要后
+# 变为 5 个重要级（与 17:59 版同构：4 条 → 底线预锁 26，仲裁后 5 条 → 51 高风险）
 _FIVE_IMPORTANT_LEDGER = json.dumps({
     "company_info": {"company_name": "集成测试公司", "report_year": "2025"},
     "risk_details": [
-        {"risk_id": "R001", "dimension": "财务错报风险", "level": "重要", "title": "应收激增"},
-        {"risk_id": "R002", "dimension": "财务错报风险", "level": "重要", "title": "存贷双高"},
-        {"risk_id": "R003", "dimension": "关联交易风险", "level": "重要", "title": "关联交易规模大"},
-        {"risk_id": "R004", "dimension": "持续经营风险", "level": "一般", "title": "油价下行盈利承压"},
+        {"risk_id": "R001", "dimension": "财务错报风险", "level": "重要", "title": "应收激增",
+         "evidence": "应收账款同比+45%（第12页）", "evidence_ids": ["E-R001"]},
+        {"risk_id": "R002", "dimension": "财务错报风险", "level": "重要", "title": "存贷双高",
+         "evidence": "货币资金与有息负债同时高企（第15页）", "evidence_ids": ["E-R002"]},
+        {"risk_id": "R003", "dimension": "关联交易风险", "level": "重要", "title": "关联交易规模大",
+         "evidence": "关联采购占比 32%（第18页）", "evidence_ids": ["E-R003"]},
+        {"risk_id": "R004", "dimension": "财务错报风险", "level": "重要", "title": "毛利率异常",
+         "evidence": "毛利率高于同业 12pp（第14页）", "evidence_ids": ["E-R004"]},
+        {"risk_id": "R005", "dimension": "持续经营风险", "level": "一般", "title": "油价下行盈利承压",
+         "evidence": "原油价格下跌致营收下滑（第20页）", "evidence_ids": ["E-R005"]},
     ],
+    "evidence": _floor_evidence_catalog(),
     "overall_assessment": "整体风险可控，综合风险评分10.5分（低风险）。",
 }, ensure_ascii=False)
 
@@ -805,7 +949,9 @@ class TestLevelFloorIntegration:
 
     def test_floor_escalates_after_arbitration(self, monkeypatch):
         from unittest.mock import MagicMock
-        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _FLOOR_ARBITER)
+        # 50f：_ARBITER_LEVEL_CHANGE（verdict 通过，R004 升级+R005 新增 → 5 项重要）
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(
+            monkeypatch, _ARBITER_LEVEL_CHANGE, c2=_c2_aligned_payload())
         score_stub = MagicMock()
         score_stub.invoke.return_value = _score_stub_json()
         monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
@@ -919,12 +1065,12 @@ class TestCashflowPenetrationNote:
 
 
 class TestArbiterVerdictMarking:
-    """50d：仲裁 verdict=需补充 时降级可见状态标记（不阻断输出，adjustments 仍应用）。"""
+    """50d：仲裁 verdict=需重新分析 时降级可见未完成标记（不阻断输出，adjustments 仍应用）。"""
 
     def test_incomplete_verdict_marked_in_reply_and_ledger(self, monkeypatch):
         from unittest.mock import MagicMock
-        # _ARBITER_LEVEL_CHANGE 的 verdict 为「需补充」→ 触发状态标记
-        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _ARBITER_LEVEL_CHANGE)
+        # 50f：_ARBITER_INCOMPLETE（verdict 需重新分析）+ 重试失败 → 未完成标记 + 继续导出
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(monkeypatch, _ARBITER_INCOMPLETE)
         score_stub = MagicMock()
         score_stub.invoke.return_value = _score_stub_json()
         monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
@@ -945,18 +1091,44 @@ class TestArbiterVerdictMarking:
         wrapper = _AgentWrapper(_FakeAgent(msgs))
         result = wrapper.invoke({"messages": []})
         text = _last_ai_text(result)
-        # 50e：补全重试失败（mock 仅 3 次 invoke）→ 横幅替换，「需补充」不穿透
-        assert "仲裁状态：仲裁未完成" in text
-        assert "仲裁未完成（系统补全重试失败" in text
+        # 50f 改：仅「需重新分析」置未完成横幅，且不再真阻断（强可见警告 + 继续导出完整产物）
+        assert "仲裁未完成" in text
         assert "需补充" not in text
-        # 台账写入仲裁状态字段（PDF/Excel 同源）
-        assert len(pdf_mock.calls) == 1
-        exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
-        assert exported["arbiter_incomplete"] is True
-        assert exported["arbiter_verdict"] == "需补充"
-        # 50d：semantic_id 已写入导出台账
-        for r in exported["risk_details"]:
-            assert r.get("semantic_id")
+        # 导出/图表照常执行（不产无效文件的真阻断已关闭）
+        assert pdf_mock.calls and excel_mock.calls
+        assert _hm.calls and _rd.calls
+
+    def test_supplement_verdict_not_marked_incomplete(self, monkeypatch):
+        """放宽后「需补充」视为已通过但建议追加程序：无未完成横幅、无补全重试、导出照常。"""
+        from unittest.mock import MagicMock
+        pdf_mock, excel_mock, _hm, _rd, _tr = _debate_env(
+            monkeypatch,
+            '【仲裁结论】需补充\n【裁定JSON】{"adjustments":[],"verdict":"需补充"}')
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+
+        msgs = [HumanMessage(content="请分析该公司年报的审计风险")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+            ToolMessage(content="{}", name=SEARCH_TOOL, tool_call_id="call_s"),
+            ToolMessage(content="{}", name=SCORE_TOOL, tool_call_id="call_sc"),
+        ]
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 「需补充」不再触发未完成标记与补全重试，产物照常导出
+        assert "仲裁未完成" not in text
+        assert "仲裁补全重试" not in text
+        assert pdf_mock.calls and excel_mock.calls
+        assert _hm.calls and _rd.calls
 
 
 class TestScorePlaceholderAndIndexInjection:
@@ -964,10 +1136,7 @@ class TestScorePlaceholderAndIndexInjection:
 
     def _env(self, monkeypatch, arbiter_text):
         from unittest.mock import MagicMock
-        llm = MagicMock()
-        llm.invoke.side_effect = [
-            _FakeResp("关注方意见"), _FakeResp("否定方意见"), _FakeResp(arbiter_text),
-        ]
+        llm = _review_llm(arbiter=arbiter_text, c2=_c2_aligned_payload())
         monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: llm)
         monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
         score_stub = MagicMock()
@@ -1003,7 +1172,7 @@ class TestScorePlaceholderAndIndexInjection:
 
     def test_placeholder_backfilled_with_final_score(self, monkeypatch):
         """正文占位符「系统兜底计算 | —」→ 回填底线分（修复 V4 寻宝缺陷）。
-        场景：3 项重要 → 底线 26 中等风险；仲裁 R001 重要→重要（无级变）→ 维持 26。"""
+        场景：3 项重要 → 预锁 26；仲裁 R004 升级+新增 R005 → 5 项重要 → 51 高风险。"""
         self._env(monkeypatch, _ARBITER_LEVEL_CHANGE)
         ai_body = ("四、量化风险评分\n| 评分模型 | 分值 | 判定 |\n"
                    "| 综合评分 | 系统兜底计算 | — | 以系统结果为准 |\n\n"
@@ -1012,7 +1181,7 @@ class TestScorePlaceholderAndIndexInjection:
         result = wrapper.invoke({"messages": []})
         text = _last_ai_text(result)
         assert "系统兜底计算" not in text
-        assert "26.0分（中等风险）" in text
+        assert "51.0分（高风险）" in text
 
     def test_risk_index_table_injected(self, monkeypatch):
         """风险索引表注入最终消息（含仲裁新增条目，修复 R006 脱节）。"""
@@ -1027,17 +1196,14 @@ class TestScorePlaceholderAndIndexInjection:
 
 
 class TestArbiterCompletionRetry:
-    """50e：仲裁补全重试（verdict 需补充 → 重试一轮）。"""
+    """50e：仲裁补全重试（verdict 需重新分析 → 重试一轮）。"""
 
     def test_retry_success_clears_incomplete(self, monkeypatch):
         """重试返回 verdict=通过 → 未完成状态清除，无横幅。"""
         from unittest.mock import MagicMock
-        llm = MagicMock()
-        llm.invoke.side_effect = [
-            _FakeResp("关注方意见"), _FakeResp("否定方意见"),
-            _FakeResp('【仲裁结论】需补充\n【裁定JSON】{"adjustments":[],"verdict":"需补充"}'),
-            _FakeResp('【仲裁结论】通过\n【裁定JSON】{"adjustments":[],"verdict":"通过"}'),
-        ]
+        llm = _review_llm(
+            arbiter='【仲裁结论】需重新分析\n【裁定JSON】{"adjustments":[],"verdict":"需重新分析"}',
+            other='【仲裁结论】通过\n【裁定JSON】{"adjustments":[],"verdict":"通过"}')
         monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: llm)
         monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
         score_stub = MagicMock()
@@ -1122,3 +1288,116 @@ class TestPendingVerificationMarking:
         assert r005["level"] == "一般"
         r001 = next(r for r in exported["risk_details"] if r["risk_id"] == "R001")
         assert "pending_verification" not in r001
+
+
+class TestSingleModule50eApplicability:
+    """50e 适用性：财务健康度诊断 / 合规与经营风险扫描两个单模块同样走
+    _post_process（main.py 仅 synthesis 走三阶段串跑），50e 机制（底线预锁、
+    补全重试、占位符回填、索引表注入、语义编号）不门控模块，均适用。"""
+
+    def _env(self, monkeypatch):
+        from unittest.mock import MagicMock
+        llm = _review_llm(
+            arbiter='【仲裁结论】通过\n【裁定JSON】{"adjustments":[],"verdict":"通过"}')
+        monkeypatch.setattr(agent_module, "ChatOpenAI", lambda **kw: llm)
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", True)
+        score_stub = MagicMock()
+        score_stub.invoke.return_value = _score_stub_json()
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", score_stub)
+        pdf_mock = _RecordingExportTool("http://local/report.pdf")
+        monkeypatch.setattr(agent_module, "export_pdf_report", pdf_mock)
+        monkeypatch.setattr(agent_module, "export_excel_report",
+                            _RecordingExportTool("http://local/workpaper.xlsx"))
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+        return pdf_mock
+
+    def test_financial_module_gets_50e_features(self, monkeypatch):
+        """财务健康度诊断模块：索引表注入 + 语义编号 + 评分归一化说明均生效。"""
+        from unittest.mock import MagicMock
+        pdf_mock = self._env(monkeypatch)
+        # 单模块缺披露/校验维度 → score 工具返回缺维度结果（归一化说明应进评分卡）
+        partial_stub = MagicMock()
+        partial_stub.invoke.return_value = json.dumps({
+            "score": 10.5, "level": "低风险", "level_key": "low",
+            "breakdown": {"financial": 10.5, "disclosure": "未获取", "validation": "未获取"},
+            "weights": {"financial": 1.0, "disclosure": 0.0, "validation": 0.0},
+            "notes": ["披露合规、数据校验维度未获取，已按剩余维度权重归一化"],
+        }, ensure_ascii=False)
+        monkeypatch.setattr("tools.risk_scorer.calculate_comprehensive_score", partial_stub)
+        ledger = json.dumps({"company_info": {"company_name": "集成测试公司"},
+                             "risk_details": [
+                                 {"risk_id": "R001", "dimension": "财务错报风险",
+                                  "level": "重要", "title": "应收激增", "confidence": 0.65},
+                                 {"risk_id": "R002", "dimension": "持续经营风险",
+                                  "level": "重要", "title": "现金流为负", "confidence": 0.6},
+                             ], "overall_assessment": "存在风险信号"}, ensure_ascii=False)
+        msgs = [HumanMessage(content="【模块:财务健康度诊断】请分析")]
+        msgs += [
+            ToolMessage(content=json.dumps({"failed_checks": 0}, ensure_ascii=False),
+                        name=VALIDATE_TOOL, tool_call_id="call_v"),
+            ToolMessage(content=json.dumps({"alerts": []}, ensure_ascii=False),
+                        name=CALCULATE_TOOL, tool_call_id="call_c"),
+        ]
+        msgs.append(AIMessage(content=f"分析完成：\n```json\n{ledger}\n```"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs), module="financial")
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 50e 索引表与语义编号在单模块同样注入
+        assert "最终风险清单（系统生成，与审计底稿同源）" in text
+        assert "FIN-001" in text
+        # 单模块缺披露/校验维度 → 评分卡含归一化说明（50d/50e 透明化）
+        assert "未获取" in text
+        # 单模块导出携带 module 参数（仅财务报告）
+        assert pdf_mock.calls[0].get("module") == "financial"
+
+    def test_compliance_module_gets_50e_features(self, monkeypatch):
+        """合规与经营风险扫描模块：索引表注入 + DIS 语义编号生效。"""
+        self._env(monkeypatch)
+        ledger = json.dumps({"company_info": {"company_name": "集成测试公司"},
+                             "risk_details": [
+                                 {"risk_id": "R003", "dimension": "disclosure_compliance",
+                                  "level": "重要", "title": "信披充分性", "confidence": 0.6},
+                             ], "overall_assessment": "存在风险信号"}, ensure_ascii=False)
+        msgs = [HumanMessage(content="【模块:合规与经营风险扫描】请分析")]
+        msgs += [
+            ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
+                                           ensure_ascii=False),
+                        name=DISCLOSURE_TOOL, tool_call_id="call_d"),
+        ]
+        msgs.append(AIMessage(content=f"分析完成：\n```json\n{ledger}\n```"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs), module="compliance")
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        assert "最终风险清单（系统生成，与审计底稿同源）" in text
+        assert "DIS-001" in text
+
+
+class TestScoreBackfillRun:
+    """50f：评分兜底代跑——三维度全空 + 长年报文本 → 披露检查代跑，评分非 null
+    （治「LLM 跳工具导致诚实 null」，让评分卡尽量有真实数据）。"""
+
+    def test_backfill_run_produces_non_null_score(self, monkeypatch):
+        monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
+        monkeypatch.setattr(agent_module, "export_pdf_report",
+                            _RecordingExportTool("http://local/report.pdf"))
+        monkeypatch.setattr(agent_module, "export_excel_report",
+                            _RecordingExportTool("http://local/workpaper.xlsx"))
+        monkeypatch.setattr(agent_module, "generate_risk_heatmap",
+                            _RecordingExportTool("/local_storage/charts/h.png"))
+        monkeypatch.setattr(agent_module, "generate_radar_chart",
+                            _RecordingExportTool("/local_storage/charts/r.png"))
+        monkeypatch.setattr(agent_module, "generate_trend_chart",
+                            _RecordingExportTool("/local_storage/charts/t.png"))
+        long_text = "中国石油天然气股份有限公司 2025 年半年度报告。" * 100  # >2000 字
+        msgs = [HumanMessage(content="请分析以下年报：\n" + long_text)]
+        msgs.append(AIMessage(content="分析完成，整体稳健。"))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        result = wrapper.invoke({"messages": []})
+        text = _last_ai_text(result)
+        # 披露维度代跑后有数据 → 评分非 null（评分行非「未获取/无法判定」）
+        assert "未获取/无法判定" not in text

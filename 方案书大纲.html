@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年报风险识别 · 项目方案书大纲</title>
+<style>
+  :root{
+    --bg:#0a0e17; --bg2:#0f1522; --glass:rgba(255,255,255,.045);
+    --glass-border:rgba(255,255,255,.09); --txt:#e6ebf5; --muted:#8a97ad;
+    --accent:#4dd0e1; --accent2:#7c6cff; --gold:#ffb454; --green:#5ee6a8;
+    --shadow:0 8px 32px rgba(0,0,0,.45);
+    --font-display:"Source Han Serif SC","Noto Serif SC","STZhongsong","SimSun",serif;
+    /* 六维评分色 */
+    --d1:#ff6b8b; --d2:#7c6cff; --d3:#4dd0e1; --d4:#5ee6a8; --d5:#ffb454; --d6:#9b8cff;
+  }
+  /* Hallmark · macrostructure: Long Document · genre: atmospheric-docs · design-system: docs/design.md */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(1200px 800px at 15% -10%,#16203a 0,transparent 55%),
+               radial-gradient(1000px 700px at 100% 0,#1a1330 0,transparent 50%),
+               var(--bg);
+    color:var(--txt); line-height:1.75; min-height:100vh;
+  }
+  code{
+    font-family:"Cascadia Code",Consolas,monospace; font-size:.88em;
+    background:rgba(124,108,255,.14); color:#c7bdff; padding:.1em .42em;
+    border-radius:5px; border:1px solid rgba(124,108,255,.22);
+  }
+  .wrap{display:grid; grid-template-columns:280px 1fr; max-width:1440px; margin:0 auto}
+  aside{
+    position:sticky; top:0; height:100vh; overflow-y:auto; padding:26px 18px;
+    background:linear-gradient(180deg,rgba(15,21,34,.9),rgba(10,14,23,.7));
+    border-right:1px solid var(--glass-border); backdrop-filter:blur(12px);
+  }
+  aside .brand{font-family:var(--font-display);font-size:17px;color:#f2f6ff;margin-bottom:4px}
+  aside .brand small{display:block;font-family:"Segoe UI";font-size:11px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-top:4px}
+  aside h2{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:22px 6px 10px;font-weight:600}
+  .nav a{display:block;padding:7px 12px;border-radius:9px;color:var(--muted);font-size:13px;transition:.18s;border:1px solid transparent;margin-bottom:2px}
+  .nav a:hover{background:var(--glass);color:var(--txt);border-color:var(--glass-border)}
+  .nav a .pn{display:inline-block;width:26px;color:var(--accent);font-weight:700;font-size:11px}
+  main{padding:34px 46px 120px; max-width:1040px}
+  header.hero{margin-bottom:30px;padding-bottom:22px;border-bottom:1px solid var(--glass-border)}
+  .hero .kicker{color:var(--accent);font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
+  .hero h1{font-family:var(--font-display);font-size:32px;margin:10px 0 8px;color:#f2f6ff;line-height:1.3}
+  .hero p.sub{color:var(--muted);font-size:14.5px}
+  .meta-chips{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:12px;padding:4px 12px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-border);color:var(--muted)}
+  .chip b{color:var(--accent);font-weight:600}
+  /* 页卡 */
+  .page{
+    background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+    padding:22px 26px;margin-bottom:22px;box-shadow:var(--shadow);scroll-margin-top:20px;
+    position:relative;overflow:hidden;
+  }
+  .page::before{content:"";position:absolute;top:0;left:0;bottom:0;width:3px;background:var(--accent)}
+  .page.core::before{background:linear-gradient(180deg,var(--accent),var(--accent2))}
+  .page h3{font-family:var(--font-display);font-size:20px;color:#f2f6ff;display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .page h3 .pno{font-family:"Segoe UI";font-size:12px;font-weight:800;background:rgba(77,208,225,.16);color:var(--accent);padding:3px 9px;border-radius:7px;letter-spacing:.5px}
+  .page .dims{margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px}
+  .dtag{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.3px}
+  .dtag.d1{background:rgba(255,107,139,.16);color:#ff9db1}
+  .dtag.d2{background:rgba(124,108,255,.16);color:#bfb3ff}
+  .dtag.d3{background:rgba(77,208,225,.16);color:#8fe4ef}
+  .dtag.d4{background:rgba(94,230,168,.16);color:#8ff0c4}
+  .dtag.d5{background:rgba(255,180,84,.16);color:#ffce8f}
+  .dtag.d6{background:rgba(155,140,255,.16);color:#c3b8ff}
+  .page ul{margin:6px 0 4px 4px;list-style:none}
+  .page li{margin:7px 0;padding-left:20px;position:relative;font-size:14px}
+  .page li::before{content:"▸";position:absolute;left:0;color:var(--accent);font-size:12px}
+  .page li.star::before{content:"★";color:var(--gold)}
+  strong{color:#fff;font-weight:650}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:10px;padding:8px 12px;background:rgba(255,180,84,.06);border-left:2px solid var(--gold);border-radius:0 8px 8px 0}
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--glass-border);padding:8px 12px;text-align:left}
+  th{background:rgba(255,255,255,.04);color:var(--accent);font-weight:600}
+  td b{color:#fff}
+  .sec-label{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;font-weight:600;margin:30px 0 12px;padding-left:4px}
+  footer{color:var(--muted);font-size:12.5px;text-align:center;padding:30px;border-top:1px solid var(--glass-border);margin-top:20px}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}aside{display:none}main{padding:22px 18px 80px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside>
+  <div class="brand">项目方案书<small>Proposal · 13 Pages</small></div>
+  <h2>页面结构</h2>
+  <nav class="nav">
+    <a href="#p1"><span class="pn">P1</span>封面与目录</a>
+    <a href="#p2"><span class="pn">P2</span>问题定义与背景</a>
+    <a href="#p3"><span class="pn">P3</span>系统总览 + 架构图</a>
+    <a href="#p4"><span class="pn">P4</span>五大风险维度模型</a>
+    <a href="#p5"><span class="pn">P5</span>前沿范式命中</a>
+    <a href="#p6"><span class="pn">P6</span>工具链与分级门禁</a>
+    <a href="#p7"><span class="pn">P7</span>数据来源与合规</a>
+    <a href="#p8"><span class="pn">P8</span>性能工程</a>
+    <a href="#p9"><span class="pn">P9</span>效果评估</a>
+    <a href="#p10"><span class="pn">P10</span>安全与工程质量</a>
+    <a href="#p11"><span class="pn">P11</span>界面与产物展示</a>
+    <a href="#p12"><span class="pn">P12</span>预期成果与路线</a>
+    <a href="#p13"><span class="pn">P13</span>团队分工</a>
+  </nav>
+  <h2>附</h2>
+  <nav class="nav">
+    <a href="#cover">六维评分覆盖表</a>
+  </nav>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="kicker">2026 北京市大学生数智会计创新应用竞赛 · 方向一 智能审计</div>
+  <h1>上市公司年报风险识别 —— 项目方案书大纲</h1>
+  <p class="sub">Multi-Agent · 让智能体走进 CPA 审计现场 ｜ FastAPI + LangGraph ReAct + DeepSeek-V4</p>
+  <div class="meta-chips">
+    <span class="chip">规格：<b>PDF 10-15 页</b></span>
+    <span class="chip">评委：<b>盲审 5 人</b></span>
+    <span class="chip">对口题目：<b>上市公司年报风险识别智能体</b></span>
+    <span class="chip">每节标注 → <b>对应评分维度</b></span>
+  </div>
+</header>
+
+<div class="sec-label">开篇</div>
+
+<section class="page" id="p1">
+  <h3><span class="pno">P1</span>封面与目录</h3>
+  <ul>
+    <li>队名 / 作品名：<strong>上市公司年报风险识别</strong></li>
+    <li>一句话定位：<strong>「Multi-Agent 让智能体走进财会专业领域」</strong>——直接呼应竞赛主题</li>
+    <li>赛道：方向一·智能审计（官方推荐题目第一个，命题对口度满分）</li>
+    <li>队伍成员 + 指导教师 + 报告日期</li>
+  </ul>
+</section>
+
+<section class="page" id="p2">
+  <h3><span class="pno">P2</span>问题定义与业务背景</h3>
+  <div class="dims"><span class="dtag d1">专业深度 25</span></div>
+  <ul>
+    <li><strong>痛点</strong>：四大所年报审计人工翻阅耗时、风险点分散、强经验依赖；中小所更缺高级审计人力</li>
+    <li><strong>为什么用 Agent 而非普通脚本</strong>：需要自主决策工具链调用顺序 + 可解释的推理链，而非固定流程</li>
+    <li><strong>目标用户</strong>：CPA 事务所审计助理 / 内审人员 / 监管初筛</li>
+    <li>价值主张：把「翻报表找异常」压缩成「上传即出结构化风险台账」</li>
+  </ul>
+</section>
+
+<div class="sec-label">技术主体</div>
+
+<section class="page core" id="p3">
+  <h3><span class="pno">P3</span>系统总览 + 架构图 <span style="font-size:11px;color:var(--gold)">★核心页</span></h3>
+  <div class="dims"><span class="dtag d2">技术创新 25</span></div>
+  <ul>
+    <li class="star"><strong>必画一张主架构图</strong>：用户上传 → 预处理并行层（校验/指标/披露）→ ReAct Agent（13 工具）→ 分级门禁 → 三方辩论仲裁 → 综合评分 → PDF/Excel/图表导出</li>
+    <li>技术栈标注：FastAPI + LangGraph ReAct + DeepSeek-V4 + ChromaDB（回退 TF-IDF）</li>
+    <li>强调「固定工具链 + 自主决策」的混合架构：既灵活又可控</li>
+  </ul>
+  <div class="hint">这一页是评委形成第一印象的地方，架构图要清晰、有数据流箭头，别堆文字。</div>
+</section>
+
+<section class="page" id="p4">
+  <h3><span class="pno">P4</span>五大风险维度模型</h3>
+  <div class="dims"><span class="dtag d1">专业深度 25</span></div>
+  <ul>
+    <li>财务错报 / 关联交易 / 信披合规 / 持续经营 / 监管处罚 —— 五维覆盖</li>
+    <li><strong>量化判定阈值表</strong>：OCF/NP&lt;0.5 连续 2 期、商誉/净资产&gt;30% 未减值、存贷双高、大股东质押&gt;70% 等</li>
+    <li><strong>十行业基准阈值表</strong>（毛利率/资产负债率/应收占比/存货周转/流动比率）</li>
+    <li class="star">强调审计措辞规范：用「风险嫌疑/异常迹象」而非定性结论，对齐 CAS 审计准则</li>
+  </ul>
+</section>
+
+<section class="page core" id="p5">
+  <h3><span class="pno">P5</span>前沿范式命中 <span style="font-size:11px;color:var(--gold)">★满分抓手</span></h3>
+  <div class="dims"><span class="dtag d2">技术创新 25</span></div>
+  <p style="font-size:13.5px;color:var(--muted);margin:4px 0 8px">手册 2.3 点名的前沿范式全部命中，做一张「范式命中表」：</p>
+  <table>
+    <tr><th>手册点名范式</th><th>本系统实现</th></tr>
+    <tr><td>RAG 知识库</td><td>ChromaDB 向量语义检索 + TF-IDF 回退</td></tr>
+    <tr><td>思维链（CoT）</td><td>五步 <code>reasoning_chain</code>：数据发现→指标异常→法规依据→案例对照→风险判定</td></tr>
+    <tr><td>辩论机制</td><td>风险关注方 → 否定方 → 裁判仲裁，三方制衡</td></tr>
+    <tr><td>Agent-as-a-Judge</td><td>仲裁裁定 JSON 回写风险等级（可追溯 original_level）</td></tr>
+  </table>
+</section>
+
+<section class="page core" id="p6">
+  <h3><span class="pno">P6</span>工具链与分级门禁</h3>
+  <div class="dims"><span class="dtag d2">技术创新 25</span><span class="dtag d3">落地可行 20</span></div>
+  <ul>
+    <li>固定工具链图：validate → calculate → disclosure → search → score → 导出</li>
+    <li class="star"><strong>分级门禁的三级进化故事</strong>（亮点，评委爱听）：一刀切 fail-closed → 硬约束/软约束分级 → 带自愈的代跑补救</li>
+    <li>讲清设计哲学：数据依赖类硬拦截、推荐顺序类软警告；模型漏调校验时系统代跑补救而非炸掉全场</li>
+  </ul>
+  <div class="hint">这段是「从真实故障迭代出的工程智慧」，比单纯罗列功能更打动技术评委。</div>
+</section>
+
+<section class="page" id="p7">
+  <h3><span class="pno">P7</span>数据来源与合规</h3>
+  <div class="dims"><span class="dtag d6">伦理合规 5</span></div>
+  <ul>
+    <li>四类官方数据（手册点名）：巨潮年报 PDF / 证监会处罚决定书 / 交易所问询函 / CAS 准则电子版</li>
+    <li>数据来源声明 + 合法公开信息说明</li>
+    <li class="star">AI 生成声明 + 审慎措辞规范 + 风险提示免责声明（伦理 5 分几乎白送）</li>
+  </ul>
+</section>
+
+<section class="page" id="p8">
+  <h3><span class="pno">P8</span>性能工程</h3>
+  <div class="dims"><span class="dtag d3">落地可行 20</span></div>
+  <ul>
+    <li>分级用模：普通模式（完整链路）/ 快速模式（精简链路）</li>
+    <li>P1 预处理并行注入（省 LLM 往返）+ P2 图表/导出四路并行兜底 + thinking 模式按 provider 禁用</li>
+    <li class="star"><strong>耗时对比图</strong>：普通 ~3min → ~90s，快速模式 → ~30s</li>
+  </ul>
+</section>
+
+<div class="sec-label">证据与质量</div>
+
+<section class="page core" id="p9">
+  <h3><span class="pno">P9</span>效果评估 <span style="font-size:11px;color:var(--gold)">★硬证据</span></h3>
+  <div class="dims"><span class="dtag d4">效果评估 15</span></div>
+  <ul>
+    <li class="star"><strong>22 合成用例 + 5 盲测真实案例</strong>（康得新 / 康美 / 乐视网 / 天神娱乐 / 茅台）</li>
+    <li>真 Precision / Recall 定义（分母区分：告警数 vs 标注数）+ 与零样本基线对比</li>
+    <li>五维识别能力雷达图 + 逐用例明细表</li>
+  </ul>
+  <div class="hint">15 分维度全靠这页的量化数据，务必给出具体数字和对比图，别只说「效果好」。</div>
+</section>
+
+<section class="page" id="p10">
+  <h3><span class="pno">P10</span>安全与工程质量</h3>
+  <div class="dims"><span class="dtag d3">落地可行 20</span></div>
+  <ul>
+    <li>228 单元测试 + CI + 安全扫描修复 6 洞（SSRF / 路径遍历 / 上传限流 / 状态脱敏 / 会话固定 / 异常脱敏）</li>
+    <li>多用户登录 + 专属分析历史隔离（PBKDF2 口令哈希）</li>
+    <li>一句总结工程成熟度：「安全与可靠性均从真实故障驱动迭代」</li>
+  </ul>
+</section>
+
+<section class="page" id="p11">
+  <h3><span class="pno">P11</span>界面与产物展示</h3>
+  <div class="dims"><span class="dtag d5">文档展示 10</span></div>
+  <ul>
+    <li>4-6 张截图：分析界面 / 思维链卡 / 辩论摘要条 / 风险饼图 / PDF 报告 / Excel 底稿</li>
+    <li class="star">强调结构化输出：JSON + 表格 + PDF + Excel（手册硬要求「不接受纯自然语言」）</li>
+  </ul>
+</section>
+
+<div class="sec-label">收尾</div>
+
+<section class="page" id="p12">
+  <h3><span class="pno">P12</span>预期成果与落地路线</h3>
+  <ul>
+    <li>已达成：完整可运行原型 + 全套结构化产物 + 量化评估</li>
+    <li>演进路线图：真正的 Multi-Agent 并行图、更多赛道扩展（税务/投研）、公网 SaaS 部署</li>
+  </ul>
+</section>
+
+<section class="page" id="p13">
+  <h3><span class="pno">P13</span>团队分工</h3>
+  <div class="dims"><span class="dtag d5">文档展示 10</span></div>
+  <ul>
+    <li>4 人分工表（至少 1 人财会/审计背景——手册组队硬要求）</li>
+    <li>指导教师 + 各成员负责模块（业务建模 / Agent 工程 / 前端 / 评估测试）</li>
+  </ul>
+</section>
+
+<div class="sec-label" id="cover">附 · 六维评分覆盖自检</div>
+<section class="page core">
+  <table>
+    <tr><th>评分维度</th><th>权重</th><th>对应页面</th></tr>
+    <tr><td><b>专业深度</b></td><td>25</td><td>P2 · P4</td></tr>
+    <tr><td><b>技术创新</b></td><td>25</td><td>P3 · P5 · P6</td></tr>
+    <tr><td><b>落地可行</b></td><td>20</td><td>P8 · P10 · P11</td></tr>
+    <tr><td><b>效果评估</b></td><td>15</td><td>P9</td></tr>
+    <tr><td><b>文档展示</b></td><td>10</td><td>P11 · P13</td></tr>
+    <tr><td><b>伦理合规</b></td><td>5</td><td>P7</td></tr>
+  </table>
+  <div class="hint">每一页至少命中一个评分维度，六维全覆盖无遗漏——这是方案书拿高分的结构保障。</div>
+</section>
+
+<footer>年报风险识别 v4.3 GA · 项目方案书大纲 · 2026 北京市大学生数智会计创新应用竞赛</footer>
+</main>
+</div>
+</body>
+</html>

@@ -15,7 +15,7 @@ import tempfile
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from typing import Any, Dict, Optional, List
 
 import uvicorn
@@ -25,6 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage, AIMessage
+
+from agents.pipeline import SYNTHESIS_STAGES, build_stage_payload, extract_stage_summary
 
 from local_shims import (
     new_context, Context, request_context,
@@ -53,13 +55,18 @@ TOOL_PIPELINE = [
     ("parse_pdf_report",                  "解析年报文件",     8),
     ("validate_financial_data",           "校验财务数据",    18),
     ("calculate_financial_indicators",    "计算财务指标",    30),
+    ("calculate_risk_models",             "量化风险模型预警", 36),
     ("check_disclosure_compliance",       "检查披露合规",    42),
+    ("identify_audit_opinion",            "识别审计意见",    48),
     ("search_regulations",                "检索法规条文",    55),
+    ("search_regulatory_inquiries",        "查询监管问询",    56),
+    ("industry_outlook",                  "研判行业风向",    58),
     ("compare_multi_year",               "多年数据对比",    60),
     ("calculate_comprehensive_score",     "综合风险评分",    68),
     ("generate_risk_heatmap",             "生成风险热力图",  76),
     ("generate_radar_chart",              "生成财务雷达图",  84),
     ("generate_trend_chart",              "生成趋势折线图",  87),
+    ("investment_advisor",                "生成投资参考卡",  90),
     ("export_pdf_report",                 "导出 PDF 报告",   92),
     ("export_excel_report",               "导出 Excel 底稿", 95),
 ]
@@ -72,6 +79,98 @@ TOOL_NAME_TO_STEP = {name: (label, pct) for name, label, pct in TOOL_PIPELINE}
 # FAST_MODEL 保留独立配置位，便于未来把普通模式单独切回更强模型。
 FAST_MODE_KEYWORD = "快速模式"
 FAST_MODEL = os.getenv("FAST_MODEL", "deepseek-v4-flash")
+
+# ── 三模块路由（架构定稿的三层任务单元）──
+# 复用与 FAST_MODE_KEYWORD 同款的「消息关键词标记」方案：前端在发送内容首部注入
+# 标记，后端据此选择工具子集与提示词，零协议改动、与现有链路完全兼容。
+# 混合运行：financial / compliance 单模块快跑；synthesis 串跑①→②→③。
+MODULE_MARKERS = {
+    "financial": "【模块:财务健康度诊断】",
+    "compliance": "【模块:合规与经营风险扫描】",
+    "synthesis": "【模块:综合研判】",
+    "outlook": "【模块:行业风向研判】",
+}
+
+
+def _detect_module(payload) -> Optional[str]:
+    """检测请求载荷中的模块标记，返回模块标识或 None（与 _payload_wants_fast_mode 同构）。
+
+    未命中任何标记时返回 None，走全量工具链路（兼容直接输入文字的传统用法）。
+    """
+    for m in (payload or {}).get("messages", []):
+        content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+        text = str(content)
+        for key, marker in MODULE_MARKERS.items():
+            if marker in text:
+                return key
+    return None
+
+
+def expected_artifacts(module: Optional[str], fast: bool) -> list:
+    """本次运行应生成的产物类型清单（与 Agent 的 artifact_expectations 同构）。
+
+    仅登记类型、不代表文件已落盘：用于运行开始时向前端声明「生成中」的产物，
+    最终以真实存在的文件覆盖为成功或失败，避免用户中途无从判断产物范围。
+    快速模式跳图表、outlook 模块只出卡片，均与 Agent 侧装配保持一致。
+    """
+    is_outlook = module == "outlook"
+    items = []
+    if not is_outlook and not fast:
+        items += [
+            {"key": "heatmap", "kind": "chart", "label": "风险热力图"},
+            {"key": "radar", "kind": "chart", "label": "财务雷达图"},
+            {"key": "trend", "kind": "chart", "label": "趋势折线图"},
+        ]
+    if not is_outlook:
+        if module in (None, "synthesis"):
+            items += [
+                {"key": "pdf_financial", "kind": "pdf", "label": "财务健康诊断报告"},
+                {"key": "pdf_compliance", "kind": "pdf", "label": "合规与信息披露报告"},
+                {"key": "pdf_synthesis", "kind": "pdf", "label": "综合汇总报告"},
+            ]
+        elif module == "financial":
+            items.append({"key": "pdf_financial", "kind": "pdf", "label": "财务健康诊断报告"})
+        else:
+            items.append({"key": "pdf_compliance", "kind": "pdf", "label": "合规与信息披露报告"})
+        items.append({"key": "excel", "kind": "xlsx", "label": "Excel审计底稿"})
+    return items
+
+
+# ── C 端轻量工具路由（与 MODULE_MARKERS 同构的消息标记方案）──
+# 命中后走独立工具子集（agent.py 的 LIGHT_MODULE_TOOLS）且跳过 _post_process
+# 兜底（不辩论/不导出 PDF·Excel/不跑综合评分）：轻量对话产物是卡片不是审计报告。
+LIGHT_MARKERS = {
+    "advisor": "【工具:投资参考】",
+    "industry": "【工具:行业风向】",
+}
+
+# 轻量工具名 → 前端专属卡片渲染 marker（与 index.html 的提取正则字面一致）。
+# 服务端从 ToolMessage 原文确定性注入，不依赖 LLM 忠实复制 JSON（复刻评分卡
+# <!--COMPREHENSIVE_SCORE--> 契约），且随 ai_text 持久化到会话历史。
+LIGHT_TOOL_MARKERS = {
+    "investment_advisor": "<!--INVESTMENT_CARD-->",
+    "industry_outlook": "<!--INDUSTRY_OUTLOOK-->",
+}
+
+
+def _detect_light_module(payload) -> Optional[str]:
+    """检测 C 端轻量工具标记，返回轻量模块键或 None。
+
+    与 _detect_module 不同：只扫最后一条消息（当前请求）。前端 payload 携带
+    会话历史，若扫全部消息，历史里的旧轻量标记会把后续普通提问也误路由到
+    轻量链路；反之历史里的模块标记也会压过用户刚点的轻量卡片。
+    最后一条消息代表最新用户意图，以它为准。
+    """
+    msgs = (payload or {}).get("messages", [])
+    if not msgs:
+        return None
+    m = msgs[-1]
+    content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
+    text = str(content)
+    for key, marker in LIGHT_MARKERS.items():
+        if marker in text:
+            return key
+    return None
 
 
 def _payload_wants_fast_mode(payload) -> bool:
@@ -149,6 +248,102 @@ def _extract_history_fields(report: dict) -> dict:
     return fields
 
 
+def _artifact_local_path(path: str) -> str:
+    """将本地存储 URL 或 file URL 解析为服务进程可访问的文件路径。"""
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("file://"):
+        parsed = urlparse(raw)
+        candidate = unquote(parsed.path or "")
+        # Windows file URL 常见形式为 file:///C:/path 或 file://C:/path。
+        if re.match(r"^/[A-Za-z]:[\\/]", candidate):
+            candidate = candidate[1:]
+        elif parsed.netloc and re.match(r"^[A-Za-z]:$", parsed.netloc):
+            candidate = parsed.netloc + candidate
+        return os.path.abspath(candidate) if candidate else ""
+    if raw.startswith("/local_storage/"):
+        relative = raw[len("/local_storage/"):].replace("/", os.sep)
+        return os.path.abspath(os.path.join(os.getcwd(), "local_storage", relative))
+    if raw.startswith("local_storage/"):
+        relative = raw[len("local_storage/"):].replace("/", os.sep)
+        return os.path.abspath(os.path.join(os.getcwd(), "local_storage", relative))
+    return os.path.abspath(raw) if os.path.isabs(raw) else ""
+
+
+def _artifact_is_accessible(path: str) -> bool:
+    """仅接受真实存在且可读的文件作为下载产物。"""
+    local_path = _artifact_local_path(path)
+    return bool(local_path and os.path.isfile(local_path) and os.access(local_path, os.R_OK))
+
+
+def _artifact_key(path: str) -> str:
+    """按文件名将真实产物映射到结构化期望键。"""
+    name = Path(str(path or "")).name.lower()
+    suffix = Path(name).suffix
+    if suffix in {".png", ".jpg", ".jpeg"}:
+        if "热力" in name:
+            return "heatmap"
+        if "雷达" in name:
+            return "radar"
+        if "趋势" in name:
+            return "trend"
+        return "chart_unknown"
+    if suffix == ".xlsx":
+        return "excel"
+    if suffix == ".pdf":
+        if "财务健康" in name:
+            return "pdf_financial"
+        if "合规" in name or "信息披露" in name:
+            return "pdf_compliance"
+        return "pdf_synthesis"
+    return suffix.lstrip(".") or "file"
+
+
+def _build_data_sources(tool_result_index: dict) -> list:
+    """构造「数据来源与完整性说明」清单（网页端）。
+
+    未获取时只写原因本身：前端表格另有「状态」列显示「未获取」，原因再带
+    「未获取：」前缀会在同一句里重复两次（实测缺陷）。
+
+    审计意见识别与 PDF 端同为双源判定：识别工具未调用时，披露检查已输出的
+    audit_opinion 仍算已获取，避免封面显示意见而来源说明标未获取的「薛定谔状态」。
+    """
+    def _used_json(name):
+        raw = tool_result_index.get(name, "")
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return isinstance(parsed, dict) and "error" not in parsed
+
+    disclosure_data = {}
+    try:
+        _dc = json.loads(tool_result_index.get("check_disclosure_compliance", "{}") or "{}")
+        disclosure_data = _dc if isinstance(_dc, dict) else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        disclosure_data = {}
+    opinion_used = _used_json("identify_audit_opinion") or bool(disclosure_data.get("audit_opinion"))
+    source_specs = (
+        ("财务指标数据", _used_json("calculate_financial_indicators"),
+         "未上传年报或文本过短（预处理跳过），未产出结构化财务指标"),
+        ("披露规范性检查", _used_json("check_disclosure_compliance"),
+         "未调用披露检查工具或年报文本不足以检查"),
+        ("综合风险评分", _used_json("calculate_comprehensive_score"),
+         "未调用评分工具且系统兜底评分失败"),
+        ("多年指标趋势", _used_json("compare_multi_year"),
+         "未提供多年财务数据（需至少 2 个年度）"),
+        ("审计意见识别", opinion_used,
+         "未识别到审计意见章节或未调用识别工具"),
+        ("量化模型预警", _used_json("calculate_risk_models"),
+         "缺少多期报表数据（Altman Z-Score / Beneish M-Score 需多年数据）"),
+        ("数据勾稽校验", _used_json("validate_financial_data"),
+         "缺少结构化财务数据（勾稽校验需三大报表字段）"),
+    )
+    return [{"name": name, "used": bool(used), "note": "" if used else note}
+            for name, used, note in source_specs]
+
+
 def _record_history(user, run_id: str, report: dict, fast: bool):
     """分析完成后落历史（仅登录用户；失败只记日志，绝不影响主流程）。"""
     if not user:
@@ -180,12 +375,21 @@ class GraphService:
         # 两实例共享同一 checkpointer（get_memory_saver 单例），同 thread_id 会话可跨模式续接
         self._agents: Dict[str, Any] = {}
 
-    def _get_agent(self, ctx=None, fast: bool = False):
-        key = "flash" if fast else "pro"
+    def _get_agent(self, ctx=None, fast: bool = False, module: Optional[str] = None):
+        """按「模式 + 模块」组合缓存 Agent 实例。
+
+        缓存键从原来的 pro/flash 扩展为 {mode}:{module}，因为不同模块注册的工具
+        子集不同，必须分别构建；所有实例共享同一 checkpointer（单例），
+        因此同一 thread_id 的会话可跳模式/跳模块续接。
+        """
+        key = f"{'flash' if fast else 'pro'}:{module or 'all'}"
         if key not in self._agents:
             build_kwargs = {"model_override": FAST_MODEL} if fast else {}
+            if module:
+                build_kwargs["module"] = module
             self._agents[key] = graph_helper.get_agent_instance("agents.agent", ctx, **build_kwargs)
-            logger.info(f"Agent 实例已构建：mode={key}" + (f", model={FAST_MODEL}" if fast else "（config 主模型）"))
+            logger.info(f"Agent 实例已构建：key={key}"
+                        + (f", model={FAST_MODEL}" if fast else "（config 主模型）"))
         return self._agents[key]
 
     # ── P1 预处理并行注入：进 Agent 前由系统先提取财务数据，并行预跑
@@ -224,15 +428,19 @@ class GraphService:
         )
         prompt = (
             "从下面的年报/财务文本中提取财务数据，仅输出一个 JSON 对象，不要任何解释。\n"
-            "尽量提取以下字段（数值型，单位统一为万元；文本中缺失的字段直接省略，禁止编造）：\n"
-            "total_assets, total_liabilities, net_assets, net_profit, operating_cashflow, "
+            "尽量提取以下字段（数值型；金额字段严格按原文报表明确单位保留原值，"
+            "例如原文单位为亿元且表内为840则写840，不要自行换算为元；比率/次数按原值；"
+            "文本中缺失的字段直接省略，禁止编造）：\n"
+            "total_assets, total_liabilities, net_assets, net_profit（合并口径净利润）, "
+            "net_profit_parent（归属于母公司股东的净利润）, operating_cashflow, "
             "depreciation, amortization, working_capital_change, retained_earnings_begin, "
             "retained_earnings_end, dividends, revenue_current, revenue_previous, "
             "net_profit_current, net_profit_previous, operating_cashflow_current, "
             "operating_cashflow_previous, total_assets_current, total_liabilities_current, "
-            "accounts_receivable_current, accounts_receivable_previous, inventory_current, "
-            "inventory_previous, goodwill, monetary_funds, short_term_loans, industry\n"
-            "（industry 为字符串，取：制造业/房地产/互联网/医药/金融/零售/能源/农业/军工/传媒 之一）\n\n"
+             "accounts_receivable_current, accounts_receivable_previous, inventory_current, "
+             "inventory_previous, goodwill, monetary_funds, short_term_loans, industry, period, scope\n"
+             "（industry 为字符串，取：制造业/房地产/互联网/医药/金融/零售/能源/农业/军工/传媒 之一；"
+             "period 为本次报告期，例如 2025年度/2025-12-31；scope 取合并或母公司）\n\n"
             f"文本：\n{text}"
         )
         resp = await asyncio.wait_for(llm.ainvoke(prompt), timeout=self._EXTRACT_TIMEOUT + 5)
@@ -258,14 +466,53 @@ class GraphService:
             data_json = await self._extract_financial_json(text[:30000])
             if not data_json:
                 return None
+            # P8: 单位口径——只接受年报明确声明的统一单位并原样记录，
+            # 不根据金额量级猜测或再次换算。缺少声明时保留原值并标记待复核。
+            from tools.financial_calculator import (detect_amount_unit,
+                                                    extract_parent_net_profit,
+                                                    normalize_financial_units)
+            try:
+                _raw = json.loads(data_json)
+                if isinstance(_raw, dict):
+                    _unit = detect_amount_unit(text)
+                    if _unit:
+                        _raw["amount_unit"] = _unit
+                    data_json = json.dumps(normalize_financial_units(_raw), ensure_ascii=False)
+                    # P11: 归母净利润规则兜底——提取模型未输出 net_profit_parent 时，
+                    # 用确定性正则从年报文本提取（未分配利润勾稽必须用归母口径，
+                    # 否则产生假阳性，实测缺陷：20.43% vs 0.34%）
+                    if not isinstance(_raw.get("net_profit_parent"), (int, float)) and _unit:
+                        _np_parent = extract_parent_net_profit(text)
+                        if _np_parent is not None:
+                            _factor = {"元": 1, "千元": 1000, "万元": 10000,
+                                       "百万元": 1000000, "亿元": 100000000}.get(_unit)
+                            if _factor:
+                                # 正则提取返回元；转回提取数据的明确原文单位，
+                                # 与其他金额事实保持同一口径，不丢失原始单位。
+                                _raw["net_profit_parent"] = _np_parent / _factor
+                            data_json = json.dumps(_raw, ensure_ascii=False)
+            except Exception:
+                pass
             from tools.data_validator import validate_financial_data
             from tools.financial_calculator import calculate_financial_indicators
             from tools.disclosure_checker import check_disclosure_compliance
-            # 三工具无相互依赖，线程并行执行（均为本地计算）
-            v_res, c_res, d_res = await asyncio.gather(
+            from tools.risk_models import calculate_risk_models
+            # 校验/指标/量化模型无相互依赖，线程并行；量化模型与指标同源
+            # （同一份提取数据），保证 Z/M-Score 可追溯且不因 LLM 自行传参而漂移
+            v_res, c_res, m_res = await asyncio.gather(
                 asyncio.to_thread(validate_financial_data.invoke, {"financial_data_json": data_json}),
                 asyncio.to_thread(calculate_financial_indicators.invoke, {"financial_data_json": data_json}),
-                asyncio.to_thread(check_disclosure_compliance.invoke, {"report_text": text}),
+                asyncio.to_thread(calculate_risk_models.invoke, {"financial_data_json": data_json}),
+            )
+            # 披露检查依赖 validate 结果（勾稽差异联动扣披露分，P4），串行传入 v_res
+            d_res = await asyncio.to_thread(
+                check_disclosure_compliance.invoke, {"report_text": text, "validation_json": v_res})
+            # 综合评分依赖前三工具结果，串行计算（与兜底评分同参，保证正文/PDF 一致）
+            from tools.risk_scorer import calculate_comprehensive_score
+            s_res = await asyncio.to_thread(
+                calculate_comprehensive_score.invoke,
+                {"financial_analysis_json": c_res, "disclosure_check_json": d_res,
+                 "validation_json": v_res, "risk_models_json": m_res},
             )
             from langchain_core.messages import AIMessage, ToolMessage
             # args 中的年报全文用占位符替代，避免上下文里同一段长文本出现两遍
@@ -273,13 +520,22 @@ class GraphService:
                 {"name": "validate_financial_data", "args": {"financial_data_json": data_json}, "id": "pre_v"},
                 {"name": "calculate_financial_indicators", "args": {"financial_data_json": data_json}, "id": "pre_c"},
                 {"name": "check_disclosure_compliance", "args": {"report_text": "（见上文年报文本）"}, "id": "pre_d"},
+                {"name": "calculate_risk_models", "args": {"financial_data_json": data_json}, "id": "pre_m"},
+                {"name": "calculate_comprehensive_score", "args": {"financial_analysis_json": "（见预处理结果）",
+                                                                       "disclosure_check_json": "（见预处理结果）",
+                                                                       "validation_json": "（见预处理结果）",
+                                                                       "risk_models_json": "（见预处理结果）"}, "id": "pre_s"},
             ]
-            logger.info("预处理注入完成：校验/指标/披露三工具已预跑")
+            logger.info("预处理注入完成：校验/指标/披露/量化模型/综合评分五工具已预跑")
+            # 显式 id：既保证 tool_calls 应答配对，也供 tool_ledger 种入去重（与
+            # _accumulate_tool_ledger 的 mid 口径一致，避免后续重复记账）
             return [
                 AIMessage(content="", tool_calls=calls),
-                ToolMessage(content=str(v_res), name="validate_financial_data", tool_call_id="pre_v"),
-                ToolMessage(content=str(c_res), name="calculate_financial_indicators", tool_call_id="pre_c"),
-                ToolMessage(content=str(d_res), name="check_disclosure_compliance", tool_call_id="pre_d"),
+                ToolMessage(content=str(v_res), name="validate_financial_data", tool_call_id="pre_v", id="pre_tv"),
+                ToolMessage(content=str(c_res), name="calculate_financial_indicators", tool_call_id="pre_c", id="pre_tc"),
+                ToolMessage(content=str(d_res), name="check_disclosure_compliance", tool_call_id="pre_d", id="pre_td"),
+                ToolMessage(content=str(m_res), name="calculate_risk_models", tool_call_id="pre_m", id="pre_tm"),
+                ToolMessage(content=str(s_res), name="calculate_comprehensive_score", tool_call_id="pre_s", id="pre_ts"),
             ]
         except Exception as e:  # noqa: BLE001 — fail-open：预处理失败只意味着回到原速度
             logger.warning(f"预处理注入失败，回退原链路: {e}")
@@ -291,7 +547,12 @@ class GraphService:
         run_id = ctx.run_id
         logger.info(f"Starting run with run_id: {run_id}")
         try:
-            agent = self._get_agent(ctx, fast=_payload_wants_fast_mode(payload))
+            # 与 stream_sse 同构：轻量模块标记（投资参考/行业风向）优先于历史模块标记，
+            # 避免 /run 入口传轻量标记时以全量工具集运行并误触发辩论/PDF/评分兑底。
+            light = _detect_light_module(payload)
+            module = None if light else _detect_module(payload)
+            agent = self._get_agent(ctx, fast=_payload_wants_fast_mode(payload),
+                                     module=(module or light))
             run_config = init_run_config(agent, ctx)
             result = await agent.ainvoke(payload, config=run_config)
             return result
@@ -304,42 +565,246 @@ class GraphService:
         finally:
             self.running_tasks.pop(run_id, None)
 
+    async def _run_synthesis_stages(self, payload, ctx, fast: bool):
+        """综合研判串跑：①财务健康度 ∥ ②合规风险（并行） → ③交叉验证。
+
+        前两段互不依赖（仅依赖原始 payload），改为并行执行以压缩总耗时。
+        第三段用 astream 保留工具级进度与后处理（辩论/兜底导出/评分）。
+
+        容错：任一前置段失败只记日志并以空摘要继续（pipeline 会把该段标为
+        “未产出有效结论”），不中断整条链路。
+
+        Yields:
+            ("progress", step, pct) / ("chunk", chunk) / ("tool_progress", tool_name)
+            或 ("tool_results", [[msg_id, tool_name, content], ...])，
+            统一由调用方转为 SSE。
+        """
+
+        summaries = []
+        stage_ledger_entries = []   # 前序阶段工具结果（ToolMessage 级，供第三阶段兜底导出/评分复用）
+        prior_tool_results = {}     # 前两阶段核心工具结果（供第三阶段提示词引用真实证据）
+        _CORE_TOOL_NAMES = {
+            "calculate_financial_indicators",
+            "validate_financial_data",
+            "check_disclosure_compliance",
+            "identify_audit_opinion",
+        }
+
+        async def _run_one_stage(module: str, stage_name: str):
+            """运行单个前置阶段（financial/compliance），返回摘要、工具结果和工具调用名序列。"""
+            stage_payload = build_stage_payload(
+                payload, module, MODULE_MARKERS[module], [])
+            agent = self._get_agent(ctx, fast=fast, module=module)
+            run_config = self._stage_run_config(agent, ctx, module)
+            try:
+                # 中间阶段跳过兜底后处理（post_process=False）：辩论/导出/综合评分
+                # 只在第三阶段跑，避免每段多耗约 1 分钟且产出误导性局部报告。
+                result = await agent.ainvoke(stage_payload, config=run_config, post_process=False)
+                summary = extract_stage_summary(result.get("messages", []))
+                # 收集本阶段工具结果（ToolMessage 形态，与 _merge_tool_ledger 契约一致）
+                local_entries = []
+                local_tool_results = {}
+                local_tool_calls = []  # 供前端工具调用链展示
+                from langchain_core.messages import ToolMessage, AIMessage
+                for m in result.get("messages", []):
+                    # 记录 LLM 发起的 tool_calls，让前端工具链能看到前两阶段工具
+                    if isinstance(m, AIMessage):
+                        for tc in (getattr(m, "tool_calls", None) or []):
+                            tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
+                            if tc_name:
+                                local_tool_calls.append(tc_name)
+                        continue
+                    if not isinstance(m, ToolMessage):
+                        continue
+                    try:
+                        content = m.content if isinstance(m.content, str) else json.dumps(m.content, ensure_ascii=False)
+                    except Exception:  # noqa: BLE001
+                        content = str(m.content)
+                    local_entries.append([getattr(m, "id", None) or "", getattr(m, "name", "") or "", content])
+                    tool_name = getattr(m, "name", "") or ""
+                    if tool_name in _CORE_TOOL_NAMES:
+                        local_tool_results[tool_name] = content
+                return {"module": module, "stage_name": stage_name,
+                        "summary": summary, "entries": local_entries,
+                        "tool_results": local_tool_results,
+                        "tool_calls": local_tool_calls, "error": None}
+            except Exception as e:  # noqa: BLE001 - 单段失败降级继续
+                logger.warning(f"串跑阶段失败（{stage_name}），以空摘要继续: {e}")
+                return {"module": module, "stage_name": stage_name,
+                        "summary": "", "entries": [], "tool_results": {},
+                        "tool_calls": [], "error": str(e)}
+
+        # 方案 A：前两阶段并行执行，预计节省 30-50% 的前置时间
+        yield ("progress", "并行运行财务诊断与合规扫描", 5)
+        stage_results = await asyncio.gather(
+            _run_one_stage("financial", "第一阶段 · 财务健康度诊断"),
+            _run_one_stage("compliance", "第二阶段 · 合规与经营风险扫描"),
+        )
+
+        # 按固定顺序整理前两阶段结果，保证第三阶段摘要顺序稳定
+        for module, stage_name, _pct_start, _pct_end in SYNTHESIS_STAGES:
+            if module == "synthesis":
+                continue
+            res = next((r for r in stage_results if r["module"] == module), None)
+            if res:
+                summaries.append((res["stage_name"], res["summary"]))
+                stage_ledger_entries.extend(res["entries"])
+                prior_tool_results.update(res["tool_results"])
+                # 把前两阶段的 tool_calls 以独立事件推给前端，补全工具调用链展示
+                for tool_name in res.get("tool_calls", []):
+                    yield ("tool_progress", tool_name)
+
+        # 前两阶段的工具结果回传调用方：它们只存在于段内图状态（输入侧），
+        # 不会出现在第三阶段的 astream 增量里，不登记则最终报告的
+        # 「数据源与完整性」清单会把已跑过的工具全部误判为「未获取」。
+        if stage_ledger_entries:
+            yield ("tool_results", stage_ledger_entries)
+
+        # 第三阶段：综合研判与交叉验证
+        yield ("progress", "第三阶段 · 综合研判与交叉验证", 65)
+        stage_payload = build_stage_payload(
+            payload, "synthesis", MODULE_MARKERS["synthesis"], summaries,
+            prior_tool_results=prior_tool_results)
+        agent = self._get_agent(ctx, fast=fast, module="synthesis")
+        run_config = self._stage_run_config(agent, ctx, "synthesis")
+        # 前两阶段工具结果透传进第三阶段 tool_ledger：综合研判工具子集不含
+        # 财务计算/披露检查/数据校验工具，不种入则兜底导出的财务/合规专项
+        # 章节拿不到数据源（PDF 缺「财务指标四维判读」「披露规范性检查结果」章）。
+        # 种入格式与 P1 预处理注入一致（[[msg_id, tool_name, content], ...]），
+        # 由 _merge_tool_ledger 合并进台账，不受消息滑窗裁剪影响。
+        if stage_ledger_entries:
+            stage_payload = {**stage_payload, "tool_ledger": {"entries": stage_ledger_entries}}
+        # 最后一段透传 astream chunk，保留工具进度与后处理标记
+        async for chunk in agent.astream(stage_payload, config=run_config):
+            yield ("chunk", chunk)
+
+    def _stage_run_config(self, agent, ctx, module: str) -> dict:
+        """为串跑的每一段派生独立的 checkpoint thread。
+
+        三段共用 thread_id（= ctx.run_id）时，前一段异常中断遗留的悬空
+        AIMessage.tool_calls（无对应 ToolMessage）会被下一段从 checkpointer 加载进
+        历史，直接撞上 langgraph 的 INVALID_CHAT_HISTORY 校验——实测下一段与第三段
+        连锁报错，单段失败直接拖垮整条流水线（与「单段失败降级继续」相矛盾）。
+        段间本就只靠「已完成分析摘要」文本传递，不需要共享 LangGraph 状态。
+        """
+        run_config = init_agent_config(agent, ctx)
+        configurable = dict(run_config.get("configurable") or {})
+        base = configurable.get("thread_id") or getattr(ctx, "run_id", "run")
+        configurable["thread_id"] = f"{base}-{module}"
+        return {**run_config, "configurable": configurable}
+
     async def stream_sse(self, payload, ctx=None, run_opt=None, user=None):
-        """用 astream 追踪真实工具进度，最后一次性推送完整报告；登录态下顺带落历史"""
+        """用 astream 跟踪真实工具进度，最后一次性推送完整报告；登录态下顺带落历史"""
         if ctx is None:
             ctx = new_context("stream_sse")
         run_id = ctx.run_id
         fast = _payload_wants_fast_mode(payload)
-        agent = self._get_agent(ctx, fast=fast)
-        run_config = init_agent_config(agent, ctx)
+        # C 端轻量工具路由：以最后一条消息（最新用户意图）为准，命中时优先于
+        # 历史消息里残留的模块标记（否则同会话跑过综合研判后轻量卡片永远进不去）
+        light = _detect_light_module(payload)
+        module = None if light else _detect_module(payload)
+        # 综合研判走三段串跑；其余情况（单模块/轻量/无标记）走单次 Agent
+        pipeline_mode = module == "synthesis"
+        agent = None if pipeline_mode else self._get_agent(ctx, fast=fast, module=(module or light))
+        run_config = init_agent_config(agent, ctx) if agent is not None else None
 
         seen_ids = set()
         current_step = "初始化分析环境"
         current_pct = 2
         all_messages = []
         final_messages = None  # 后处理（辩论/兜底导出/评分）后的完整消息，优先用于构建最终报告
+        # 预跑/前序阶段的工具结果：它们位于图输入侧，astream 增量里不会出现，
+        # 必须单独登记，否则最终报告的数据源清单与指标视图会全部判为「未获取」。
+        seed_tool_results = []
 
         yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
 
+        # 产物登记：运行开始即声明本次应生成的 PDF/Excel/图表，并标记「生成中」。
+        # 只登记类型、不表示文件已落盘；最终报告会以成功/失败逐项覆盖，任务级状态
+        # 由 derive_task_status 汇总（部分完成可显示），避免中间态与失败态混淆。
+        _expected = expected_artifacts(module, fast) if light is None else []
+        if _expected:
+            from core.result_contract import ARTIFACT_GENERATING, TASK_RUNNING
+            yield self._sse({
+                "type": "artifact_status",
+                "task_status": TASK_RUNNING,
+                "artifacts": [{**item, "status": ARTIFACT_GENERATING}
+                              for item in _expected],
+            })
+
         # ── P1 预处理并行注入（详见 _preprocess_inject；失败静默回退原链路）
-        if isinstance(payload, dict) and len(self._last_user_text(payload)) >= self._PREPROCESS_MIN_CHARS:
+        # 仅对「全量链路」与「财务健康度模块」生效：合规模块不含校验/指标工具，
+        # 预跑它们只会白花一次提取耗时；串跑模式由各阶段自行负责；
+        # 轻量工具路径（light）产物是卡片，不需要预跑审计三工具。
+        if (module in (None, "financial") and light is None and isinstance(payload, dict)
+                and len(self._last_user_text(payload)) >= self._PREPROCESS_MIN_CHARS):
             current_step, current_pct = "预提取财务数据并行预跑工具", 8
             yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
             pre_msgs = await self._preprocess_inject(payload)
             if pre_msgs:
                 payload = {**payload, "messages": list(payload["messages"]) + pre_msgs}
+                # 预跑结果同步种入 tool_ledger 台账：注入的 ToolMessage 位于消息序列
+                # 头部，会被滑窗在 post_model_hook 首次记账前裁掉（实测：指标结果丢
+                # 失导致 PDF 四维判读章与评分兜底读不到数据）。台账不受滑窗影响，
+                # 种入后顺序门禁/评分兜底/PDF 导出补传均能读到预跑结果。
+                from langchain_core.messages import ToolMessage
+                ledger_entries = [
+                    [m.id, m.name, str(m.content)]
+                    for m in pre_msgs if isinstance(m, ToolMessage)
+                ]
+                if ledger_entries:
+                    payload = {**payload, "tool_ledger": {"entries": ledger_entries}}
                 # 注入轨迹登记进最终报告的工具链：astream 增量里不含输入消息，
                 # 不手动登记的话预跑的三工具不会出现在前端工具调用链展示中
                 for m in pre_msgs:
                     name = getattr(m, "name", None)
                     if name:
-                        all_messages.append({"type": "tool", "name": name, "content": str(m.content)})
+                        entry = {"type": "tool", "name": name, "content": str(m.content)}
+                        seed_tool_results.append(entry)
+                        all_messages.append(entry)
                 # 三工具已完成，进度直接推进到披露检查锚点
                 current_step, current_pct = "预处理完成（校验/指标/披露）", 42
                 yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
 
         try:
-            async for chunk in agent.astream(payload, config=run_config):
+            # 统一 chunk 源：串跑模式从三阶段编排器取（带阶段进度），否则直接 astream。
+            # 它们共用后续整套 chunk 处理逻辑（工具进度/后处理标记/消息提取）。
+            if pipeline_mode:
+                async def _chunk_source():
+                    async for item in self._run_synthesis_stages(payload, ctx, fast):
+                        yield item
+            else:
+                async def _chunk_source():
+                    # 轻量工具路径跳过流末兜底后处理（post_process=False）：
+                    # 不辩论、不导出局部 PDF/Excel、不跑综合评分
+                    async for c in agent.astream(payload, config=run_config,
+                                                 post_process=(light is None)):
+                        yield ("chunk", c)
+
+            async for kind, *rest in _chunk_source():
+                # 阶段进度事件（仅串跑模式会发）：直接推送并推进百分比
+                if kind == "progress":
+                    step, pct = rest[0], rest[1]
+                    current_step, current_pct = step, max(current_pct, pct)
+                    yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+                    continue
+                # 前两阶段并行执行时，其 tool_calls 不会通过 astream chunk 自然透出，
+                # 由 _run_synthesis_stages 以独立事件补发，供前端工具调用链完整展示。
+                if kind == "tool_progress":
+                    tool_name = rest[0]
+                    if tool_name in TOOL_NAME_TO_STEP:
+                        label, pct = TOOL_NAME_TO_STEP[tool_name]
+                        current_step = label
+                        current_pct = max(current_pct, pct)
+                        yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
+                    continue
+                # 串跑前两阶段的工具结果：同为输入侧内容，登记进最终报告的数据源清单
+                if kind == "tool_results":
+                    for _mid, _name, _content in rest[0]:
+                        seed_tool_results.append(
+                            {"type": "tool", "name": _name, "content": _content})
+                    continue
+                chunk = rest[0]
                 # _AgentWrapper.astream 流末会依次推送：
                 # ① __post_processing__ 标记：辩论复核 + 兜底导出开始（可能耗时 30-60s），
                 #    据此更新进度文案避免长时间静止；
@@ -365,7 +830,11 @@ class GraphService:
                             if tc_name in TOOL_NAME_TO_STEP:
                                 label, pct = TOOL_NAME_TO_STEP[tc_name]
                                 current_step = label
-                                current_pct = pct
+                                # 锚点取单调不递减：Agent 实际调用顺序由 LLM 自主决定，
+                                # 不一定与 TOOL_PIPELINE 声明顺序一致（实测出现过
+                                # 60% → 36% 的回退）。此处只抬升不回落，
+                                # 文案照旧切换到当前工具，避免进度条倒退的观感崩塌。
+                                current_pct = max(current_pct, pct)
                                 yield self._sse({"type": "progress", "step": current_step, "percent": current_pct})
 
                     elif msg_type in ("ai", "AIMessage") and msg.get("content"):
@@ -380,9 +849,17 @@ class GraphService:
             # 回退到流式累积的 all_messages（兼容未提供后处理的底层 agent）
             if final_messages:
                 processed = [self._msg_to_dict(m) for m in final_messages]
-                report = self._build_final_report_from_messages(processed)
+                # 预跑/前序阶段工具结果补在流内消息之前：它们真实发生在最前，且同名
+                # 工具以首次结果为准（预跑是确定性计算，优先于 LLM 自行传参的重复
+                # 调用）。缺此补入，正文/PDF 有数据而数据源清单显示「0/7 已获取」。
+                report = self._build_final_report_from_messages(seed_tool_results + processed)
             else:
                 report = self._build_final_report_from_messages(all_messages)
+
+            # 轻量工具路径：从 ToolMessage 原文确定性注入专属卡片 marker（不依赖
+            # LLM 复制 JSON），前端据此渲染投资参考卡/行业风向标，并随历史持久化
+            if light:
+                report = self._inject_light_card_markers(report)
 
             # 登录态下将本次分析写入用户历史（游客跳过；失败不影响推送）
             _record_history(user, run_id, report, fast)
@@ -417,6 +894,37 @@ class GraphService:
 
         return new_msgs
 
+    @staticmethod
+    def _inject_light_card_markers(report: dict) -> dict:
+        """轻量工具路径：把工具输出 JSON 以专属 marker 确定性追加到 ai_text。
+
+        从 tool_results（ToolMessage 原文）取数，不依赖 LLM 忠实复制 JSON；
+        前端用与评分卡 <!--COMPREHENSIVE_SCORE--> 同构的正则提取渲染专属卡片。
+        同名工具多次调用时取最后一次（与“最终结论”语义一致）；非 JSON 输出跳过。
+        """
+        try:
+            ai_text = report.get("ai_text", "") or ""
+            # 先收集：同名工具多次调用时后者覆盖前者（取最后一次结果）
+            latest = {}
+            for tr in report.get("tool_results", []):
+                marker = LIGHT_TOOL_MARKERS.get(tr.get("name", ""))
+                if not marker:
+                    continue
+                content = str(tr.get("content", "")).strip()
+                try:
+                    json.loads(content)  # 只注入合法 JSON，防前端解析失败残留乱码
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                latest[marker] = content
+            # 再注入：ai_text 已含该 marker（如 LLM 自行复制过）则不重复追加
+            for marker, content in latest.items():
+                if marker not in ai_text:
+                    ai_text = ai_text + f"\n\n{marker}\n{content}"
+            report["ai_text"] = ai_text
+        except Exception as e:  # noqa: BLE001 - 注入失败不影响主报告推送
+            logger.warning(f"轻量卡片 marker 注入失败: {e}")
+        return report
+
     def _build_final_report_from_messages(self, all_messages):
         """从消息列表构建最终报告。
 
@@ -449,6 +957,7 @@ class GraphService:
 
         images = []
         files = []
+        artifact_candidates = []
         seen_paths = set()
         import re
 
@@ -457,20 +966,20 @@ class GraphService:
             for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.png)', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
-                    images.append({"tool": source_name, "path": m.group(1)})
+                    artifact_candidates.append({"tool": source_name, "path": m.group(1)})
             for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.(?:pdf|xlsx))', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
-                    files.append({"tool": source_name, "path": m.group(1)})
+                    artifact_candidates.append({"tool": source_name, "path": m.group(1)})
             # 兼容旧格式 file://... 路径
             for m in re.finditer(r'file://([^\s"\'<>]+\.png)', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
-                    images.append({"tool": source_name, "path": m.group(1)})
+                    artifact_candidates.append({"tool": source_name, "path": m.group(1)})
             for m in re.finditer(r'file://([^\s"\'<>]+\.(?:pdf|xlsx))', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
-                    files.append({"tool": source_name, "path": m.group(1)})
+                    artifact_candidates.append({"tool": source_name, "path": m.group(1)})
 
         for tr in tool_results:
             c = tr["content"] if isinstance(tr["content"], str) else str(tr["content"])
@@ -478,11 +987,161 @@ class GraphService:
         # 兜底导出的链接在 AI 正文里（📎 PDF报告: .../📊 Excel底稿: ...）
         _collect("fallback_export", str(ai_text))
 
+        # 结构化台账是网页/API 的权威来源，避免前端从模型散文反推风险数。
+        risk_ledger = {}
+        try:
+            from agents.agent import _extract_risk_json
+            risk_json = _extract_risk_json(str(ai_text))
+            if risk_json:
+                parsed = json.loads(risk_json)
+                if isinstance(parsed, dict):
+                    risk_ledger = parsed
+        except (TypeError, ValueError, json.JSONDecodeError):
+            risk_ledger = {}
+
+        # 仅将真实存在且可读的文件交给前端下载；失效路径只保留在日志中，
+        # 并由 ArtifactManifest 对应期望项记录失败状态。
+        accessible_candidates = []
+        for item in artifact_candidates:
+            path = str(item.get("path", "") or "")
+            if _artifact_is_accessible(path):
+                accessible_candidates.append(item)
+            else:
+                logger.warning("忽略不可访问产物路径：%s", path)
+        for item in accessible_candidates:
+            path = str(item.get("path", "") or "")
+            suffix = Path(path).suffix.lower().lstrip(".")
+            target = images if suffix in {"png", "jpg", "jpeg"} else files
+            target.append(item)
+
+        from core.result_contract import ArtifactManifest, DATA_VERSION, RULE_VERSION
+        company_info = risk_ledger.get("company_info") if isinstance(risk_ledger, dict) else {}
+        analysis_id = str((risk_ledger or {}).get("analysis_id", "") or "")
+        if not analysis_id and isinstance(company_info, dict):
+            analysis_id = str(company_info.get("run_id", "") or "")
+        data_version = str((risk_ledger or {}).get("data_version", DATA_VERSION) or DATA_VERSION)
+        rule_version = str((risk_ledger or {}).get("rule_version", RULE_VERSION) or RULE_VERSION)
+        expectations = (risk_ledger.get("artifact_expectations")
+                        if isinstance(risk_ledger, dict) else None)
+        if not isinstance(expectations, list) and risk_ledger and "INDUSTRY_OUTLOOK" not in str(ai_text):
+            # 兼容旧台账：默认按全量报告登记三份 PDF、三类图表和 Excel。
+            expectations = [
+                {"key": "heatmap", "kind": "chart", "label": "风险热力图"},
+                {"key": "radar", "kind": "chart", "label": "财务雷达图"},
+                {"key": "trend", "kind": "chart", "label": "趋势折线图"},
+                {"key": "pdf_financial", "kind": "pdf", "label": "财务健康诊断报告"},
+                {"key": "pdf_compliance", "kind": "pdf", "label": "合规与信息披露报告"},
+                {"key": "pdf_synthesis", "kind": "pdf", "label": "综合汇总报告"},
+                {"key": "excel", "kind": "xlsx", "label": "Excel审计底稿"},
+            ]
+        expectations = expectations if isinstance(expectations, list) else []
+        used_paths = set()
+        artifact_manifest = []
+
+        def _manifest_record(item, expectation, success, error=""):
+            path = str(item.get("path", "") or "") if item else ""
+            name = Path(path).name if path else str(expectation.get("label", ""))
+            suffix = Path(name).suffix.lower()
+            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                    ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}.get(suffix, "")
+            return ArtifactManifest(
+                artifact_id=f"artifact-{len(artifact_manifest) + 1:03d}",
+                kind=str(expectation.get("kind", "file")),
+                status="success" if success else "failed",
+                path=path if success else "",
+                url=path if success else "",
+                name=name,
+                mime_type=mime,
+                exists=bool(success),
+                accessible=bool(success),
+                source=str(item.get("tool", "")) if item else "",
+                analysis_id=analysis_id,
+                data_version=data_version,
+                rule_version=rule_version,
+                error=error,
+            ).to_dict()
+
+        for expectation in expectations:
+            if not isinstance(expectation, dict):
+                continue
+            key = str(expectation.get("key", "") or "")
+            match = next((item for item in accessible_candidates
+                          if item.get("path") not in used_paths
+                          and _artifact_key(item.get("path")) == key), None)
+            if match:
+                used_paths.add(match.get("path"))
+                artifact_manifest.append(_manifest_record(match, expectation, True))
+            else:
+                artifact_manifest.append(_manifest_record(
+                    None, expectation, False, "未发现实际生成且可访问的产物链接"))
+        # 记录期望清单之外的真实文件，防止额外产物被静默丢弃。
+        for item in accessible_candidates:
+            if item.get("path") in used_paths:
+                continue
+            kind = "chart" if Path(str(item.get("path", ""))).suffix.lower() in {".png", ".jpg", ".jpeg"} else Path(str(item.get("path", ""))).suffix.lower().lstrip(".") or "file"
+            artifact_manifest.append(_manifest_record(
+                item, {"kind": kind, "label": Path(str(item.get("path", ""))).name}, True))
+
+        # ── 报告元数据与完整性：版本、运行标识与各数据源可得性 ──
+        # 前端「报告元数据与完整性」分区直接渲染本节，避免从模型散文推断覆盖率；
+        # 未获取的数据源逐项给出原因，与三份 PDF 的「数据来源与完整性说明」同源口径。
+        from core.result_contract import derive_task_status
+        from tools.indicator_view import build_indicator_view
+
+        tool_result_index = {}
+        for item in tool_results:
+            name = str(item.get("name", "") or "")
+            content = item.get("content")
+            if name and name not in tool_result_index:
+                tool_result_index[name] = (content if isinstance(content, str)
+                                           else json.dumps(content, ensure_ascii=False))
+
+        def _used_json(name):
+            raw = tool_result_index.get(name, "")
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return False
+            return isinstance(parsed, dict) and "error" not in parsed
+
+        data_sources = _build_data_sources(tool_result_index)
+        company = company_info if isinstance(company_info, dict) else {}
+        gate = risk_ledger.get("review_gate") if isinstance(risk_ledger, dict) else {}
+        gate = gate if isinstance(gate, dict) else {}
+        report_metadata = {
+            "analysis_id": analysis_id,
+            "data_version": data_version,
+            "rule_version": rule_version,
+            "company_name": str(company.get("company_name", "") or ""),
+            "stock_code": str(company.get("stock_code", "") or ""),
+            "report_year": str(company.get("report_year", "") or ""),
+            "industry": str(company.get("industry", "") or ""),
+            "audit_opinion": str(company.get("audit_opinion", "") or ""),
+            "review_gate_status": str(gate.get("status", "not_run") or "not_run"),
+            "human_review_required": bool(gate.get("human_review_required")),
+            "data_sources": data_sources,
+            "source_used_count": sum(1 for item in data_sources if item["used"]),
+            "source_total": len(data_sources),
+        }
+
         return {
             "ai_text": ai_text,
             "tool_results": tool_results,
             "images": images,
             "files": files,
+            "risk_ledger": risk_ledger,
+            "accepted_risk_details": risk_ledger.get("accepted_risk_details", []) if isinstance(risk_ledger, dict) else [],
+            "pending_items": risk_ledger.get("pending_items", []) if isinstance(risk_ledger, dict) else [],
+            "review_gate": risk_ledger.get("review_gate", {"status": "not_run"}) if isinstance(risk_ledger, dict) else {"status": "not_run"},
+            "semantic_review": risk_ledger.get("semantic_review", {}) if isinstance(risk_ledger, dict) else {},
+            "c1_review": risk_ledger.get("c1_review", {}) if isinstance(risk_ledger, dict) else {},
+            "data_version": risk_ledger.get("data_version", "") if isinstance(risk_ledger, dict) else "",
+            "analysis_id": risk_ledger.get("analysis_id", "") if isinstance(risk_ledger, dict) else "",
+            "artifact_manifest": artifact_manifest,
+            "task_status": derive_task_status(artifact_manifest),
+            "report_metadata": report_metadata,
+            "indicator_view": build_indicator_view(
+                tool_result_index.get("calculate_financial_indicators", "")),
         }
 
     def _build_final_report(self, result):
@@ -584,6 +1243,14 @@ _NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 
+# ── 前端第三方库静态目录（ECharts 本地内置）──
+# 单机断网场景不能依赖 CDN，因此 echarts.min.js 必须本地提供。
+# 空目录不被 git 跟踪，故先 makedirs 再 mount，否则新克隆的仓库启动即报错。
+# 文件缺失时前端会自动降级为表格展示（不白屏），因此不阻塞启动。
+VENDOR_DIR = WEB_DIR / "vendor"
+os.makedirs(VENDOR_DIR, exist_ok=True)
+app.mount("/vendor", StaticFiles(directory=str(VENDOR_DIR)), name="vendor")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_web_ui():
@@ -608,8 +1275,8 @@ async def serve_baka_readme():
 
 @app.get("/readme", response_class=HTMLResponse)
 async def serve_professional_readme():
-    """提供审计风险识别系统部署指南（正式版）"""
-    readme_path = Path(__file__).parent.parent / "审计风险识别系统专用readme.html"
+    """提供年报风险识别系统部署指南（正式版）"""
+    readme_path = Path(__file__).parent.parent / "年报风险识别系统专用readme.html"
     if not readme_path.exists():
         return HTMLResponse(content="<h1>页面未找到</h1>", status_code=404)
     return HTMLResponse(content=readme_path.read_text(encoding="utf-8"))
