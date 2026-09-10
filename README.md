@@ -1,4 +1,4 @@
-# 上市公司年报审计风险智能识别系统
+# 上市公司年报风险智能识别系统
 
 > 2026年北京市大学生数智会计创新应用竞赛 · 智能审计赛道参赛项目
 
@@ -62,7 +62,7 @@ flowchart LR
 pip install uv
 
 # 2. 一键同步全部依赖（基于 pyproject.toml + uv.lock）
-uv sync
+uv sync --locked
 
 # 3. 配置环境变量（复制模板并填入真实 API Key）
 cp .env.example .env
@@ -84,7 +84,7 @@ uv run python tests/evaluation_report.py --mode agent
 ### 手动启动（开发者模式）
 ```bash
 # 1. 同步依赖
-uv sync
+uv sync --locked
 
 # 2. 配置环境变量（复制 .env.example 为 .env 并填入你的 API Key）
 cp .env.example .env
@@ -96,7 +96,7 @@ powershell -File start.ps1 -Mode web
 projects/
 ├── src/
 │   ├── agents/agent.py            # Agent 构建 + 兜底导出 + 三方辩论复核（仲裁回写）
-│   ├── tools/                     # 13 个核心审计工具
+│   ├── tools/                     # 16 个核心分析工具
 │   │   ├── financial_calculator.py   # 16 项财务指标计算
 │   │   ├── data_validator.py         # 三大勾稽校验
 │   │   ├── knowledge_search.py       # 法规知识库检索（RAG）

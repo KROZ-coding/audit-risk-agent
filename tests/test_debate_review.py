@@ -24,6 +24,10 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import agents.agent as agent_mod
 from agents.agent import (
+    ADVOCATE_SYSTEM_PROMPT,
+    ARBITER_SYSTEM_PROMPT,
+    C2_SEMANTIC_SYSTEM_PROMPT,
+    SKEPTIC_SYSTEM_PROMPT,
     _AgentWrapper,
     _amount_mismatch_warning,
     _anchor_system_alerts,
@@ -57,15 +61,46 @@ class _FakeResp:
         self.content = content
 
 
-def _fake_llm_ok():
-    """构造正常三轮辩论的假 LLM：三次 invoke 依次返回三方意见。"""
+def _review_llm(*, advocate=ADVOCATE_TEXT, skeptic=SKEPTIC_TEXT, arbiter=ARBITER_TEXT,
+                c2='{"checks": []}'):
+    """按系统提示词分派的复核假 LLM（C2 两次隔离判断 + C1 三轮串行）。
+
+    以 SystemMessage 内容分派，而非依赖调用顺序——C2 的两次判断在线程池中
+    并发执行，按顺序派发会产生竞态。advocate/skeptic/arbiter 可传字符串或
+    字符串序列（模拟重试等多次调用，不足时复用最后一个）。
+    """
+    seq = {
+        "advocate": [advocate] if isinstance(advocate, str) else list(advocate),
+        "skeptic": [skeptic] if isinstance(skeptic, str) else list(skeptic),
+        "arbiter": [arbiter] if isinstance(arbiter, str) else list(arbiter),
+    }
+
+    def _next(kind):
+        values = seq[kind]
+        if len(values) > 1:
+            return values.pop(0)
+        return values[0] if values else ""
+
+    def _dispatch(messages):
+        system = str(getattr(messages[0], "content", "")) if messages else ""
+        if system == C2_SEMANTIC_SYSTEM_PROMPT:
+            return _FakeResp(c2)
+        if system == ADVOCATE_SYSTEM_PROMPT:
+            return _FakeResp(_next("advocate"))
+        if system == SKEPTIC_SYSTEM_PROMPT:
+            return _FakeResp(_next("skeptic"))
+        if system == ARBITER_SYSTEM_PROMPT:
+            return _FakeResp(_next("arbiter"))
+        return _FakeResp("")
+
     llm = MagicMock()
-    llm.invoke.side_effect = [
-        _FakeResp(ADVOCATE_TEXT),
-        _FakeResp(SKEPTIC_TEXT),
-        _FakeResp(ARBITER_TEXT),
-    ]
+    llm.invoke.side_effect = _dispatch
     return llm
+
+
+def _fake_llm_ok():
+    """构造正常复核链路的假 LLM：C2 两次判断 + 正方/反方/仲裁三方意见。"""
+    return _review_llm()
 
 
 def _fake_llm_raises():
@@ -117,8 +152,9 @@ class TestRunDebateUnit:
         assert "【风险否定方】" in out and SKEPTIC_TEXT in out
         assert "【裁判仲裁】" in out and ARBITER_TEXT in out
         assert out.index(ADVOCATE_TEXT) < out.index(SKEPTIC_TEXT) < out.index(ARBITER_TEXT)
-        # 严格三轮 LLM 调用（关注方 / 否定方 / 裁判）
-        assert fake.invoke.call_count == 3
+        # C2 两次隔离判断 + C1 严格三轮串行（关注方 / 否定方 / 裁判）
+        assert fake.invoke.call_count == 5
+        assert "【C2关键语义复核】" in out
 
     def test_returns_none_on_llm_exception(self, monkeypatch):
         """异常路径：LLM 抛异常时静默返回 None（保留既有约定行为）。"""
@@ -166,11 +202,11 @@ class TestPostProcessDebateAppending:
 # ── 仲裁回写相关的可控裁定文本（含干扰项：理由内嵌大括号）──
 ARBITER_WITH_JSON = (
     "【逐条裁定】R001 采纳否定方意见，降为重要\n"
-    "【仲裁结论】需补充\n"
+    "【仲裁结论】通过\n"
     '【裁定JSON】{"adjustments":[{"risk_id":"R001","final_level":"重要",'
     '"reason":"证据链{注:函证未回}不完整"},'
     '{"risk_id":"R999","final_level":"重大","reason":"不存在的条目"},'
-    '{"risk_id":"R002","final_level":"致命","reason":"非法等级"}],"verdict":"需补充"}'
+    '{"risk_id":"R002","final_level":"致命","reason":"非法等级"}],"verdict":"通过"}'
 )
 
 # 含 risk_id 的风险台账（供回写匹配）
@@ -193,8 +229,8 @@ class TestArbiterWriteback:
         assert len(adjustments) == 3
         assert adjustments[0]["risk_id"] == "R001"
         assert "函证未回" in adjustments[0]["reason"]
-        # 50d：verdict 同步解析（"需补充"状态供仲裁完整性标记）
-        assert verdict == "需补充"
+        # 50d：verdict 同步解析（50f：正常路径 fixture 用「通过」，避免触发真阻断）
+        assert verdict == "通过"
 
     def test_extract_returns_empty_without_marker_or_bad_json(self):
         """无标记 / 非法 JSON 均降级为 (空列表, 空 verdict)，不阻断主流程。"""
@@ -259,12 +295,7 @@ class TestArbiterWriteback:
     def test_fallback_export_receives_adjusted_ledger(self, monkeypatch):
         """集成：辩论前置于兜底导出后，导出工具收到的是仲裁回写后的台账。"""
         monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", True)
-        fake = MagicMock()
-        fake.invoke.side_effect = [
-            _FakeResp(ADVOCATE_TEXT),
-            _FakeResp(SKEPTIC_TEXT),
-            _FakeResp(ARBITER_WITH_JSON),
-        ]
+        fake = _review_llm(arbiter=ARBITER_WITH_JSON)
         monkeypatch.setattr(agent_mod, "ChatOpenAI", lambda **kw: fake)
 
         # 捕获兜底导出收到的 risk_report_json；图表也 mock 掉避免真实 matplotlib 绘图落盘
@@ -322,12 +353,8 @@ class TestScoreReferenceGuard:
     def test_post_process_appends_warning_for_fake_score(self, monkeypatch):
         """集成：辩论结果引用不存在的评分 → review_block 附警示行（不篡改原文）。"""
         monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", True)
-        fake = MagicMock()
-        fake.invoke.side_effect = [
-            _FakeResp("关注方：系统综合评分72分与台账内部评分存在显著矛盾，据此提出信披风险。"),
-            _FakeResp(SKEPTIC_TEXT),
-            _FakeResp(ARBITER_TEXT),
-        ]
+        fake = _review_llm(
+            advocate="关注方：系统综合评分72分与台账内部评分存在显著矛盾，据此提出信披风险。")
         monkeypatch.setattr(agent_mod, "ChatOpenAI", lambda **kw: fake)
         monkeypatch.setattr(agent_mod, "export_pdf_report", MagicMock(invoke=MagicMock(return_value="/local_storage/reports/x.pdf")))
         monkeypatch.setattr(agent_mod, "export_excel_report", MagicMock(invoke=MagicMock(return_value="/local_storage/reports/x.xlsx")))
@@ -376,12 +403,7 @@ class TestScoreReferenceGuard:
         """仲裁回写后，前端消息内嵌台账同步为最新——
         v27 实证：仲裁新增/改级条目只写入导出台账，消息内嵌块仍旧（5 条 vs 6 条）。"""
         monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", True)
-        fake = MagicMock()
-        fake.invoke.side_effect = [
-            _FakeResp(ADVOCATE_TEXT),
-            _FakeResp(SKEPTIC_TEXT),
-            _FakeResp(ARBITER_WITH_JSON),
-        ]
+        fake = _review_llm(arbiter=ARBITER_WITH_JSON)
         monkeypatch.setattr(agent_mod, "ChatOpenAI", lambda **kw: fake)
         monkeypatch.setattr(agent_mod, "export_pdf_report", MagicMock(invoke=MagicMock(return_value="/local_storage/reports/x.pdf")))
         monkeypatch.setattr(agent_mod, "export_excel_report", MagicMock(invoke=MagicMock(return_value="/local_storage/reports/x.xlsx")))
@@ -745,6 +767,77 @@ class TestSemanticIds:
         assert "FIN-001" in md and "DIS-001" in md
         assert "R006" in md                       # 仲裁新增条目必然在索引表
         assert "【待核实】" in md                  # 置信度低的待核实标注
+
+
+class TestDimensionCorrection:
+    """50f：维度标签白名单 + 规则纠正（治分类器幻觉：V5 把期后关联收购标为监管处罚）。"""
+
+    def test_related_acquisition_mislabeled_penalty_corrected(self):
+        from agents.agent import _correct_dimensions
+        report_obj = {"risk_details": [
+            {"risk_id": "R004", "dimension": "regulatory_penalty",
+             "title": "报告期后 400 亿关联收购", "evidence": "关联方收购储气库公司，对价400.16亿元"},
+        ]}
+        n = _correct_dimensions(report_obj)
+        r = report_obj["risk_details"][0]
+        assert n == 1
+        assert r["dimension"] == "related_party"
+        assert r["dimension_corrected_from"] == "regulatory_penalty"
+
+    def test_penalty_keyword_keeps_penalty(self):
+        """含处罚事实（警示函）的条目保留 regulatory_penalty，不误纠。"""
+        from agents.agent import _correct_dimensions
+        report_obj = {"risk_details": [
+            {"risk_id": "R007", "dimension": "regulatory_penalty",
+             "title": "公司收到警示函", "evidence": "交易所出具警示函"},
+        ]}
+        assert _correct_dimensions(report_obj) == 0
+        assert report_obj["risk_details"][0]["dimension"] == "regulatory_penalty"
+
+    def test_unknown_dimension_keyword_fallback(self):
+        """白名单外维度 → 关键词归类兜底（油价/减值 → going_concern）。"""
+        from agents.agent import _correct_dimensions
+        report_obj = {"risk_details": [
+            {"risk_id": "R008", "dimension": "市场风险",
+             "title": "油价下行盈利承压", "evidence": "原油价格下跌致营收利润下滑"},
+        ]}
+        n = _correct_dimensions(report_obj)
+        assert n == 1
+        assert report_obj["risk_details"][0]["dimension"] == "going_concern"
+
+
+class TestFinalSweepAndSystemConclusion:
+    """50f：终局扫荡无条件化 + 系统结论块（治 V5 结论段捏造 72/100）。"""
+
+    def test_final_sweep_replaces_fabricated_score_with_none(self):
+        """快照 score=None 时，正文捏造的「72/100」被替换为「未获取/无法判定」。"""
+        from agents.agent import _sync_score_into_message
+
+        class _Msg:
+            content = "六、综合结论\n综合风险评分72/100，处于70-80关注区间。\n"
+        msg = _Msg()
+        changed = _sync_score_into_message(
+            msg, {"score": None, "level": "未获取/无法判定"})
+        assert changed
+        assert "72/100" not in msg.content
+        assert "未获取/无法判定" in msg.content
+
+    def test_system_conclusion_md_contains_index_and_notes(self):
+        from agents.agent import _build_system_conclusion_md
+        report_obj = {
+            "comprehensive_score_snapshot": {"score": None, "level": "未获取/无法判定"},
+            "level_floor_note": "风险等级底线规则：含 3 项重要级风险",
+            "risk_details": [
+                {"risk_id": "R001", "dimension": "financial_misstatement",
+                 "semantic_id": "FIN-001", "title": "应收激增",
+                 "level": "重要", "confidence": 0.65},
+            ],
+        }
+        md = _build_system_conclusion_md(report_obj)
+        assert "系统结论（模板渲染，与审计底稿同源，唯一权威）" in md
+        assert "综合风险评分：未获取/无法判定（请人工复核）" in md
+        assert "风险等级底线规则" in md
+        assert "FIN-001" in md
 
 
 class TestLevelFloorRule:

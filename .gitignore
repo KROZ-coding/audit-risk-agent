@@ -92,5 +92,27 @@ checkpoints.sqlite*
 .coverage.*
 # 临时截图
 _screenshot_*.png
+# pytest 临时目录（pyproject 里配的 basetemp）
+.tmp_pytest/
+# 开发过程中的临时 diff / 笔记文件
+.tmp_*
+# 验收脚本落盘的 SSE / 报告样本
+_acc*_sse.txt
+_acc*_report.md
+
+# ── 作者水印（彩蛋版）相关：密钥绝密不入库；验证器与生成器仅作者本地持有 ──
+.authorship_secret
+verify_authorship.py
+_gen_watermark.py
 
 # 注：示例产物请放置于版本控制的 samples/ 目录（见 README「示例产物」说明）
+_tmp_*
+.codex_write_probe.txt
+.codex_probe_dir/
+
+# 第三方 Agent Skill 插件包（本地工具，非本项目代码，不纳入版本库）
+# 均为外部下载的 skill 插件包，含各自 LICENSE 与作者署名，不随本项目分发；
+# 本机保留目录供 Qoder 使用，仅从版本库排除。
+/hallmark/
+/vercel-agent-skills/
+/sanyuan-skills/

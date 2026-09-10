@@ -67,7 +67,8 @@ class TestDataValidator:
     def test_retained_earnings_consistency(self):
         """未分配利润变动与净利润一致时应通过"""
         result = self._invoke({
-            "net_profit": 500,
+            "net_profit_parent": 500,
+            "net_profit": 520,
             "retained_earnings_begin": 1000,
             "retained_earnings_end": 1500,
             "dividends": 0,
@@ -95,6 +96,7 @@ class TestDataValidator:
             "total_liabilities": 6000,
             "net_assets": 4000,
             "net_profit": 800,
+            "net_profit_parent": 800,
             "operating_cashflow": 900,
             "depreciation": 100,
             "amortization": 0,
@@ -104,3 +106,56 @@ class TestDataValidator:
             "dividends": 0,
         })
         assert result["data_validation"]["validation_result"] == "通过"
+
+class TestParentCaliber:
+    """R 补丁：未分配利润勾稽必须用归母口径，缺归母净利润即不判定。"""
+
+    def test_consolidated_only_inconsistent_not_judged(self):
+        from tools.data_validator import validate_financial_data
+        data = json.dumps({
+            "net_profit": 93666, "retained_earnings_begin": 982234,
+            "retained_earnings_end": 1020356, "dividends": 45755,
+        }, ensure_ascii=False)
+        r = json.loads(validate_financial_data.invoke({"financial_data_json": data}))
+        dv = r["data_validation"]
+        re_chk = next(c for c in dv["all_checks"] if "未分配利润" in c["check"])
+        assert re_chk["passed"] is None, "缺归母净利润时不判定，也不得用合并口径替代"
+        assert re_chk["status"] == "insufficient_data"
+        assert "归母净利润" in re_chk["net_profit_note"]
+        assert "未分配利润" not in str([x.get("title") for x in dv.get("risks", [])]), \
+            "不得生成未分配利润 V 风险"
+        assert dv["failed_checks"] == 0, "口径提示不计 failed_checks"
+
+    def test_consolidated_only_consistent_not_judged(self):
+        """即使合并口径自洽也不判定：口径不可替代，须补归母净利润后再勾稽。"""
+        from tools.data_validator import validate_financial_data
+        data = json.dumps({
+            "net_profit": 500, "retained_earnings_begin": 1000,
+            "retained_earnings_end": 1500, "dividends": 0,
+        }, ensure_ascii=False)
+        r = json.loads(validate_financial_data.invoke({"financial_data_json": data}))
+        re_chk = next(c for c in r["data_validation"]["all_checks"] if "未分配利润" in c["check"])
+        assert re_chk["passed"] is None
+        assert re_chk["status"] == "insufficient_data"
+
+    def test_parent_caliber_consistent_passes(self):
+        from tools.data_validator import validate_financial_data
+        data = json.dumps({
+            "net_profit_parent": 500, "net_profit": 620,
+            "retained_earnings_begin": 1000, "retained_earnings_end": 1500,
+            "dividends": 0,
+        }, ensure_ascii=False)
+        r = json.loads(validate_financial_data.invoke({"financial_data_json": data}))
+        re_chk = next(c for c in r["data_validation"]["all_checks"] if "未分配利润" in c["check"])
+        assert re_chk["passed"] is True
+
+    def test_parent_scale_used_when_provided(self):
+        from tools.data_validator import validate_financial_data
+        data = json.dumps({
+            "net_profit_parent": 84007, "net_profit": 93666,
+            "retained_earnings_begin": 982234, "retained_earnings_end": 1020356,
+            "dividends": 45755,
+        }, ensure_ascii=False)
+        r = json.loads(validate_financial_data.invoke({"financial_data_json": data}))
+        re_chk = next(c for c in r["data_validation"]["all_checks"] if "未分配利润" in c["check"])
+        assert re_chk["passed"] is True and "归母" in re_chk["net_profit_note"]

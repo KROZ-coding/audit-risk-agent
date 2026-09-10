@@ -67,7 +67,13 @@ BAD_RED = HexColor("#D32F2F")       # 负向/极高
 TEXT_RED = "#C0392B"                # 判读警示文字（Paragraph 内联用）
 
 # 风险等级颜色映射：重大(红)、重要(橙)、一般(蓝)——语义保持不变（历史测试依赖）
-LEVEL_COLORS = {"重大": HexColor("#FF0000"), "重要": HexColor("#FF8C00"), "一般": HexColor("#4472C4")}
+# 图表等级配色（计划口径）：重大红色、重要黄色、一般蓝色，且一律保留文字标识，
+# 不以颜色作为唯一信号。纯黄在白底文字上对比度不足，故文字色另设深黄变体：
+# 填充/图例用标准黄，正文文字用深黄，两处均为黄色系，不退回橙色。
+LEVEL_COLORS = {"重大": HexColor("#FF0000"), "重要": HexColor("#FFD400"),
+                "一般": HexColor("#4472C4")}
+LEVEL_TEXT_COLORS = {"重大": HexColor("#FF0000"), "重要": HexColor("#B8860B"),
+                     "一般": HexColor("#4472C4")}
 
 # 综合评分等级标识 → 颜色（方法论/评分解读用）
 SCORE_LEVEL_COLORS = {"low": GOOD_GREEN, "medium": WARN_AMBER, "high": WARN_ORANGE, "critical": BAD_RED}
@@ -1086,7 +1092,7 @@ def _risk_detail_elements(rd_list, st, facts_ctx=None):
         return [Paragraph("本维度未识别出风险事项。", st['body'])]
     for idx, risk in enumerate(rd_list, 1):
         lv = risk.get("level", "")
-        lc = LEVEL_COLORS.get(lv, black)   # 等级对应颜色，默认黑色
+        lc = LEVEL_TEXT_COLORS.get(lv, black)   # 等级文字色（黄为深黄，保证白底可读）
         # 置信度格式化：数值保留两位小数，非数值（LLM 偶发字符串）转义后原样展示
         conf = risk.get('confidence', 0)
         conf_text = f"{conf:.2f}" if isinstance(conf, (int, float)) else _esc(conf)
@@ -1116,6 +1122,23 @@ def _risk_detail_elements(rd_list, st, facts_ctx=None):
             else:
                 re.append(Paragraph(_para_text(v), st['body']))
             re.append(Spacer(1, 3))
+        # 审计补强五项（涉及科目/适用认定/核查程序/所需材料/企业改进建议）：
+        # 编号接续前五项固定为 (6)-(10)，不随缺项漂移；核查程序一律为待执行建议，
+        # 缺项由 audit_reinforcement 模板补齐并在下方标注来源，不冒充模型结论。
+        from tools.audit_reinforcement import reinforcement_items
+        for bidx, (blabel, bvalues) in enumerate(reinforcement_items(risk), 6):
+            if not bvalues:
+                continue
+            re += [Paragraph(f"<b>({bidx}) {blabel}：</b>", st['small'])]
+            if len(bvalues) > 1:
+                for li, item in enumerate(bvalues, 1):
+                    re.append(Paragraph(_esc(f"({li}) {item}"), st['body']))
+            else:
+                re.append(Paragraph(_para_text(bvalues[0]), st['body']))
+            re.append(Spacer(1, 3))
+        if str(risk.get("reinforcement_source", "") or "") == "template":
+            re += [Paragraph("（上述补强项由系统模板按风险维度生成，需项目组按重要性调整）",
+                             st['small']), Spacer(1, 3)]
         # 渲染思维链（reasoning_chain）：结构化展示推理过程（逐步编号）
         chain = risk.get("reasoning_chain", [])
         if chain and isinstance(chain, list):
@@ -1162,6 +1185,13 @@ def _level_counts(risks):
     return c
 
 
+def _formal_risks(report: dict) -> list:
+    """返回已通过证据门禁的正式风险；旧台账没有该字段时兼容原行为。"""
+    if "accepted_risk_details" in report:
+        return [r for r in (report.get("accepted_risk_details") or []) if isinstance(r, dict)]
+    return [r for r in (report.get("risk_details") or []) if isinstance(r, dict)]
+
+
 def _reconcile_summary(report: dict) -> list:
     """校正 risk_summary 与 risk_details 的一致性：KPI 以明细统计为准回写，返回差异警告文案。
 
@@ -1169,7 +1199,8 @@ def _reconcile_summary(report: dict) -> list:
     （如 total_risks=2 而明细 5 条），此处强制以明细为唯一事实源，
     差异项回写为明细统计值，并收集警告供报告内展示。
     """
-    rd = report.get("risk_details") or []
+    rd = _formal_risks(report)
+    all_rd = report.get("risk_details") or []
     rs = report.get("risk_summary")
     if not isinstance(rs, dict):
         rs = report["risk_summary"] = {}
@@ -1192,6 +1223,8 @@ def _reconcile_summary(report: dict) -> list:
     if rs.get("risk_dimensions") != dim_counts:
         warnings.append("台账risk_dimensions与明细统计不一致，已按明细重算")
         rs["risk_dimensions"] = dim_counts
+    rs["pending_risks"] = sum(1 for r in all_rd if isinstance(r, dict) and r.get("formal_status") != "accepted")
+    rs["review_gate_status"] = (report.get("review_gate") or {}).get("status", "not_run")
     return warnings
 
 
@@ -1217,7 +1250,7 @@ def _audit_opinion_source(audit_opinion_json: str, disclosure_check_json: str):
     op = dc.get("audit_opinion") if isinstance(dc, dict) else None
     if op and str(op).strip() and str(op).strip() != "未识别":
         return True, f"来源：披露规范性检查识别（{str(op).strip()}）"
-    return False, "未获取：LLM 未调用审计意见识别工具或年报文本未包含审计报告段落"
+    return False, "LLM 未调用审计意见识别工具或年报文本未包含审计报告段落"
 
 
 def _assemble_chapters(chapters, st, font):
@@ -1398,7 +1431,10 @@ def _financial_section_body(fin_json, st, font, risk_json_str, industry="", note
             body.append(Paragraph(_esc(f"({i}) {a}"), st['body']))
         body.append(Spacer(1, 8))
 
-    # (3) 雷达图 + 热力图：雷达图需注入 calculated_indicators 才有真实数值
+    # (3) 指标计算过程与依据（公式→输入→代入→结果→阈值→状态→原文定位）
+    body += _indicator_chain_body(fin_json, st, font)
+
+    # (4) 雷达图 + 热力图：雷达图需注入 calculated_indicators 才有真实数值
     radar_json = risk_json_str
     if indicators:
         try:
@@ -1409,12 +1445,13 @@ def _financial_section_body(fin_json, st, font, risk_json_str, industry="", note
             pass
     radar = _embed_chart(_generate_radar_chart, radar_json)
     if radar:
-        body += [Paragraph("<b>（三）财务指标雷达图（对比行业基准）：</b>", st['small']),
+        body += [Paragraph("<b>（四）财务指标雷达图（对比行业基准）：</b>", st['small']),
                  radar, Paragraph("图：五维财务指标雷达图（红=公司实际，蓝=行业基准）", st['caption'])]
     heatmap = _embed_chart(_generate_risk_heatmap, risk_json_str)
     if heatmap:
-        body += [Paragraph("<b>（四）审计风险热力图（五维度×等级）：</b>", st['small']),
-                 heatmap, Paragraph("图：风险热力图（格内为风险数与置信度加权值）", st['caption'])]
+        body += [Paragraph("<b>（五）审计风险热力图（五维度×等级）：</b>", st['small']),
+                 heatmap, Paragraph("图：风险热力图（列色按等级：重大红/重要黄/一般蓝；"
+                                    "格内为去重后的正式风险数）", st['caption'])]
     return body
 
 
@@ -1425,6 +1462,57 @@ def _fmt_score(v) -> str:
         return f"{float(v):.1f}".rstrip("0").rstrip(".")
     except (TypeError, ValueError):
         return str(v)
+
+
+def _indicator_chain_body(fin_json, st, font) -> list:
+    """「指标计算过程与依据」章：逐项呈现公式→输入→代入→结果→阈值→状态→原文定位。
+
+    数据来自计算层的结构化记录（metric_results/evidence），渲染走
+    :mod:`tools.indicator_view` 与网页同源；未计算指标另列并附原因，
+    不以中性值补齐，也不把模型散文当依据。
+    """
+    from tools.indicator_view import build_indicator_view
+
+    view = build_indicator_view(fin_json)
+    if not view.get("available") or not view.get("groups"):
+        note = str(view.get("note", "") or "未获取可呈现的指标计算结果")
+        return [Paragraph("<b>（三）指标计算过程与依据：</b>", st['small']),
+                Paragraph(_esc(note), st['small'])]
+    body = [Paragraph("（三）指标计算过程与依据", st['small']),
+            Paragraph("下表逐项给出四项能力及补充分析的公式、输入值及单位、期间与口径、"
+                      "代入过程、结果、阈值及来源、状态与原文定位，供人工复算与追溯；"
+                      "代入过程由本地确定性计算生成，未经模型转述。", st['caption'])]
+    header = ["指标", "公式", "输入值及单位", "期间/口径", "代入过程（含结果）", "阈值及来源", "状态", "原文定位"]
+    widths = [52, 82, 92, 52, 128, 62, 40, 66]
+    for group in view.get("groups", []):
+        rows = [header]
+        for metric in group.get("metrics", []):
+            threshold = ("—" if metric.get("threshold") in (None, "") else str(metric["threshold"]))
+            if metric.get("threshold_source"):
+                threshold += f"（{metric['threshold_source']}）"
+            cell = _cell_style(font, 7.5)
+            rows.append([
+                Paragraph(_esc(str(metric.get("name", ""))), cell),
+                Paragraph(_esc(str(metric.get("formula", ""))), cell),
+                Paragraph(_esc(str(metric.get("inputs_text", ""))), cell),
+                Paragraph(_esc(str(metric.get("period_scope", ""))), cell),
+                Paragraph(_esc(str(metric.get("substitution", ""))), cell),
+                Paragraph(_esc(threshold), cell),
+                Paragraph(_esc(str(metric.get("status", ""))), cell),
+                Paragraph(_esc(str(metric.get("source_ref", ""))), cell),
+            ])
+        body += [Paragraph(f"<b>{_esc(group.get('label', ''))}</b>", st['small']),
+                 _styled_table(rows, widths, font, font_size=7.5), Spacer(1, 6)]
+    uncalculated = view.get("uncalculated") or []
+    if uncalculated:
+        lines = [f"{_esc(item.get('name', ''))}（{_esc(item.get('status', ''))}）："
+                 f"{_esc(item.get('reason', '') or '未说明原因')}" for item in uncalculated]
+        body += [Paragraph("<b>未计算指标（不以中性值补齐，需人工确认输入或期间口径）：</b>",
+                           st['small'])]
+        body += [Paragraph(f"  · {line}", st['small']) for line in lines]
+    if view.get("note"):
+        body.append(Paragraph(_esc(str(view["note"])), st['caption']))
+    return body
 
 
 def _pct_change_delta(cur, prev):
@@ -2130,15 +2218,66 @@ def _review_conclusion_body(report, st):
     数据核验，可能为模型幻觉，渲染时须附醒目提示（实测缺陷：辩论捏造同行数据）。
     """
     text = str(report.get("review_conclusion", "") or "").strip()
-    if not text:
+    c1 = report.get("c1_review") or {}
+    if not text and not c1:
         return []
-    return [
+    body = [
         Paragraph("<b>⚠️ 核验提示：</b>本复核意见由多智能体辩论（LLM）生成，其中引用的外部数据"
                   "（同行业公司对比、历史行情、账龄结构等）未经系统数据核验，可能包含模型幻觉，"
                   "一律不得作为审计底稿依据；请以报告正文数据、工具输出与数据来源说明为准，"
                   "需人工逐项核实。", st['small']),
         Spacer(1, 4),
-        Paragraph(_para_text(text), st['body']),
+    ]
+    if text:
+        body.append(Paragraph(_para_text(text), st['body']))
+    phases = c1.get("phases") if isinstance(c1, dict) else {}
+    if isinstance(phases, dict) and phases:
+        status_names = {"completed": "已完成", "running": "进行中", "failed": "失败",
+                        "not_started": "未开始", "not_run": "未执行"}
+        rows = [["C1阶段", "状态", "输出", "结构化备注"]]
+        for key in c1.get("stage_order", ["advocate", "skeptic", "arbiter"]):
+            phase = phases.get(key) or {}
+            if not isinstance(phase, dict):
+                continue
+            output = "已生成" if phase.get("output_available") else "无可用输出"
+            note = ""
+            if key == "arbiter":
+                note = str(phase.get("verdict", "") or "")
+                if phase.get("adjustment_count") is not None:
+                    note += f"；调整 {phase.get('adjustment_count', 0)} 条"
+            rows.append([
+                str(phase.get("label", key)),
+                status_names.get(str(phase.get("status", "")), str(phase.get("status", "未记录"))),
+                output,
+                note,
+            ])
+        body += [Spacer(1, 8), Paragraph("<b>C1串行阶段结构化状态：</b>", st['small']),
+                 _styled_table(rows, [110, 70, 70, 230],
+                               _register_chinese_font(), font_size=8.5)]
+        if c1.get("arbiter_incomplete"):
+            body.append(Paragraph("仲裁状态：未完成，不能标记为复核通过；有效数据和产物仍可供人工复核。", st['small']))
+    return body
+
+
+def _pending_items_body(report, st):
+    """综合汇总报告「待处理事项」章：单独呈现未进入正式风险统计的条目。"""
+    pending = [item for item in (report.get("pending_items") or []) if isinstance(item, dict)]
+    if not pending:
+        return []
+    rows = [["风险ID", "维度", "等级", "状态", "待处理原因"]]
+    for item in pending:
+        rows.append([
+            _risk_id_label(item),
+            DIM_CN.get(_norm_dim(item.get("dimension", "")), item.get("dimension", "")),
+            item.get("level", "待定级"),
+            item.get("verification_status", item.get("status", "待处理")),
+            item.get("pending_reason", "待补充证据或人工复核"),
+        ])
+    return [
+        Paragraph("以下条目未通过正式风险证据门禁，不计入正式风险总数、等级分布或热力图；"
+                  "其原始记录保留，待补证或人工复核后再决定是否采信。", st['small']),
+        Spacer(1, 4),
+        _styled_table(rows, [70, 100, 55, 90, 215], _register_chinese_font(), font_size=8.5),
     ]
 
 
@@ -2341,7 +2480,7 @@ def _export_legacy_single(report: dict, output_path: str) -> str:
         ])
         levels_col.append(r.get("level", ""))
     elements += [_styled_table(rows, [60, 90, 170, 50], font, font_size=9,
-                               level_cols=[(3, levels_col)], level_colors_map=LEVEL_COLORS),
+                               level_cols=[(3, levels_col)], level_colors_map=LEVEL_TEXT_COLORS),
                  PageBreak()]
 
     # ═══ 章节3：风险明细（编号化结构） ═══
@@ -2425,7 +2564,8 @@ def _export_split_reports(report: dict, financial_indicators_json: str, disclosu
         wanted = {"financial", "compliance", "synthesis"}
     st = _build_styles(font)
     ci = report.get("company_info", {})
-    rd_all = report.get("risk_details", []) or []
+    # 正式章节只消费通过证据门禁的风险；未通过条目单独在待处理事项章展示。
+    rd_all = _formal_risks(report)
     rs = report.get("risk_summary", {})
     risk_json_str = json.dumps(report, ensure_ascii=False)
     prefix = _build_file_prefix(report)
@@ -2444,20 +2584,22 @@ def _export_split_reports(report: dict, financial_indicators_json: str, disclosu
 
     # 审计意见双源合并判定：识别工具未调用时，披露检查的 audit_opinion 字段仍算已获取
     ao_used, ao_note = _audit_opinion_source(audit_opinion_json, disclosure_check_json)
+    # 未获取原因只写原因本身：同表「状态」列已写「未获取」，原因再带前缀会重复
+    # （与网页端同一口径，实测缺陷）。
     sources = [
         ("财务指标数据", _used(financial_indicators_json),
-         "未获取：未上传年报或文本过短（P1 预处理跳过），LLM 未产出结构化财务指标"),
+         "未上传年报或文本过短（P1 预处理跳过），LLM 未产出结构化财务指标"),
         ("披露规范性检查", _used(disclosure_check_json),
-         "未获取：LLM 未调用披露检查工具或年报文本不足以检查"),
+         "LLM 未调用披露检查工具或年报文本不足以检查"),
         ("综合风险评分", _used(comprehensive_score_json),
-         "未获取：LLM 未调用评分工具且系统兜底评分失败"),
+         "LLM 未调用评分工具且系统兜底评分失败"),
         ("多年指标趋势", _used(compare_multi_year_json),
-         "未获取：未提供多年财务数据（需至少 2 个年度）"),
+         "未提供多年财务数据（需至少 2 个年度）"),
         ("审计意见识别", ao_used, ao_note),
         ("量化模型预警", _used(risk_models_json),
-         "未获取：缺少多期报表数据（Altman Z-Score / Beneish M-Score 需多年数据）"),
+         "缺少多期报表数据（Altman Z-Score / Beneish M-Score 需多年数据）"),
         ("数据勾稽校验", _used(validation_json),
-         "未获取：缺少结构化财务数据（勾稽校验需三大报表字段）"),
+         "缺少结构化财务数据（勾稽校验需三大报表字段）"),
     ]
 
     # 审计意见信号与台账覆盖对照提示（信号→风险条目联动缺失时的可见提示）
@@ -2621,14 +2763,16 @@ def _export_split_reports(report: dict, financial_indicators_json: str, disclosu
         heatmap = _embed_chart(_generate_risk_heatmap, risk_json_str)
         if heatmap:
             overview_body += [Paragraph("<b>审计风险热力图（五维度×等级）：</b>", st['small']), heatmap,
-                              Paragraph("图：风险热力图（格内为风险数与置信度加权值）", st['caption'])]
+                              Paragraph("图：风险热力图（列色按等级：重大红/重要黄/一般蓝；"
+                                        "格内为去重后的正式风险数）", st['caption'])]
         # 风险清单摘要表（50d：风险ID 列并列展示语义编号）
         list_cell_style = _cell_style(font, 9)
         # 50d：待核实事项提示（confidence < 0.5 条目不得作为已确认风险结论引用）
         _pend_note = report.get("pending_verification_note", "") or ""
         if _pend_note:
+            # note 文本自带「待核实事项：」前缀（与前端消息层同源），此处不再重复拼接
             overview_body.append(Paragraph(
-                "<font color='" + WARN_ORANGE.hexval() + "'><b>待核实事项：</b>"
+                "<font color='" + WARN_ORANGE.hexval() + "'>"
                 + _esc(_pend_note) + "</font>", st['body']))
             overview_body.append(Spacer(1, 4))
         rows = [["风险ID", "维度", "标题", "等级"]]
@@ -2644,7 +2788,7 @@ def _export_split_reports(report: dict, financial_indicators_json: str, disclosu
             levels_col.append(r.get("level", ""))
         overview_body += [Paragraph("<b>风险清单摘要：</b>", st['small']),
                           _styled_table(rows, [60, 90, 170, 50], font, font_size=9,
-                                        level_cols=[(3, levels_col)], level_colors_map=LEVEL_COLORS)]
+                                        level_cols=[(3, levels_col)], level_colors_map=LEVEL_TEXT_COLORS)]
         sum_chapters.append(("风险总览", overview_body, "风险统计、等级分布、维度热力图与清单摘要"))
 
         # 交叉验证与风险传导链（台账已有字段，空则跳过）
@@ -2659,6 +2803,10 @@ def _export_split_reports(report: dict, financial_indicators_json: str, disclosu
         if rv_body:
             sum_chapters.append(("审计合伙人复核意见", rv_body,
                                  "多智能体辩论复核结论（与前端展示同源）"))
+        pending_body = _pending_items_body(report, st)
+        if pending_body:
+            sum_chapters.append(("待处理事项", pending_body,
+                                 "未进入正式风险统计的待补证据与待复核条目"))
         # 已排除嫌疑事项备查录（反向校验器移除的伪风险，可追溯留档）
         ex_body = _excluded_items_body(report, st)
         if ex_body:

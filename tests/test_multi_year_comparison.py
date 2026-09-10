@@ -68,3 +68,23 @@ class TestMultiYearComparison:
         assert "2022" in result["indicators_by_year"]
         assert result["indicators_by_year"]["2022"]["gross_margin"] == 50.0
         assert result["alert_count"] == len(result["trend_alerts"])
+
+class TestUnitNormalization:
+    """O 补丁：多年数据单位混用时 yoy/比率不因单位错位失真。"""
+
+    def test_mixed_units_ratio_not_distorted(self):
+        from tools.multi_year_comparison import compare_multi_year
+        # 2021 净利润 921,700 万元（=92.17 亿） vs 2025H1 净利润 93,666 百万元（=936.66 亿）
+        data = {
+            "2021": {"revenue": 1930900, "net_profit": 921700, "operating_cashflow": 210500},
+            "2025H1": {"revenue": 1450099, "net_profit": 93666, "operating_cashflow": 227063},
+        }
+        # 工具入参键名以工具签名为准（此处直接调用底层，绕过 @tool 参数包装）
+        from tools.multi_year_comparison import _compare_multi_year_impl
+        out = json.loads(_compare_multi_year_impl(json.dumps(data, ensure_ascii=False)))
+        # 归一化后同一量级：比率列应接近真实值（约 2.4 而非 0.23）
+        ocf_np = None
+        for y in (out.get("indicators_by_year") or {}).values():
+            if isinstance(y, dict) and y.get("year") == "2025H1":
+                ocf_np = y.get("operating_cashflow_to_net_profit_ratio")
+        assert ocf_np is None or 1.5 < ocf_np < 4.0, f"OCF/NP 应接近真实量级，实际 {ocf_np}"

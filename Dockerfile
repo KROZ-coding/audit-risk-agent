@@ -1,4 +1,4 @@
-# ─── 上市公司年报审计风险识别系统 v3.0 ───
+# ─── 上市公司年报风险识别 v3.0 ───
 # 部署方式：docker build -t audit-ai . && docker run -p 5000:5000 audit-ai
 FROM python:3.12-slim
 
@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 先复制依赖文件（利用 Docker 层缓存）
 COPY pyproject.toml uv.lock ./
 
-# 安装 Python 依赖
-RUN uv sync --frozen --no-dev
+# 安装 Python 依赖（--locked：严格按 uv.lock 安装，锁文件与 pyproject 不一致即失败）
+RUN uv sync --locked --no-dev
 
 # 复制项目文件
 COPY src/ ./src/
@@ -22,9 +22,7 @@ COPY config/ ./config/
 COPY knowledge_base/ ./knowledge_base/
 COPY assets/ ./assets/
 COPY tests/ ./tests/
-# 安全提示：生产镜像建议删除下行，改用 docker run --env-file .env 注入密钥，
-# 避免将 API Key 烤进镜像层；赛期保留以简化一键部署。
-COPY .env ./
+# 密钥和运行配置不复制进镜像层，请在运行时通过环境变量或 --env-file 注入。
 
 # ChromaDB 持久化目录（可挂载外部卷）
 RUN mkdir -p /app/.chroma_db

@@ -16,7 +16,112 @@ import pytest
 # 确保 src 目录在 Python 路径中
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from tools.financial_calculator import calculate_financial_indicators
+from tools.financial_calculator import (calculate_financial_indicators, detect_amount_unit,
+                                        extract_parent_net_profit, normalize_financial_units,
+                                        scale_amount_fields)
+
+
+class TestExtractParentNetProfit:
+    """归母净利润规则兜底（P11）：未分配利润勾稽必须用归母口径。"""
+
+    def test_with_explicit_unit(self):
+        """带单位表述：归属于母公司股东的净利润 840.07亿元 → 8.4007e10 元。"""
+        text = "归属于母公司股东的净利润 840.07亿元，同比下降5.4%。"
+        assert extract_parent_net_profit(text) == 840.07 * 1e8
+
+    def test_with_table_number_and_declared_unit(self):
+        """财务摘要表数字 84,007 + 声明单位百万元 → 8.4007e10 元。"""
+        text = ("除特别注明外，金额单位为人民币百万元。"
+                "归属于母公司股东的净利润 84,007 88,806 88,611 (5.4)")
+        assert extract_parent_net_profit(text) == 84007 * 1e6
+
+    def test_no_match_returns_none(self):
+        """无匹配时保守返回 None（不猜测）。"""
+        assert extract_parent_net_profit("公司主营业务为油气勘探开发。") is None
+        assert extract_parent_net_profit("") is None
+
+
+class TestAmountUnitDetection:
+    """年报金额单位声明识别（P8b）：无绝对锚场景的整体换算依据。"""
+
+    def test_detect_declared_unit(self):
+        assert detect_amount_unit("单位：人民币百万元") == "百万元"
+        assert detect_amount_unit("除特别注明外，金额单位为人民币百万元。") == "百万元"
+        assert detect_amount_unit("本报告金额单位:万元") == "万元"
+
+    def test_no_declaration_returns_none(self):
+        assert detect_amount_unit("公司主营业务为油气勘探开发。") is None
+        assert detect_amount_unit("") is None
+
+    def test_scale_amount_fields_keeps_ratios(self):
+        """整体换算只动金额字段，比率/次数字段保留。"""
+        data = {"net_profit_current": 93666, "revenue_current": 1450099,
+                "gross_margin_pct": 20.89, "industry": "能源"}
+        out = scale_amount_fields(data, 1e6)
+        assert out["net_profit_current"] == 93666 * 1e6
+        assert out["revenue_current"] == 1450099 * 1e6
+        assert out["gross_margin_pct"] == 20.89  # 比率字段不动
+        assert out["industry"] == "能源"
+
+
+class TestNormalizeFinancialUnits:
+    """单位口径（P8 修订）：只按明确声明的单位换算，不按财务结构猜测量级。"""
+
+    def test_no_structural_rescale_without_declared_unit(self):
+        """营收 1.45 万亿元 + 净利 93666 这类量级不一致不再自动换算，原值保留。"""
+        data = {
+            "revenue_current": 1.45e12,
+            "net_profit_current": 93666,
+            "net_profit_previous": 99805,
+            "dividends": 45755,
+            "retained_earnings_begin": 982234,
+            "retained_earnings_end": 1020356,
+        }
+        out = normalize_financial_units(data)
+        assert out["net_profit_current"] == 93666
+        assert out["net_profit_previous"] == 99805
+        assert out["dividends"] == 45755
+        assert out["retained_earnings_begin"] == 982234
+        assert out["retained_earnings_end"] == 1020356
+        assert out["unit_normalization"]["status"] == "not_applied"
+        assert "不按典型财务结构猜测换算因子" in out["unit_normalization"]["reason"]
+
+    def test_already_correct_scale_untouched(self):
+        """比率本就在合理区间时原样保留（防误改）。"""
+        data = {"revenue_current": 1.45e12, "net_profit_current": 9.4e10,
+                "operating_cashflow_current": 2.2e11}
+        out = normalize_financial_units(data)
+        assert out["net_profit_current"] == 9.4e10
+        assert out["operating_cashflow_current"] == 2.2e11
+
+    def test_no_anchor_untouched(self):
+        """无明确单位声明时原值保留，仅登记未换算状态。"""
+        data = {"net_profit_current": 100, "revenue_current": 200}
+        out = normalize_financial_units(dict(data))
+        assert {k: v for k, v in out.items() if k != "unit_normalization"} == data
+        assert out["unit_normalization"]["status"] == "not_applied"
+
+    def test_unfixable_kept_with_warning(self):
+        """修正后仍无法落入合理区间时保留原值（不静默改错）。"""
+        data = {"revenue_current": 1.45e12, "net_profit_current": 3e12}  # 净利率 207% 超上限
+        out = normalize_financial_units(data)
+        assert out["net_profit_current"] == 3e12
+
+    def test_validation_style_fields_untouched(self):
+        """校验字段体系（裸字段名）同样不做结构化换算，避免静默改错。"""
+        data = {"revenue": 1.45e12, "net_profit": 93666, "total_assets": 2849632,
+                "operating_cashflow": 227063}
+        out = normalize_financial_units(data)
+        assert out["net_profit"] == 93666
+        assert out["total_assets"] == 2849632
+        assert out["operating_cashflow"] == 227063
+
+    def test_declared_unit_is_honored_by_scale_helper(self):
+        """明确声明单位时仍按声明换算（唯一允许的换算路径）。"""
+        data = {"net_profit": 93666, "revenue": 1450099}
+        out = scale_amount_fields(data, 1e6)
+        assert out["net_profit"] == 93666 * 1e6
+        assert out["revenue"] == 1450099 * 1e6
 
 
 class TestFinancialCalculator:

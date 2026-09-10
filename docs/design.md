@@ -9,8 +9,8 @@
 
 | 页面 | 角色 | Stamp |
 |---|---|---|
-| `审计风险识别系统专用readme.html` | 部署指南（运行时 `/readme` 可访问） | Long Document · atmospheric-docs |
-| `审计风险识别系统 · 操作指南.html` | 全生命周期操作手册 | Long Document · atmospheric-docs |
+| `年报风险识别系统专用readme.html` | 部署指南（运行时 `/readme` 可访问） | Long Document · atmospheric-docs |
+| `年报风险识别系统 · 操作指南.html` | 全生命周期操作手册 | Long Document · atmospheric-docs |
 | `答辩QA速查.html` | 技术答辩问答 + 修复清单存档 | Long Document · atmospheric-docs |
 
 不适用：`src/web/index.html`（功能控制台，独立演进）、`baka专用readme.html`（个人趣味页，豁免）。

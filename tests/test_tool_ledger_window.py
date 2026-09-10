@@ -147,6 +147,7 @@ class TestPostProcessWithLedger:
         from unittest.mock import MagicMock
         monkeypatch.setattr(agent_mod, "generate_risk_heatmap", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/h.png")))
         monkeypatch.setattr(agent_mod, "generate_radar_chart", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/r.png")))
+        monkeypatch.setattr(agent_mod, "generate_trend_chart", MagicMock(invoke=MagicMock(return_value="/local_storage/charts/t.png")))
 
         full = _build_full_messages()
         ledger = _build_ledger(full)
@@ -159,11 +160,14 @@ class TestPostProcessWithLedger:
         final_ai = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage))
         assert "<!--COMPREHENSIVE_SCORE-->" in final_ai.content
 
-        # 解析综合评分，验证读到了真实的 validate 结果（failed_checks=2 → 校验风险=60）
+        # 解析综合评分，验证读到了真实的 validate 结果（failed_checks=2 → 校验风险=60）。
+        # 评分卡后可能追加 AI 声明/软提示，raw_decode 只取 JSON 前缀（容忍后续内容）。
         marker = "<!--COMPREHENSIVE_SCORE-->"
-        score_json = final_ai.content.split(marker, 1)[1].strip()
-        score = json.loads(score_json)
+        tail = final_ai.content.split(marker, 1)[1].strip()
+        score, _ = json.JSONDecoder().raw_decode(tail)
         assert score["breakdown"]["validation"] == 60.0
+        # AI 生成声明兜底已追加（LLM 漏附时系统补上）
+        assert "AI 辅助生成" in final_ai.content
 
     def test_post_process_without_ledger_would_misfire(self, monkeypatch):
         """反证：缺少台账、仅凭裁剪后的 messages 时会误触发 ToolCallOrderViolation。

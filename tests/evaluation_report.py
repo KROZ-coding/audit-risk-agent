@@ -883,7 +883,7 @@ async def run_agent_evaluation():
 def generate_tool_report():
     """运行工具模式评估并生成量化报告。"""
     print("=" * 70)
-    print("  上市公司年报审计风险识别系统 - 效果量化评估报告（工具模式）")
+    print("  上市公司年报风险识别 - 效果量化评估报告（工具模式）")
     print(f"  评估时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  测试集规模: {len(TEST_CASES)} 个标注样本")
     print("=" * 70)
@@ -1070,7 +1070,7 @@ def main():
     - agent: 全链路 Agent 评估（LLM + RAG + 辩论 + 思维链）
     - all: 两种模式均运行
     """
-    parser = argparse.ArgumentParser(description="审计风险识别系统效果评估工具")
+    parser = argparse.ArgumentParser(description="年报风险识别系统效果评估工具")
     parser.add_argument(
         "--mode", choices=["tool", "agent", "all"], default="tool",
         help="评估模式：tool=工具级（快速）, agent=全链路LLM, all=全部"

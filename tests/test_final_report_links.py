@@ -8,9 +8,18 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import main as main_mod
 from main import GraphService
+
+
+@pytest.fixture(autouse=True)
+def _stub_artifact_access(monkeypatch):
+    """本文件用假路径验证链接提取：放行产物存在性门禁，门禁本身另有独立用例。"""
+    monkeypatch.setattr(main_mod, "_artifact_is_accessible", lambda path: True)
 
 
 def _build(messages):
@@ -59,3 +68,12 @@ class TestFinalReportLinks:
         ]
         report = _build(messages)
         assert report["images"] == [{"tool": "generate_radar_chart", "path": "/local_storage/charts/radar.png"}]
+
+    def test_inaccessible_paths_are_dropped(self, monkeypatch):
+        """不存在的产物不得进入下载列表（避免前端给出失效链接）。"""
+        monkeypatch.setattr(main_mod, "_artifact_is_accessible", lambda path: False)
+        messages = [
+            {"type": "ai", "content": "报告见 /local_storage/reports/missing.pdf"},
+        ]
+        report = _build(messages)
+        assert report["files"] == [] and report["images"] == []

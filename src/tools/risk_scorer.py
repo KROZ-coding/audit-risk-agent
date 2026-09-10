@@ -16,6 +16,7 @@
 """
 import json
 import logging
+from core.result_contract import Evidence, MetricResult, RESULT_SCHEMA_VERSION, RULE_VERSION, make_fact
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,89 @@ RISK_LEVELS = [
     (75, "高风险", "high"),
     (100, "极高风险", "critical"),
 ]
+
+_SCORE_INPUT_SOURCES = {
+    "financial": "calculate_financial_indicators",
+    "disclosure": "check_disclosure_compliance",
+    "validation": "validate_financial_data",
+}
+
+
+def _score_records(risks: dict, total_score=None, total_status="calculated",
+                   total_reason="") -> tuple[list[dict], list[dict], list[dict]]:
+    """把评分输入和总分包装为统一的事实、指标、证据记录。
+
+    评分器消费的是其他确定性工具的结构化结果，因此这里记录来源工具和
+    评分状态，不把缺失维度伪装成零分，也不把评分器的派生值冒充年报原始事实。
+    """
+    facts = []
+    metrics = []
+    evidence = []
+    input_fact_ids = []
+    input_metric_ids = []
+    for key in ("financial", "disclosure", "validation"):
+        value = risks.get(key)
+        source = _SCORE_INPUT_SOURCES[key]
+        fact_id = f"F-SCORE-{key.upper()}"
+        metric_id = f"score_dimension_{key}"
+        evidence_id = f"E-SCORE-{key.upper()}"
+        value_status = "calculated" if isinstance(value, (int, float)) and value == value else "insufficient_data"
+        value_reason = "" if value_status == "calculated" else f"{source}未提供可用评分输入"
+        fact = make_fact(
+            f"{key}_risk_score", value, fact_id=fact_id, unit="分",
+            source_document=source, extraction_method="deterministic_score",
+        ).to_dict()
+        fact["status"] = value_status
+        facts.append(fact)
+        metrics.append(MetricResult(
+            metric_id=metric_id,
+            name={"financial": "财务指标风险分", "disclosure": "披露合规风险分",
+                  "validation": "数据校验风险分"}[key],
+            formula="来源工具结果→确定性评分规则",
+            inputs=[{"field": f"{key}_risk_score", "fact_id": fact_id,
+                      "raw_value": fact.get("raw_value", ""), "value": value,
+                      "unit": "分", "source": source}],
+            unit="分", value=value, display_value="未获取" if value is None else str(round(value, 1)),
+            status=value_status, reason=value_reason, evidence_ids=[evidence_id],
+        ).to_dict())
+        evidence.append(Evidence(
+            evidence_id=evidence_id, source_type="deterministic_score_input",
+            source_document=source, excerpt=(f"{source}输出的评分输入："
+                                             f"{'未获取' if value is None else round(value, 1)}分"),
+            fact_ids=[fact_id], metric_ids=[metric_id],
+            verified=value_status == "calculated", status=value_status,
+        ).to_dict())
+        input_fact_ids.append(fact_id)
+        input_metric_ids.append(metric_id)
+
+    total_fact_id = "F-SCORE-TOTAL"
+    total_metric_id = "score_total"
+    total_evidence_id = "E-SCORE-TOTAL"
+    total_fact = make_fact(
+        "comprehensive_risk_score", total_score, fact_id=total_fact_id, unit="分",
+        source_document="calculate_comprehensive_score",
+        extraction_method="deterministic_score",
+    ).to_dict()
+    total_fact["status"] = total_status
+    facts.append(total_fact)
+    metrics.append(MetricResult(
+        metric_id=total_metric_id, name="综合风险评分",
+        formula="各可用维度按有效权重归一化加权 + 适用规则抬升",
+        inputs=[{"field": "dimension_scores", "fact_id": fact_id, "metric_id": metric_id}
+                for fact_id, metric_id in zip(input_fact_ids, input_metric_ids)],
+        unit="分", value=total_score,
+        display_value="未获取" if total_score is None else str(round(total_score, 1)),
+        status=total_status, reason=total_reason, evidence_ids=[total_evidence_id],
+    ).to_dict())
+    evidence.append(Evidence(
+        evidence_id=total_evidence_id, source_type="deterministic_score",
+        source_document="calculate_comprehensive_score",
+        excerpt=(f"综合评分：{'未获取' if total_score is None else round(total_score, 1)}分"),
+        fact_ids=input_fact_ids + [total_fact_id], metric_ids=input_metric_ids + [total_metric_id],
+        verified=total_score is not None and total_status == "calculated",
+        status=total_status,
+    ).to_dict())
+    return facts, metrics, evidence
 
 
 def _get_level(score: float) -> tuple:
@@ -308,7 +392,14 @@ def calculate_comprehensive_score(
 
         # 全维度未获取：禁止进入等级映射（把"无数据"说成"低风险"比旧 Bug 更隐蔽）
         if not available:
+            facts, metrics, evidence = _score_records(
+                risks, total_score=None, total_status="insufficient_data",
+                total_reason="三个评分维度均未获取")
             return json.dumps({
+                "result_schema_version": RESULT_SCHEMA_VERSION,
+                "rule_version": RULE_VERSION,
+                "calculation_version": "2026-09-v3",
+                "status": "insufficient_data",
                 "score": None,
                 "level": "未获取/无法判定",
                 "level_key": "unavailable",
@@ -318,6 +409,9 @@ def calculate_comprehensive_score(
                 "escalation": 0,
                 "escalation_reasons": [],
                 "summary": "三个评分维度数据均未获取，无法计算综合风险评分，请人工复核",
+                "facts": facts,
+                "metric_results": metrics,
+                "evidence": evidence,
             }, ensure_ascii=False)
 
         # 部分维度未获取：剩余维度权重按比例重归一化（如仅财务+校验：0.5/0.7、0.2/0.7）
@@ -363,6 +457,10 @@ def calculate_comprehensive_score(
                        + "维度未获取，已按剩余维度权重归一化）") if summary else summary
 
         result = {
+            "result_schema_version": RESULT_SCHEMA_VERSION,
+            "rule_version": RULE_VERSION,
+            "calculation_version": "2026-09-v3",
+            "status": "partially_calculated" if missing else "calculated",
             "score": score,
             "level": level,
             "level_key": level_key,
@@ -382,16 +480,29 @@ def calculate_comprehensive_score(
             "notes": renorm_notes + reasons,
             "summary": summary,
         }
+        facts, metrics, evidence = _score_records(
+            risks, total_score=score, total_status="calculated")
+        result.update({"facts": facts, "metric_results": metrics, "evidence": evidence})
 
         logger.info(f"综合风险评分：{score} 分（{level}）"
                     + (f"，含模型/意见抬升 {escalation}" if escalation else ""))
         return json.dumps(result, ensure_ascii=False, indent=2)
-    except Exception as e:  # noqa: BLE001 - 降级可见：返回中间值评分 + 错误说明，不炸流
-        logger.warning(f"综合评分计算异常，降级输出: {e}")
+    except Exception as e:  # noqa: BLE001 - 降级可见：失败时保持不可判定，不填中间值
+        logger.warning(f"综合评分计算异常，降级输出不可判定结果: {e}")
+        facts, metrics, evidence = _score_records(
+            {"financial": None, "disclosure": None, "validation": None},
+            total_score=None, total_status="failed", total_reason=str(e))
         return json.dumps({
-            "score": 50.0,
-            "level": "中等风险",
-            "level_key": "medium",
+            "result_schema_version": RESULT_SCHEMA_VERSION,
+            "rule_version": RULE_VERSION,
+            "calculation_version": "2026-09-v3",
+            "status": "failed",
+            "score": None,
+            "level": "未获取/无法判定",
+            "level_key": "unavailable",
             "error": f"综合评分计算发生异常：{e}",
-            "summary": "综合评分计算发生异常（详见 error 字段），当前分数为降级中间值，请重新计算或人工复核。",
+            "summary": "综合评分计算发生异常（详见 error 字段），无法判定风险等级，请人工复核。",
+            "facts": facts,
+            "metric_results": metrics,
+            "evidence": evidence,
         }, ensure_ascii=False, indent=2)

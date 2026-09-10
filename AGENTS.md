@@ -5,7 +5,7 @@
 
 ## 项目定位
 
-**上市公司年报审计风险识别系统**（本地运行版）：一个基于 FastAPI + LangGraph ReAct Agent
+**上市公司年报风险识别**（本地运行版）：一个基于 FastAPI + LangGraph ReAct Agent
 的 Multi-Agent 系统。用户上传年报（PDF/Excel 等），系统按固定工具链完成财务校验、指标计算、
 披露合规检查、法规检索、综合评分，并生成 PDF 报告、Excel 底稿与可视化图表。
 
@@ -19,7 +19,7 @@
 |------|------|
 | `src/main.py` | FastAPI 服务与 CLI 入口；`/run` `/stream_run` `/upload` 等路由；`TOOL_PIPELINE` 进度映射 |
 | `src/agents/agent.py` | 构建 ReAct Agent、注册工具、多智能体辩论、兜底导出、消息滑动窗口 |
-| `src/tools/` | 全部审计工具（13 个模块，见下方常见任务路径） |
+| `src/tools/` | 全部审计与 C 端轻量工具（16 个工具，见下方常见任务路径） |
 | `src/local_knowledge.py` | 知识库加载与检索（ChromaDB / TF-IDF） |
 | `src/local_shims.py` | 替代 coze SDK 的本地兼容层（context、logging、config 等） |
 | `src/storage/` | 数据库、memory checkpoint、S3 存储封装 |
@@ -75,7 +75,8 @@ validate_financial_data → calculate_financial_indicators
   在报告末尾附「工具链顺序提示」供人工复核（兜底导出照常执行）。
 
 - 顺序与规则由 `config/agent_llm_config.json` 的 `sp` 字段约束，进度映射在 `src/main.py` 的 `TOOL_PIPELINE`。
-- 新增/重命名工具时，须同步更新：`src/agents/agent.py`（注册）、`config` 的 `tools` 列表、`main.py` 的 `TOOL_NAME_TO_STEP`；同时同步工具计数表述——`src/agents/agent.py` 中 `build_agent` docstring 与 `README.md` 项目结构里的「N 个核心审计工具」（当前为 13，须与 `build_agent` 的 `tools` 列表长度、`config` 的 `tools` 数组长度一致）。
+- 新增/重命名工具时，须同步更新：`src/agents/agent.py`（注册）、`config` 的 `tools` 列表、`main.py` 的 `TOOL_NAME_TO_STEP`；同时同步工具计数表述——`src/agents/agent.py` 中 `build_agent` docstring 与 `README.md` 项目结构里的「N 个核心分析工具」（当前为 16，须与 `build_agent` 的 `tools` 列表长度、`config` 的 `tools` 数组长度一致）。
+- 注：`export_pdf_report` / `export_excel_report` 不注册给 LLM（导出由系统后处理兜底执行，保证以完整数据生成报告）；计数口径为 LLM 注册工具数，config 的 `tools` 数组与 `build_agent` 列表均不含导出工具。
 - **校验命令**：`uv run pytest tests/ -q`（验证核心工具行为不回归）。
 
 ### 2. 报告导出（PDF + Excel 缺一不可）
@@ -107,7 +108,7 @@ validate_financial_data → calculate_financial_indicators
 - `docs/exec-plan-单份年报完整分析.md` — 单份年报完整分析的可复用执行清单（固定工具链 + 验收校验）
 - `README.md` — 项目总览与部署说明
 - `DATA_SOURCES.md` — 知识库与数据来源说明
-- `审计风险识别系统专用readme.html` — 完整操作指南（运行时 `/readme` 可访问）
+- `年报风险识别系统专用readme.html` — 完整操作指南（运行时 `/readme` 可访问）
 - `2026北京市大学生数智会计创新应用竞赛手册.html` — 竞赛评分维度与要求
 - `pyproject.toml` — 依赖、`pytest` 配置（`pythonpath=["src"]`）
 - `config/agent_llm_config.json` — Agent 系统提示词与工具清单（运行时行为的权威来源）

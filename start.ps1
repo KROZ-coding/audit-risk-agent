@@ -108,7 +108,7 @@ function Stop-WithHint {
 # ═══════════════════════════════════════════════════════════
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════╗" -ForegroundColor Magenta
-Write-Host "║   上市公司年报审计风险识别系统 - 本地启动        ║" -ForegroundColor Magenta
+Write-Host "║   上市公司年报风险识别 - 本地启动                ║" -ForegroundColor Magenta
 Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Magenta
 Write-Host ""
 Write-Info "项目目录: $ProjectDir"
@@ -203,7 +203,7 @@ ENV=dev
 Write-Info "COZE_WORKSPACE_PATH 已设为: $ProjectDir"
 
 # ═══════════════════════════════════════════════════════════
-# Step 3: 检查/安装依赖（uv sync）
+# Step 3: 检查/安装依赖（uv sync --locked：严格按 uv.lock 安装，锁文件过期即报错）
 # ═══════════════════════════════════════════════════════════
 Write-Step "Step 3/6 - 检查依赖"
 
@@ -235,8 +235,8 @@ if ($SkipSync) {
         Pop-Location
     }
 
-        # 执行 uv sync
-    Write-Info "正在同步依赖 (uv sync)..."
+        # 执行 uv sync --locked
+    Write-Info "正在同步依赖 (uv sync --locked)..."
     Push-Location $ProjectDir
 
     # 临时允许 stderr 输出，防止 uv 的正常提示被当成致命异常
@@ -244,12 +244,12 @@ if ($SkipSync) {
     $ErrorActionPreference = "Continue"
 
     try {
-        & $uvCmd sync
+        & $uvCmd sync --locked
         $syncExitCode = $LASTEXITCODE
 
         if ($syncExitCode -ne 0) {
-            Write-Warn "uv sync 失败，尝试重新同步..."
-            & $uvCmd sync
+            Write-Warn "uv sync --locked 失败，尝试重新同步..."
+            & $uvCmd sync --locked
             if ($LASTEXITCODE -ne 0) {
                 Pop-Location
                 Stop-WithHint "依赖安装失败" "检查 pyproject.toml 和网络连接"
@@ -258,7 +258,7 @@ if ($SkipSync) {
         Write-Ok "依赖已就绪"
     } catch {
         Pop-Location
-        Stop-WithHint "依赖安装异常: $_" "运行 uv sync 查看详细错误"
+        Stop-WithHint "依赖安装异常: $_" "运行 uv sync --locked 查看详细错误"
     } finally {
         # 恢复严格模式
         $ErrorActionPreference = $oldEAP
@@ -344,13 +344,28 @@ if (-not $allReady) {
 Write-Step "Step 6/6 - 启动服务"
 Write-Host ""
 
-$env:PYTHONPATH = $SrcDir
-if ($env:PYTHONPATH -and $env:PYTHONPATH -ne $SrcDir) {
+# 将 src 置于 PYTHONPATH 最前（原有值以分号保留，避免覆盖外部配置）
+if ($env:PYTHONPATH) {
     $env:PYTHONPATH = "$SrcDir;$env:PYTHONPATH"
+} else {
+    $env:PYTHONPATH = $SrcDir
 }
 
 $mainPy = Join-Path $SrcDir "main.py"
 $baseArgs = @($mainPy, "-m")
+
+# 启动前预检端口占用（web/http 模式）：这是最常见的启动失败场景，
+# 提前给出明确提示，而不是等 uvicorn 报错退出后用户对着窗口猜
+if ($Mode -in @("web", "http")) {
+    try {
+        $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        if ($busy) {
+            Write-Warn "端口 $Port 已被占用（PID: $(($busy.OwningProcess | Select-Object -Unique) -join ', ')）"
+            Write-Info "请先停掉占用端口的进程，或换端口重启: .\start.ps1 -Port 8080"
+            Write-Host ""
+        }
+    } catch { }  # 检测失败不阻断启动，uvicorn 自己会报错
+}
 
 switch ($Mode) {
     "web" {

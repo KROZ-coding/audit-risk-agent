@@ -1,11 +1,18 @@
 """Excel审计底稿导出工具
 
-将风险台账 JSON 数据导出为格式化的 Excel 审计底稿文件，包含三个工作表：
-1. 风险总览：公司基本信息（名称/股票代码/行业等）+ AI 声明 + 风险统计摘要
-2. 风险明细：每条风险的完整信息（10 列），风险等级用颜色标注（重大红/重要橙/一般蓝）
-3. 整体评估：整体风险评估结论 + AI 声明 + 行业基准对比（可选）
+将风险台账 JSON 数据导出为格式化的 Excel 审计底稿文件，包含九张工作表：
+1. 报告概览：公司基本信息（名称/股票代码/行业等）+ 按明细实时聚合的风险统计摘要
+2. 风险台账：通过证据门禁的正式风险完整信息，等级用颜色标注（重大红/重要黄/一般蓝）
+3. 规则口径：评分规则、阈值来源、版本号与审查门禁状态
+4. 建议与核查程序：企业改进建议、涉及科目、适用认定、核查程序及所需材料
+5. 原始事实：字段、原始值与解析值、单位/币种/期间/口径、原文件与哈希、页码/定位/原文摘录、提取方式
+6. 指标计算：公式、输入值及单位、代入过程、阈值来源、状态与原文定位
+7. 勾稽校验：校验公式、差异、阈值、结果与限制/失败说明
+8. 证据索引：来源类型、原文件与哈希、页码/定位、原文摘录、关联事实与指标
+9. 待处理事项：未通过门禁条目及待处理原因与下一步程序
 
-生成的 Excel 文件自动上传到存储并返回可下载 URL。
+风险台账页与建议页只展示通过证据门禁的正式风险，未通过条目进入「待处理事项」页，
+避免汇总把候选风险混入正式统计。生成的 Excel 文件自动上传到存储并返回可下载 URL。
 """
 import os
 import json
@@ -47,6 +54,13 @@ def _level_counts(risks: list) -> dict:
     return c
 
 
+def _formal_risks(report: dict) -> list:
+    """返回通过证据门禁的正式风险；兼容旧台账。"""
+    if "accepted_risk_details" in report:
+        return [r for r in (report.get("accepted_risk_details") or []) if isinstance(r, dict)]
+    return [r for r in (report.get("risk_details") or []) if isinstance(r, dict)]
+
+
 def _reconcile_risk_summary(report: dict) -> None:
     """以 risk_details 为唯一事实源实时重算 risk_summary（总数/等级分布/维度分布）。
 
@@ -54,7 +68,8 @@ def _reconcile_risk_summary(report: dict) -> None:
     不会自动更新，导致底稿首页摘要与明细清单脱节（实测缺陷：摘要 7 条 vs
     明细 9 条）。导出前强制按明细动态聚合，摘要恒与明细一致。
     """
-    rd = report.get("risk_details") or []
+    rd = _formal_risks(report)
+    all_rd = report.get("risk_details") or []
     rs = report.get("risk_summary")
     if not isinstance(rs, dict):
         rs = report["risk_summary"] = {}
@@ -63,6 +78,8 @@ def _reconcile_risk_summary(report: dict) -> None:
     rs["major_risks"] = c["重大"]
     rs["important_risks"] = c["重要"]
     rs["general_risks"] = c["一般"]
+    rs["pending_risks"] = sum(1 for r in all_rd if isinstance(r, dict) and r.get("formal_status") != "accepted")
+    rs["review_gate_status"] = (report.get("review_gate") or {}).get("status", "not_run")
     # 维度分布同步按明细重算（修复非五维度条目如市场风险/数据可靠性风险漏计；
     # 键经 _norm_dim 归一化，防止"财务错报"与"财务错报风险"分裂成两行）
     from tools.pdf_export import _norm_dim
@@ -135,7 +152,8 @@ def _estimate_row_height(values, col_widths, line_h=15, min_h=30, max_h=400):
 
 def _export_excel_impl(risk_report_json: str, output_path: str = None,
                        validation_json: str = "", financial_indicators_json: str = "",
-                       disclosure_check_json: str = "", audit_opinion_json: str = "") -> str:
+                       disclosure_check_json: str = "", audit_opinion_json: str = "",
+                       comprehensive_score_json: str = "", risk_models_json: str = "") -> str:
     """将风险台账 JSON 导出为 Excel 审计底稿的核心实现。
 
     完整流程：
@@ -169,7 +187,7 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     # Sheet 1：风险总览 —— 封面信息 + AI 声明 + 风险统计摘要
     # ═══════════════════════════════════════════════════════
     ws_summary = wb.active
-    ws_summary.title = "风险总览"
+    ws_summary.title = "报告概览"
 
     # ── 定义全局样式：标题字体、表头填充、边框、对齐等 ──
     header_font = Font(name="微软雅黑", size=11, bold=True, color="FFFFFF")
@@ -184,16 +202,18 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     # 自动换行 + 垂直居中，用于长文本内容单元格
     wrap_alignment = Alignment(wrap_text=True, vertical="center")
 
-    # ── 风险等级颜色映射：重大(红)、重要(橙)、一般(蓝) ──
+    # ── 风险等级颜色映射：重大(红)、重要(黄)、一般(蓝)，与 PDF/网页同一口径；
+    # 单元格内始终带「重大/重要/一般」文字，颜色不作为唯一信号。黄色底用深色
+    # 字体（白字在黄底上不可读），红/蓝底维持白字。
     level_colors = {
         "重大": PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid"),
-        "重要": PatternFill(start_color="FF8C00", end_color="FF8C00", fill_type="solid"),
+        "重要": PatternFill(start_color="FFD400", end_color="FFD400", fill_type="solid"),
         "一般": PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"),
     }
-    # 风险等级对应的字体样式（重大/重要使用白色粗体，一般使用白色常规体）
+    # 风险等级对应的字体样式（重要为黄底深色粗体，其余白字）
     level_fonts = {
         "重大": Font(name="微软雅黑", size=10, bold=True, color="FFFFFF"),
-        "重要": Font(name="微软雅黑", size=10, bold=True, color="FFFFFF"),
+        "重要": Font(name="微软雅黑", size=10, bold=True, color="3F3000"),
         "一般": Font(name="微软雅黑", size=10, color="FFFFFF"),
     }
 
@@ -263,12 +283,14 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     # ═══════════════════════════════════════════════════════
     # Sheet 2：风险明细表 —— 每条风险的 11 列详细信息
     # ═══════════════════════════════════════════════════════
-    ws_detail = wb.create_sheet("风险明细")
+    ws_detail = wb.create_sheet("风险台账")
 
-    # 定义表头和各列宽度（共 12 列：新增推理思维链 + 系统量化事实）
+    # 定义表头和各列宽度（共 17 列：推理思维链 + 系统量化事实 + 审计补强五项）
     headers = ["风险ID", "风险维度", "风险标题", "风险等级", "证据", "数据分析",
-               "法规依据", "案例参考", "审计建议", "置信度", "推理思维链", "系统量化事实"]
-    col_widths = [10, 15, 25, 10, 40, 40, 35, 35, 40, 10, 50, 50]
+               "法规依据", "案例参考", "审计建议", "置信度", "推理思维链", "系统量化事实",
+               "涉及科目", "适用认定", "核查程序", "所需材料", "企业改进建议"]
+    col_widths = [10, 15, 25, 10, 40, 40, 35, 35, 40, 10, 50, 50,
+                  22, 24, 45, 30, 40]
 
     # 写入表头行（第 1 行），设置深蓝色背景 + 白色粗体
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
@@ -284,9 +306,13 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     ws_detail.freeze_panes = "A2"
 
     # 逐行写入风险明细数据（从第 2 行开始）
-    risk_details = report.get("risk_details", [])
+    # 风险台账页和建议页只展示通过证据门禁的正式风险；未通过条目进入
+    # “待处理事项”页，避免 Excel 汇总把候选风险混入正式统计。
+    risk_details = _formal_risks(report)
     # S4 事实层注入：复用 pdf_export 的确定性量化事实（工具 JSON 传入时）
     from tools.pdf_export import _system_facts_text
+    # 审计补强五项与 PDF 同源：模型输出优先，缺项由模板补齐（只读，不改台账）
+    from tools.audit_reinforcement import reinforcement_cell
     # 50d：风险编号展示复用 pdf_export 的语义编号并列格式（主编号+semantic_id）
     from tools.pdf_export import _risk_id_label as _risk_id_cell
 
@@ -322,6 +348,11 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
             risk.get("confidence", 0),       # 置信度（0~1 的浮点数）
             chain_text,                      # 推理思维链
             _facts_text(risk),               # 系统量化事实（确定性计算，供核对）
+            reinforcement_cell(risk, "involved_accounts"),        # 涉及科目
+            reinforcement_cell(risk, "assertions"),               # 适用认定
+            reinforcement_cell(risk, "audit_procedures"),         # 核查程序（待执行）
+            reinforcement_cell(risk, "required_materials"),       # 所需材料
+            reinforcement_cell(risk, "improvement_suggestions"),  # 企业改进建议
         ]
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws_detail.cell(row=row_idx, column=col_idx, value=value)
@@ -345,7 +376,7 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     # ═══════════════════════════════════════════════════════
     # Sheet 3：整体评估 —— 风险结论 + AI 声明 + 行业基准对比
     # ═══════════════════════════════════════════════════════
-    ws_assessment = wb.create_sheet("整体评估")
+    ws_assessment = wb.create_sheet("规则口径")
 
     # 写入标题和整体风险评估结论文本
     ws_assessment.merge_cells("A1:B1")
@@ -434,12 +465,12 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
     prefix = _build_file_prefix(report)
 
     # ═══════════════════════════════════════════════════════
-    # Sheet 4：审计建议汇总 —— 将所有风险的 audit_suggestion 集中展示
+    # Sheet 4：审计建议汇总 —— 每条风险的建议与补强五项（与 PDF 明细同源）
     # ═══════════════════════════════════════════════════════
-    ws_suggestions = wb.create_sheet("审计建议汇总")
-    # 表头：风险ID + 风险标题 + 等级 + 审计建议
-    sug_headers = ["风险ID", "风险标题", "风险等级", "审计核查建议"]
-    sug_widths = [10, 30, 10, 80]
+    ws_suggestions = wb.create_sheet("建议与核查程序")
+    sug_headers = ["风险ID", "风险标题", "风险等级", "审计核查建议",
+                   "涉及科目", "适用认定", "核查程序", "所需材料", "企业改进建议"]
+    sug_widths = [10, 30, 10, 60, 22, 24, 45, 30, 40]
     for col_idx, (header, width) in enumerate(zip(sug_headers, sug_widths), start=1):
         cell = ws_suggestions.cell(row=1, column=col_idx, value=header)
         cell.font = header_font
@@ -449,11 +480,15 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
         ws_suggestions.column_dimensions[get_column_letter(col_idx)].width = width
     # 冻结表头：滚动查看审计建议时首行表头始终可见
     ws_suggestions.freeze_panes = "A2"
-    # 逐行写入每条风险的审计建议
+    # 逐行写入每条风险：只要有审计建议或任一补强项非空即登记，
+    # 避免缺 audit_suggestion 的条目整条漏出「建议与核查程序」表
     sug_row = 2
     for risk in risk_details:
         suggestion = risk.get("audit_suggestion", "")
-        if suggestion:
+        extra_values = [reinforcement_cell(risk, key) for key in
+                        ("involved_accounts", "assertions", "audit_procedures",
+                         "required_materials", "improvement_suggestions")]
+        if suggestion or any(extra_values):
             ws_suggestions.cell(row=sug_row, column=1, value=risk.get("risk_id", "")).font = normal_font
             ws_suggestions.cell(row=sug_row, column=2, value=risk.get("title", "")).font = normal_font
             lv = risk.get("level", "")
@@ -463,15 +498,197 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
                 lv_cell.fill = level_colors[lv]
                 lv_cell.font = level_fonts[lv]
             sug_cell = ws_suggestions.cell(row=sug_row, column=4, value=suggestion)
+            for offset, value in enumerate(extra_values, 5):
+                cell = ws_suggestions.cell(row=sug_row, column=offset, value=value)
+                cell.font = normal_font
+                cell.alignment = wrap_alignment
             sug_cell.font = normal_font
             sug_cell.alignment = wrap_alignment
-            for c in range(1, 5):
+            for c in range(1, len(sug_headers) + 1):
                 ws_suggestions.cell(row=sug_row, column=c).border = thin_border
+            ws_suggestions.row_dimensions[sug_row].height = _estimate_row_height(
+                [risk.get("risk_id", ""), risk.get("title", ""), risk.get("level", ""),
+                 suggestion, *extra_values], sug_widths)
             # 行高自适应：审计建议列（80 宽）内容通常较长，按内容估算防裁剪
             ws_suggestions.row_dimensions[sug_row].height = _estimate_row_height(
                 [risk.get("risk_id", ""), risk.get("title", ""), lv, suggestion],
                 sug_widths, min_h=40)
             sug_row += 1
+
+    # ═══════════════════════════════════════════════════════
+    # 结构化底稿：事实、计算、勾稽、证据、待处理事项
+    # ═══════════════════════════════════════════════════════
+    def _load_json(value):
+        if isinstance(value, dict):
+            return value
+        try:
+            parsed = json.loads(value or "{}")
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, json.JSONDecodeError):
+            return {}
+
+    fin_data = _load_json(financial_indicators_json)
+    val_data = _load_json(validation_json)
+    disc_data = _load_json(disclosure_check_json)
+    audit_data = _load_json(audit_opinion_json)
+    score_data = _load_json(comprehensive_score_json)
+    model_data = _load_json(risk_models_json)
+    report_facts = report.get("facts") or []
+    def _unique_records(records):
+        result = []
+        seen = set()
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("fact_id") or item.get("metric_id") or item.get("evidence_id") or "")
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            result.append(item)
+        return result
+
+    facts = _unique_records(
+        report_facts + (fin_data.get("facts") or []) + (val_data.get("facts") or [])
+        + (disc_data.get("facts") or []) + (audit_data.get("facts") or []))
+    metrics = _unique_records(
+        (report.get("metric_results") or []) + (fin_data.get("metric_results") or [])
+        + (val_data.get("metric_results") or []) + (disc_data.get("metric_results") or [])
+        + (audit_data.get("metric_results") or [])
+        + (score_data.get("metric_results") or []) + (model_data.get("metric_results") or []))
+    checks = (val_data.get("data_validation") or {}).get("all_checks") or val_data.get("results") or []
+    evidence = _unique_records(
+        (report.get("evidence") or []) + (fin_data.get("evidence") or [])
+        + (val_data.get("evidence") or []) + (disc_data.get("evidence") or [])
+        + (audit_data.get("evidence") or [])
+        + (score_data.get("evidence") or []) + (model_data.get("evidence") or []))
+    pending = report.get("pending_items")
+    if pending is None:
+        pending = [r for r in (report.get("risk_details") or []) if isinstance(r, dict) and r.get("formal_status") != "accepted"]
+
+    def _table_sheet(title, headers, rows, widths=None):
+        ws = wb.create_sheet(title)
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = thin_border
+            if widths and col_idx <= len(widths):
+                ws.column_dimensions[get_column_letter(col_idx)].width = widths[col_idx - 1]
+        ws.freeze_panes = "A2"
+        for row_idx, row in enumerate(rows, 2):
+            values = list(row)
+            for col_idx, value in enumerate(values, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.font = normal_font
+                cell.alignment = wrap_alignment
+                cell.border = thin_border
+            ws.row_dimensions[row_idx].height = _estimate_row_height(values, widths or [20] * len(values))
+        return ws
+
+    fact_rows = []
+    for item in facts:
+        if not isinstance(item, dict):
+            continue
+        fact_rows.append([item.get(k, "") for k in (
+            "fact_id", "field", "raw_value", "value", "unit", "currency", "period", "scope",
+            "source_document", "source_hash", "page", "locator", "excerpt", "extraction_method", "status")])
+    _table_sheet("原始事实", ["事实ID", "字段", "原始值", "解析值", "单位", "币种", "期间", "口径", "原文件", "文件哈希", "页码", "定位", "原文摘录", "提取方式", "状态"], fact_rows,
+                 [18, 26, 18, 18, 12, 12, 16, 18, 28, 24, 10, 24, 55, 18, 14])
+
+    metric_rows = []
+    # 原文定位：按证据ID回查证据索引的页码/定位，补齐「公式→…→原文定位」链条
+    from tools.indicator_view import metric_source_ref
+    _evidence_index = {
+        str(item.get("evidence_id")): item
+        for item in evidence
+        if isinstance(item, dict) and item.get("evidence_id")
+    }
+    for item in metrics:
+        if not isinstance(item, dict):
+            continue
+        inputs = "; ".join(f"{v.get('field', '')}={v.get('raw_value', '')}{v.get('unit', '')}" for v in item.get("inputs", []) if isinstance(v, dict))
+        metric_rows.append([item.get(k, "") for k in ("metric_id", "name", "formula")] + [
+            inputs, item.get("period", ""), item.get("scope", ""),
+            item.get("substitution", ""), item.get("value", ""), item.get("unit", ""),
+            item.get("threshold", ""), item.get("threshold_source", ""),
+            item.get("status", ""), item.get("reason", ""),
+            metric_source_ref(item, _evidence_index),
+            ",".join(item.get("evidence_ids", []) or [])])
+    _table_sheet("指标计算", ["指标ID", "指标", "公式", "输入值及单位", "期间", "口径",
+                            "代入过程", "结果", "结果单位", "阈值", "阈值来源", "状态",
+                            "失败/限制说明", "原文定位", "证据ID"], metric_rows,
+                 [20, 24, 46, 48, 16, 18, 56, 16, 12, 14, 40, 18, 38, 46, 22])
+
+    check_rows = []
+    for item in checks:
+        if not isinstance(item, dict):
+            continue
+        check_rows.append([item.get(k, "") for k in ("check", "formula", "passed", "status", "difference", "threshold", "message", "reason", "metric_id", "evidence_id")])
+    _table_sheet("勾稽校验", ["校验项", "公式", "通过", "状态", "差异", "阈值", "结果", "限制/失败说明", "指标ID", "证据ID"], check_rows,
+                 [24, 46, 10, 18, 16, 16, 55, 42, 24, 24])
+
+    evidence_rows = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        evidence_rows.append([item.get(k, "") if not isinstance(item.get(k, ""), list) else ",".join(map(str, item.get(k, []))) for k in (
+            "evidence_id", "source_type", "source_document", "source_hash", "page", "locator", "excerpt", "fact_ids", "metric_ids", "verified", "status")])
+    _table_sheet("证据索引", ["证据ID", "来源类型", "原文件", "文件哈希", "页码", "定位", "原文摘录", "事实ID", "指标ID", "已核验", "状态"], evidence_rows,
+                 [22, 20, 28, 24, 10, 26, 60, 30, 30, 12, 16])
+
+    pending_rows = []
+    for item in pending:
+        if not isinstance(item, dict):
+            continue
+        pending_rows.append([item.get(k, "") for k in ("risk_id", "dimension", "title", "level", "formal_status", "verification_status", "status", "pending_reason", "evidence", "audit_suggestion")])
+    _table_sheet("待处理事项", ["风险ID", "维度", "标题", "原等级", "正式状态", "验证状态", "状态", "待处理原因", "现有证据", "下一步程序"], pending_rows,
+                 [12, 22, 36, 12, 16, 18, 18, 38, 55, 55])
+
+    # 在“规则口径”页补充版本、阈值和审查门禁，保证导出物携带可复算上下文。
+    rule_rows = [
+        ["结果契约版本", report.get("result_schema_version", "1.0"), "Fact/MetricResult/Evidence/RiskFinding/ArtifactManifest"],
+        ["计算版本", fin_data.get("calculation_version", report.get("calculation_version", "")), "本地 Decimal 计算，最终输出再格式化"],
+        ["校验版本", val_data.get("validation_version", ""), "缺失值不当作零；缺净资产不反算"],
+        ["数据期间", report.get("period", "") or fin_data.get("period", ""), "期间错配需转待复核"],
+        ["数据口径", report.get("scope", "") or fin_data.get("scope", ""), "合并/母公司口径必须显式记录"],
+        ["审查门禁", (report.get("review_gate") or {}).get("status", "not_run"), "关闭或未完成时不得标记复核通过"],
+        ["评分结果状态", score_data.get("status", "未获取"), "评分维度缺失时保留未获取，不以中间值替代"],
+        ["量化模型状态", model_data.get("status", "未获取"), "必要因子缺失时不输出模型分值"],
+    ]
+    c1 = report.get("c1_review") or {}
+    if isinstance(c1, dict):
+        rule_rows.append(["C1总体状态", c1.get("status", "not_run"),
+                          f"仲裁结论：{c1.get('arbiter_verdict', '未识别')}；调整 {c1.get('adjustment_count', 0)} 条"])
+        phases = c1.get("phases") or {}
+        for key in c1.get("stage_order", ["advocate", "skeptic", "arbiter"]):
+            phase = phases.get(key) if isinstance(phases, dict) else None
+            if isinstance(phase, dict):
+                rule_rows.append([f"C1阶段·{phase.get('label', key)}",
+                                  phase.get("status", "未记录"),
+                                  f"输出字符数：{phase.get('output_chars', 0)}；"
+                                  f"仲裁调整：{phase.get('adjustment_count', '')}"])
+    for item in metrics:
+        if isinstance(item, dict) and item.get("threshold") is not None:
+            rule_rows.append([item.get("name", ""), item.get("threshold", ""), item.get("threshold_source", "")])
+    rule_start = ws_assessment.max_row + 2
+    ws_assessment.cell(rule_start, 1, "规则/版本").font = header_font
+    ws_assessment.cell(rule_start, 2, "值").font = header_font
+    ws_assessment.cell(rule_start, 3, "说明").font = header_font
+    for col_idx in range(1, 4):
+        cell = ws_assessment.cell(rule_start, col_idx)
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = thin_border
+    for row_idx, row in enumerate(rule_rows, rule_start + 1):
+        for col_idx, value in enumerate(row, 1):
+            cell = ws_assessment.cell(row_idx, col_idx, value)
+            cell.font = normal_font
+            cell.alignment = wrap_alignment
+            cell.border = thin_border
+        ws_assessment.row_dimensions[row_idx].height = _estimate_row_height(row, [28, 28, 80])
+    ws_assessment.column_dimensions["C"].width = 80
 
     # 若未指定输出路径，使用系统临时目录
     if not output_path:
@@ -516,7 +733,8 @@ def _export_excel_impl(risk_report_json: str, output_path: str = None,
 def export_excel_report(risk_report_json: str, validation_json: str = "",
                         financial_indicators_json: str = "",
                         disclosure_check_json: str = "",
-                        audit_opinion_json: str = "") -> str:
+                        audit_opinion_json: str = "", comprehensive_score_json: str = "",
+                        risk_models_json: str = "") -> str:
     """将风险台账 JSON 数据导出为 Excel 审计底稿文件，上传到对象存储并返回可下载 URL。
 
     生成的 Excel 包含三个工作表：
@@ -538,4 +756,6 @@ def export_excel_report(risk_report_json: str, validation_json: str = "",
     return _export_excel_impl(risk_report_json, validation_json=validation_json,
                               financial_indicators_json=financial_indicators_json,
                               disclosure_check_json=disclosure_check_json,
-                              audit_opinion_json=audit_opinion_json)
+                              audit_opinion_json=audit_opinion_json,
+                              comprehensive_score_json=comprehensive_score_json,
+                              risk_models_json=risk_models_json)
