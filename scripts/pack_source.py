@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
 """源码提交打包脚本（竞赛用）。
 
-用法: python scripts/pack_source.py
+用法: python scripts/pack_source.py                     # 仅本项目源码（竞赛交付）
+      python scripts/pack_source.py --with-skillpacks  # 额外纳入第三方技能包
 产物: dist/audit-ai_v5.0GA_src_<时间戳>.zip
+      dist/audit-ai_v5.0GA_full_<时间戳>.zip（带 --with-skillpacks）
 
 白名单策略：仅打包真正属于本项目的源码/配置/文档/测试；显式排除密钥(.env)、
 口令库(*.db)、运行时产物、虚拟环境(.venv)、向量库(.chroma_db)、大安装包、
-插件缓存(vercel-agent-skills/hallmark)、各类缓存目录。打包前断言无敏感文件。
+各类缓存目录。打包前断言无敏感文件。
+
+第三方技能包（hallmark / vercel-agent-skills / sanyuan-skills）默认不纳入：它们
+不属于本项目代码且各自带有独立 LICENSE，不应随竞赛源码包分发；确需「项目 +
+技能包」整包快照时显式传 --with-skillpacks。
 """
 import os
 import re
@@ -27,6 +33,8 @@ WHITELIST_FILES = [
     # 离线环境安装包（供无 Python/VC 运行库的机器直接安装，前置库安装.bat 会自动调用）
     "python-3.12.10-amd64.exe", "VC_redist.x64.exe",
 ]
+# 可选的第三方技能包目录：仅 --with-skillpacks 时整目录纳入（默认排除）
+SKILLPACK_DIRS = ["hallmark", "vercel-agent-skills", "sanyuan-skills"]
 # 目录内需剔除的缓存/产物目录名
 SKIP_DIR_NAMES = {"__pycache__", ".pytest_cache", ".ruff_cache"}
 # 目录内需剔除的文件（后缀/名）
@@ -55,8 +63,12 @@ def _is_skippable(rel_path: str) -> bool:
     return False
 
 
-def collect_files() -> list:
-    """按白名单收集待打包的相对路径列表。"""
+def collect_files(include_skillpacks: bool = False) -> list:
+    """按白名单收集待打包的相对路径列表。
+
+    Args:
+        include_skillpacks: 是否额外纳入 SKILLPACK_DIRS 下的第三方技能包
+    """
     picked = []
 
     for d in WHITELIST_DIRS:
@@ -69,22 +81,38 @@ def collect_files() -> list:
                 if not _is_skippable(rel):
                     picked.append(rel)
 
+    if include_skillpacks:
+        for d in SKILLPACK_DIRS:
+            base = ROOT / d
+            if not base.exists():
+                print(f"[pack] 警告：技能包目录不存在，已跳过: {d}", file=sys.stderr)
+                continue
+            for p in base.rglob("*"):
+                if p.is_file():
+                    rel = str(p.relative_to(ROOT))
+                    if not _is_skippable(rel):
+                        picked.append(rel)
+
     for f in WHITELIST_FILES:
         if (ROOT / f).exists():
             picked.append(f)
 
     # 根目录文档 HTML（排除官方手册/娱乐向）+ 启动 bat（中文名）
     for p in ROOT.glob("*.html"):
-        if not HTML_EXCLUDE.search(p.name):
+        # 跳过 . 开头的隐藏/临时文件：.tmp_* 等属运行期垃圾（已在 .gitignore 中），
+        # 不打包即无从泄漏，无需再触发下方敏感文件断言中止整个打包。
+        if not p.name.startswith(".") and not HTML_EXCLUDE.search(p.name):
             picked.append(p.name)
     for p in ROOT.glob("*.bat"):
-        picked.append(p.name)
+        if not p.name.startswith("."):
+            picked.append(p.name)
 
     return sorted(set(picked))
 
 
 def main():
-    files = collect_files()
+    include_skillpacks = "--with-skillpacks" in sys.argv[1:]
+    files = collect_files(include_skillpacks)
 
     # 敏感文件断言
     forbidden = [f for f in files if FORBIDDEN.search(Path(f).name)]
@@ -97,7 +125,7 @@ def main():
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    top = "audit-ai_v5.0GA_src"
+    top = "audit-ai_v5.0GA_full" if include_skillpacks else "audit-ai_v5.0GA_src"
     zip_path = dist / f"{top}_{stamp}.zip"
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

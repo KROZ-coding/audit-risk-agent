@@ -16,6 +16,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from utils.filename import resolve_company_year
 
 
+def _patch_filename_module_path(tmp_path, monkeypatch):
+    """把 utils.filename.__file__ 指向 tmp_path 下的伪路径，隔离真实 local_storage。
+
+    必须先真实创建 src/utils 目录再打补丁：count_existing_runs 用
+    dirname(__file__)/../../local_storage 定位产物目录，而 Windows 的 Win32 会把
+    ".." 先做词法折叠（中间目录不存在也判定 isdir 为 True），Linux 内核则逐段真实
+    遍历（中间目录缺失即 ENOENT）——不建目录会让这几个用例只在 Linux CI 上失败。
+
+    Returns:
+        已打过补丁的 utils.filename 模块对象
+    """
+    fake_dir = tmp_path / "src" / "utils"
+    fake_dir.mkdir(parents=True, exist_ok=True)
+    import utils.filename as fn_mod
+    monkeypatch.setattr(fn_mod, "__file__", str(fake_dir / "filename.py"))
+    return fn_mod
+
+
 class TestResolveCompanyYear:
     """别名表解析：标准键 > 常见别名 > 中文键"""
 
@@ -95,9 +113,7 @@ class TestFilePrefixAliases:
         (fake_reports / f"{date_str}_中石油_2025_I_审计风险报告.pdf").write_text("")
         (fake_reports / f"{date_str}_中石油_2025_I_审计底稿.xlsx").write_text("")
         # 让 count_existing_runs 扫描 tmp_path 下的 local_storage
-        import utils.filename as fn_mod
-        monkeypatch.setattr(fn_mod, "__file__",
-                            str(tmp_path / "src" / "utils" / "filename.py"))
+        _patch_filename_module_path(tmp_path, monkeypatch)
         report = {"company_info": {"company_name": "中石油", "report_year": "2025"}}
         # max=1 → 下一序号 2（旧“数文件个数”口径会误算为 3）
         prefix = build_file_prefix(report)
@@ -108,7 +124,6 @@ class TestFilePrefixAliases:
         （I→III→IX）甚至碰撞覆盖；max+1 口径下序号严格递增。"""
         from datetime import datetime
         from utils.filename import count_existing_runs
-        import utils.filename as fn_mod
         date_str = datetime.now().strftime("%Y%m%d")
         charts = tmp_path / "local_storage" / "charts"
         charts.mkdir(parents=True)
@@ -116,8 +131,7 @@ class TestFilePrefixAliases:
         for roman in ("I", "III", "IX", "XI"):
             (charts / f"{date_str}_测试公司_{roman}_风险热力图.png").write_text("")
             (charts / f"{date_str}_测试公司_{roman}_财务雷达图.png").write_text("")
-        monkeypatch.setattr(fn_mod, "__file__",
-                            str(tmp_path / "src" / "utils" / "filename.py"))
+        _patch_filename_module_path(tmp_path, monkeypatch)
         # max=11 → 下一序号 12（旧口径 count=8 → 9 → 与既有 _IX 撞名覆盖）
         assert count_existing_runs("测试公司") == 11
 
@@ -127,14 +141,12 @@ class TestFilePrefixAliases:
         旧 run8 hex 前缀文件名不含罗马数字段，自然排除。"""
         from datetime import datetime
         from utils.filename import count_existing_runs
-        import utils.filename as fn_mod
         date_str = datetime.now().strftime("%Y%m%d")
         reports = tmp_path / "local_storage" / "reports"
         reports.mkdir(parents=True)
         (reports / f"{date_str}_中国石油天然气股份有限公司_2025_II_审计风险报告.pdf").write_text("")
         (reports / f"{date_str}_aa2b8ee9_中国石油_2025_审计风险报告.pdf").write_text("")
-        monkeypatch.setattr(fn_mod, "__file__",
-                            str(tmp_path / "src" / "utils" / "filename.py"))
+        _patch_filename_module_path(tmp_path, monkeypatch)
         assert count_existing_runs("中国石油") == 0
 
     def test_from_roman_helper(self):
