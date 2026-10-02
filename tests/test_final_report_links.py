@@ -45,6 +45,23 @@ class TestFinalReportLinks:
         assert "/local_storage/reports/20260725_测试公司_2025_审计底稿.xlsx" in paths
         assert all(f["tool"] == "fallback_export" for f in report["files"])
 
+    def test_timestamp_subdir_links_collected(self):
+        """批次隔离后链接含 <stamp>/reports/ 子路径：正文链接仍可提取。"""
+        messages = [
+            {"type": "tool", "name": "calculate_comprehensive_score", "content": '{"score": 20}'},
+            {"type": "ai", "content": (
+                "分析完成。\n\n"
+                "📎 PDF报告: PDF风险报告已生成，下载链接: "
+                "/local_storage/20260911_101530/reports/20260725_测试公司_2025_审计风险报告.pdf\n\n"
+                "📊 Excel底稿: Excel审计底稿已生成，下载链接: "
+                "/local_storage/20260911_101530/reports/20260725_测试公司_2025_审计底稿.xlsx"
+            )},
+        ]
+        report = _build(messages)
+        paths = [f["path"] for f in report["files"]]
+        assert "/local_storage/20260911_101530/reports/20260725_测试公司_2025_审计风险报告.pdf" in paths
+        assert "/local_storage/20260911_101530/reports/20260725_测试公司_2025_审计底稿.xlsx" in paths
+
     def test_toolmessage_and_ai_text_deduplicated(self):
         """同一链接出现在 ToolMessage 与正文两处：只保留一份（ToolMessage 源优先）。"""
         pdf = "/local_storage/reports/x.pdf"

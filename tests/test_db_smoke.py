@@ -1,8 +1,9 @@
-"""数据库预留基础设施冒烟测试
+"""数据库连接基础设施冒烟测试
 
-背景：db.py 为预留基础设施（业务主流程当前不落库，检查点由 checkpoints.sqlite
-独立持久化）。本测试用于"保活"——证明预留件随时可启用而非死代码：
-- get_db_url 的三级优先级（PGDATABASE_URL > 默认 SQLite）
+背景：db.py 为已正式接线的业务库（承载 users / session_t​o​k​e​n​s / analysis_history
+三张表，服务启动时幂等建表）；Agent 会话检查点由 checkpoints.sqlite 独立持久化
+（两库刻意分离）。本测试验证连接基础设施可用：
+- get_db_url 的优先级（PGDATABASE_URL > 默认 SQLite）
 - 引擎可对内存 SQLite 建连并执行探活 SQL
 - ORM 元数据可完整建表（模型定义与引擎兼容）
 """

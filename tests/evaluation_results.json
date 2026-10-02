@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-13T19:36:13.932157",
+  "generated_at": "2026-10-03T02:01:56.669277",
   "test_suite": {
     "total_cases": 22,
     "dimensions": [
@@ -13,22 +13,22 @@
   "results": {
     "tool": {
       "mode": "tool",
-      "evaluation_time": "2026-08-13T19:36:13.950443",
+      "evaluation_time": "2026-10-03T02:01:56.764143",
       "test_count": 22,
       "metrics": {
         "average_precision": 1.0,
-        "average_recall": 1.0,
-        "average_f1": 1.0,
+        "average_recall": 0.975,
+        "average_f1": 0.983,
         "false_positive_count": 0,
         "false_positive_total": 2,
-        "average_response_time_sec": 0.001
+        "average_response_time_sec": 0.003
       },
       "blind_test": {
         "description": "盲测集：真实处罚案例公开数据（未参与阈值设计），与合成集分开报告以验证泛化能力",
         "case_count": 5,
         "average_precision": 1.0,
-        "average_recall": 1.0,
-        "average_f1": 1.0,
+        "average_recall": 0.875,
+        "average_f1": 0.917,
         "normal_correct": 1,
         "normal_total": 1,
         "case_details": [
@@ -38,7 +38,7 @@
               "存贷双高"
             ],
             "actual_alerts": [
-              "货币资金(1530000)高于短期借款(587000)，但利息支出(110000)远大于利息收入(26000)，存在'存贷双高'异常，需核查资金真实性"
+              "现金及现金等价物(1530000.00)高于短期借款(587000.00)，但利息支出(110000.00)远大于利息收入(26000.00)，存在存贷双高异常"
             ],
             "alert_count": 1,
             "keyword_hits": 1,
@@ -46,7 +46,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.0,
+            "elapsed_sec": 0.005,
             "expected_dimensions": [
               "financial_misstatement"
             ],
@@ -65,15 +65,15 @@
               "资金占用"
             ],
             "actual_alerts": [
-              "其他应收款占总资产比 = 13.83%，超过 5%，需关注资金占用风险"
+              "其他应收款占总资产比 = 13.83%，超过 5%，需关注资金往来"
             ],
             "alert_count": 1,
-            "keyword_hits": 2,
+            "keyword_hits": 1,
             "matched_alerts": 1,
             "precision": 1.0,
-            "recall": 1.0,
-            "f1": 1.0,
-            "elapsed_sec": 0.001,
+            "recall": 0.5,
+            "f1": 0.667,
+            "elapsed_sec": 0.004,
             "expected_dimensions": [
               "related_party"
             ],
@@ -95,10 +95,10 @@
               "现金流"
             ],
             "actual_alerts": [
-              "营业收入同比变动 -77.82%，幅度较大，需关注合理性",
-              "净利润由上期 -1387800 变为本期 -409600，呈亏损收窄（减亏），上期为负致同比百分比不适用，需关注盈利可持续性",
-              "连续两年净利润为负，存在持续经营风险",
-              "经营活动现金流量净额连续两年为负，持续经营风险较高"
+              "营业收入同比增长率为 -77.82%，幅度较大，需关注合理性",
+              "净利润由上期 -1387800.00 变为本期 -409600.00，呈亏损收窄（减亏），上期为负或基期不可比",
+              "连续两个报告期间净利润（口径未标注）为负，存在持续经营风险信号",
+              "经营活动现金流量净额连续两个报告期间为负，存在持续经营风险信号"
             ],
             "alert_count": 4,
             "keyword_hits": 5,
@@ -106,7 +106,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.0,
+            "elapsed_sec": 0.003,
             "expected_dimensions": [
               "going_concern",
               "financial_misstatement"
@@ -125,7 +125,7 @@
               "商誉"
             ],
             "actual_alerts": [
-              "商誉占净资产比 = 304.17%，超过 30%，存在较大减值风险"
+              "商誉占净资产比 = 304.17%，超过 30%，需复核减值"
             ],
             "alert_count": 1,
             "keyword_hits": 1,
@@ -133,7 +133,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.0,
+            "elapsed_sec": 0.004,
             "expected_dimensions": [
               "financial_misstatement",
               "regulatory_penalty"
@@ -152,7 +152,7 @@
             "actual_count": 0,
             "correct": true,
             "alerts": [],
-            "elapsed_sec": 0.001,
+            "elapsed_sec": 0.004,
             "expected_dimensions": [],
             "dimension_hits": {
               "financial_misstatement": true,
@@ -165,14 +165,14 @@
         ]
       },
       "baseline_comparison": {
-        "system_recall": 1.0,
+        "system_recall": 0.975,
         "baseline_recall": 0.077,
-        "improvement": 0.923,
+        "improvement": 0.898,
         "system_normal_correct": 2,
         "system_normal_total": 2,
         "baseline_normal_correct": 2,
         "baseline_normal_total": 22,
-        "zero_shot_llm_recall": 0,
+        "zero_shot_llm_recall": null,
         "zero_shot_llm_improvement": null,
         "zero_shot_llm_cases": 0
       },
@@ -215,7 +215,7 @@
             "存贷双高"
           ],
           "actual_alerts": [
-            "货币资金(15000)高于短期借款(12000)，但利息支出(800)远大于利息收入(200)，存在'存贷双高'异常，需核查资金真实性"
+            "现金及现金等价物(15000.00)高于短期借款(12000.00)，但利息支出(800.00)远大于利息收入(200.00)，存在存贷双高异常"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -223,7 +223,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.011,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern"
@@ -245,10 +245,10 @@
             "净利润"
           ],
           "actual_alerts": [
-            "营业收入同比变动 -33.33%，幅度较大，需关注合理性",
-            "净利润由上期 -2000 变为本期 -3000，呈亏损扩大，上期为负致同比百分比不适用，需关注盈利可持续性",
-            "连续两年净利润为负，存在持续经营风险",
-            "经营活动现金流量净额连续两年为负，持续经营风险较高"
+            "营业收入同比增长率为 -33.33%，幅度较大，需关注合理性",
+            "净利润由上期 -2000.00 变为本期 -3000.00，呈亏损扩大，上期为负或基期不可比",
+            "连续两个报告期间净利润（口径未标注）为负，存在持续经营风险信号",
+            "经营活动现金流量净额连续两个报告期间为负，存在持续经营风险信号"
           ],
           "alert_count": 4,
           "keyword_hits": 4,
@@ -256,7 +256,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -275,9 +275,9 @@
             "收入"
           ],
           "actual_alerts": [
-            "营业收入同比变动 33.33%，幅度较大，需关注合理性",
-            "应收账款占营收比 = 45.0%，超过 30%，需关注回款风险",
-            "应收账款增速(125.0%)显著高于营收增速(33.33%)，可能存在提前确认收入或放宽信用政策"
+            "营业收入同比增长率为 33.33%，幅度较大，需关注合理性",
+            "应收账款占营收比 = 45.00%，超过 30%，需关注回款质量",
+            "应收账款/营收比上升 18.33个百分点，需复核回款与收入确认"
           ],
           "alert_count": 3,
           "keyword_hits": 2,
@@ -285,7 +285,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -304,7 +304,7 @@
             "利润"
           ],
           "actual_alerts": [
-            "经营现金流/净利润比 = 0.1，低于 0.5，现金流与利润严重背离，存在利润质量风险"
+            "经营现金流/净利润比 = 0.1000，低于 0.5，现金流与利润背离，需复核"
           ],
           "alert_count": 1,
           "keyword_hits": 2,
@@ -312,7 +312,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -330,7 +330,7 @@
             "商誉"
           ],
           "actual_alerts": [
-            "商誉占净资产比 = 40.0%，超过 30%，存在较大减值风险"
+            "商誉占净资产比 = 40.00%，超过 30%，需复核减值"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -338,7 +338,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -356,7 +356,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.005,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -374,10 +374,10 @@
             "现金流"
           ],
           "actual_alerts": [
-            "经营现金流/净利润比 = -2.5，低于 0.5，现金流与利润严重背离，存在利润质量风险",
-            "营收增长但经营现金流为负，盈利质量存疑",
-            "资产负债率 = 82.0%，超过 70%，财务杠杆较高",
-            "流动比率 = 0.75，低于 1，短期偿债能力不足"
+            "经营现金流/净利润比 = -2.5000，低于 0.5，现金流与利润背离，需复核",
+            "净利润为正但经营现金流为负，盈利质量需复核",
+            "资产负债率 = 82.00%，超过 70%，财务杠杆较高",
+            "流动比率 = 0.7500，低于 1，短期偿债能力需复核"
           ],
           "alert_count": 4,
           "keyword_hits": 3,
@@ -385,7 +385,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "going_concern",
             "financial_misstatement"
@@ -404,7 +404,7 @@
             "存货"
           ],
           "actual_alerts": [
-            "存货同比增长 140.0%，存货激增需关注跌价风险"
+            "存货较期初增长 140.00%，存货激增需关注跌价风险"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -412,7 +412,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -431,15 +431,15 @@
             "资金占用"
           ],
           "actual_alerts": [
-            "其他应收款占总资产比 = 7.5%，超过 5%，需关注资金占用风险"
+            "其他应收款占总资产比 = 7.50%，超过 5%，需关注资金往来"
           ],
           "alert_count": 1,
-          "keyword_hits": 2,
+          "keyword_hits": 1,
           "matched_alerts": 1,
           "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "recall": 0.5,
+          "f1": 0.667,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "related_party"
           ],
@@ -458,7 +458,7 @@
             "净利润"
           ],
           "actual_alerts": [
-            "营业收入同比变动 -66.67%，幅度较大，需关注合理性",
+            "营业收入同比增长率为 -66.67%，幅度较大，需关注合理性",
             "净利润同比变动 -166.67%，波动显著"
           ],
           "alert_count": 2,
@@ -467,7 +467,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -485,7 +485,7 @@
             "速动比率"
           ],
           "actual_alerts": [
-            "速动比率 = 0.4，低于 0.5，流动性风险较高"
+            "速动比率 = 0.4000，低于 0.5，流动性风险需复核"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -493,7 +493,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -511,7 +511,7 @@
             "应收账款"
           ],
           "actual_alerts": [
-            "应收账款占营收比 = 40.0%，超过 30%，需关注回款风险"
+            "应收账款占营收比 = 40.00%，超过 30%，需关注回款质量"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -519,7 +519,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -545,7 +545,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -571,7 +571,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -589,7 +589,7 @@
             "营业收入"
           ],
           "actual_alerts": [
-            "营业收入同比变动 100.0%，幅度较大，需关注合理性"
+            "营业收入同比增长率为 100.00%，幅度较大，需关注合理性"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -597,7 +597,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -615,7 +615,7 @@
             "持续经营"
           ],
           "actual_alerts": [
-            "经营活动现金流量净额连续两年为负，持续经营风险较高"
+            "经营活动现金流量净额连续两个报告期间为负，存在持续经营风险信号"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -623,7 +623,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -641,7 +641,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -661,13 +661,13 @@
             "70%"
           ],
           "actual_alerts": [
-            "净利润由上期 -3000 变为本期 -8000，呈亏损扩大，上期为负致同比百分比不适用，需关注盈利可持续性",
-            "应收账款占营收比 = 37.5%，超过 30%，需关注回款风险",
-            "应收账款增速(87.5%)显著高于营收增速(-27.27%)，可能存在提前确认收入或放宽信用政策",
+            "净利润由上期 -3000.00 变为本期 -8000.00，呈亏损扩大，上期为负或基期不可比",
+            "应收账款占营收比 = 37.50%，超过 30%，需关注回款质量",
+            "应收账款/营收比上升 22.95个百分点，需复核回款与收入确认",
             "资产负债率 = 83.33%，超过 70%，财务杠杆较高",
-            "其他应收款占总资产比 = 7.78%，超过 5%，需关注资金占用风险",
-            "货币资金(20000)高于短期借款(18000)，但利息支出(1200)远大于利息收入(100)，存在'存贷双高'异常，需核查资金真实性",
-            "连续两年净利润为负，存在持续经营风险"
+            "其他应收款占总资产比 = 7.78%，超过 5%，需关注资金往来",
+            "现金及现金等价物(20000.00)高于短期借款(18000.00)，但利息支出(1200.00)远大于利息收入(100.00)，存在存贷双高异常",
+            "连续两个报告期间净利润（口径未标注）为负，存在持续经营风险信号"
           ],
           "alert_count": 7,
           "keyword_hits": 5,
@@ -675,7 +675,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.006,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern",
@@ -695,7 +695,7 @@
             "现金流"
           ],
           "actual_alerts": [
-            "经营现金流/净利润比 = 0.06，低于 0.5，现金流与利润严重背离，存在利润质量风险"
+            "经营现金流/净利润比 = 0.0600，低于 0.5，现金流与利润背离，需复核"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -703,7 +703,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.001,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "disclosure_compliance"
           ],
@@ -721,7 +721,7 @@
             "其他应收款"
           ],
           "actual_alerts": [
-            "其他应收款占总资产比 = 8.75%，超过 5%，需关注资金占用风险"
+            "其他应收款占总资产比 = 8.75%，超过 5%，需关注资金往来"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -729,7 +729,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "disclosure_compliance"
           ],
@@ -747,7 +747,7 @@
             "商誉"
           ],
           "actual_alerts": [
-            "商誉占净资产比 = 40.0%，超过 30%，存在较大减值风险"
+            "商誉占净资产比 = 40.00%，超过 30%，需复核减值"
           ],
           "alert_count": 1,
           "keyword_hits": 1,
@@ -755,7 +755,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "regulatory_penalty"
           ],
@@ -774,8 +774,8 @@
             "速动比率"
           ],
           "actual_alerts": [
-            "流动比率 = 0.8333，低于 1，短期偿债能力不足",
-            "速动比率 = 0.25，低于 0.5，流动性风险较高"
+            "流动比率 = 0.8333，低于 1，短期偿债能力需复核",
+            "速动比率 = 0.2500，低于 0.5，流动性风险需复核"
           ],
           "alert_count": 2,
           "keyword_hits": 2,
@@ -783,7 +783,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.0,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "regulatory_penalty",
             "going_concern"

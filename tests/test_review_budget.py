@@ -167,7 +167,7 @@ class TestReviewGateBudgetSurface:
         assert gate["status"] == "not_passed"
         assert "补证轮次" in gate["pending_reason"]
 
-    def test_normal_run_reports_budget_without_human_flag(self):
+    def test_pending_normal_run_requires_human_review(self):
         report = self._report()
         _apply_review_gates(
             report,
@@ -177,7 +177,8 @@ class TestReviewGateBudgetSurface:
              "phases": {"advocate": {"status": "completed"}},
              "budget": ReviewBudget().snapshot()})
         gate = report["review_gate"]
-        assert gate["human_review_required"] is False
+        assert gate["human_review_required"] is True
+        assert "1项待复核提示" in gate["pending_reason"]
         assert gate["review_budget"]["max_calls"] == 20
 
 

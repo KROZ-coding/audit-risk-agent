@@ -103,6 +103,9 @@ def count_existing_runs(company: str, year: str = "") -> int:
     “文件数”口径跳号甚至碰撞覆盖（实测：I→VII→XIII 与 IX 重名覆盖），
     max+1 对以上情形天然免疫。匹配按 _ 分段精确比对公司段与年份段，
     避免子串污染（如“中国石油”误命中“中国石油天然气股份有限公司”）。
+    自批次隔离上线后，新产物落在 local_storage/<YYYYMMDD_HHMMSS>/reports/ 与
+    <...>/charts/ 时间戳子目录，旧平铺文件仍在，故此处从 local_storage 根
+    递归扫描，保证同名公司跨批次序号仍严格递增不碰撞。
 
     Args:
         company: 清洗后的公司名（与 build_file_prefix 中 sanitize_filename 结果一致）
@@ -115,32 +118,38 @@ def count_existing_runs(company: str, year: str = "") -> int:
     import os
     from datetime import datetime
     date_str = datetime.now().strftime("%Y%m%d")
+    # 从 local_storage 根递归扫描：既覆盖平铺旧产物（reports/、charts/ 根层），
+    # 也覆盖批次子目录产物（<YYYYMMDD_HHMMSS>/reports/、<...>/charts/），
+    # 保证新批次文件参与序号统计。
     base_dirs = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "local_storage", "reports"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "local_storage", "charts"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "local_storage"),
     ]
     max_run = 0
     for base in base_dirs:
         if not os.path.isdir(base):
             continue
-        for fname in os.listdir(base):
-            if not fname.startswith(date_str + "_"):
-                continue
-            stem = os.path.splitext(fname)[0]
-            parts = stem.split("_")
-            # 公司段必须精确匹配（parts[1]），避免子串污染。
-            # 罗马数字段取其后首个标准罗马数字段：标准产物格式为
-            # date_公司_[年份_]罗马_产物；趋势图为 date_公司_趋势图_罗马（无年份段），
-            # 逐段扫描对两种形态均成立；旧 hex 前缀/非罗马数字残留自然被排除。
-            if len(parts) < 3 or parts[1] != company:
-                continue
-            num = 0
-            for seg in parts[2:]:
-                num = from_roman(seg)
-                if num > 0:
-                    break
-            if num > max_run:
-                max_run = num
+        # 递归扫描：平铺旧产物（reports/xxx.pdf）与批次子目录产物
+        # （reports/<YYYYMMDD_HHMMSS>/xxx.pdf）双通道都参与序号统计，
+        # 旧文件不删除，因此递归不影响既有 max+1 口径。
+        for _root, _dirs, files in os.walk(base):
+            for fname in files:
+                if not fname.startswith(date_str + "_"):
+                    continue
+                stem = os.path.splitext(fname)[0]
+                parts = stem.split("_")
+                # 公司段必须精确匹配（parts[1]），避免子串污染。
+                # 罗马数字段取其后首个标准罗马数字段：标准产物格式为
+                # date_公司_[年份_]罗马_产物；趋势图为 date_公司_趋势图_罗马（无年份段），
+                # 逐段扫描对两种形态均成立；旧 hex 前缀/非罗马数字残留自然被排除。
+                if len(parts) < 3 or parts[1] != company:
+                    continue
+                num = 0
+                for seg in parts[2:]:
+                    num = from_roman(seg)
+                    if num > 0:
+                        break
+                if num > max_run:
+                    max_run = num
     return max_run
 
 

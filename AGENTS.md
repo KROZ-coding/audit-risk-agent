@@ -53,7 +53,7 @@
 ```bash
 uv sync                       # 安装依赖
 uv run python scripts/init_knowledge_base.py   # 首次构建向量库
-uv run python -m main         # 启动服务（默认 :5000），或 uvicorn main:app --port 5000
+uv run python src/main.py -m http -p 5000   # 启动服务（默认 :5000）
 ```
 
 > Windows PowerShell 用 `;` 分隔命令，勿用 `&&`。`.env` 需配置 `OPENAI_API_KEY` / `OPENAI_BASE_URL`。

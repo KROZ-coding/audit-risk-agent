@@ -12,7 +12,7 @@ usage() {
   echo "用法: $0 -m <模式> [-n <节点ID>] [-i <输入JSON>]"
   echo ""
   echo "参数说明:"
-  echo "  -m <模式>        运行模式: http, flow, node, agent"
+  echo "  -m <模式>        运行模式: http, flow (node 模式暂未实现)"
   echo "  -n <节点ID>      节点ID (仅在 node 模式下需要)"
   echo "  -i <输入JSON>    输入数据，支持 JSON 字符串或纯文本"
   echo "  -h              显示帮助信息"
@@ -63,8 +63,9 @@ fi
 # Build python command
 cmd="python ${WORK_DIR}/src/main.py -m \"$mode\""
 
-if [ -n "$node" ]; then
-  cmd="$cmd -n \"$node\""
+if [ "$mode" = "node" ]; then
+  echo "错误: 当前版本未实现 node 模式（src/graphs/nodes 为空），请使用 -m flow"
+  exit 2
 fi
 
 if [ -n "$input" ]; then

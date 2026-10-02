@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from tools.pdf_export import _export_pdf_impl
+from tools.pdf_export import _export_pdf_impl, _review_conclusion_body, _strip_structured_review_json
 
 
 def _rich_report() -> dict:
@@ -200,6 +200,29 @@ class TestRichChaptersRender:
         # 缺多年对比时财务报告不出现该章（条件渲染），说明章替代可见
         assert "多年指标趋势分析" not in fin_text
 
+    def test_called_but_incomplete_source_is_not_reported_as_not_acquired(self, _stub_upload):
+        """工具返回有限检查时，说明应显示“不完整/有限检查”，不能伪装成未获取。"""
+        report = _rich_report()
+        report["report_snapshot"] = {
+            "company": report["company_info"],
+            "risks": {"formal": [], "pending": []},
+            "data_quality": {"incomplete_metrics": True},
+            "financial": {
+                "metric_results": [{"metric_id": "gross_margin_pct", "status": "calculated"}],
+            },
+            "multi_year": {"years_analyzed": ["2025H1"], "status": "limited_check"},
+        }
+        self._export_all(report, extra={
+            # 传入值仅作兼容参数；存在最终快照时，导出器应以快照中的 financial/multi_year 为准。
+            "financial_indicators_json": "{}",
+            "compare_multi_year_json": "{}",
+        })
+        text = self._text(_stub_upload, "财务健康诊断")
+        compact = text.replace("\n", "")
+        assert "数据源不完整，仅供参考" in compact
+        assert "已获取，但部分结果不完整或仅作有限检查，请人工复核" in compact
+        assert "未上传年报或文本过短" not in text
+
     def test_score_chapter_renders(self, _stub_upload):
         """提供评分数据时，综合汇总报告渲染「综合评分解读」章（KPI/分解表/抬升理由）。"""
         self._export_all(_rich_report())
@@ -209,11 +232,48 @@ class TestRichChaptersRender:
         assert "风险分抬升理由" in text and "Altman Z-Score" in text
 
     def test_industry_benchmark_chapter_always_renders(self, _stub_upload):
-        """行业基准对比章：台账无 industry_benchmark 字段时，用指标+基准确定性生成。"""
+        """无经核验基准时保留章节并解释限制，不将内部参考值当行业均值。"""
         self._export_all(_rich_report())
         text = self._text(_stub_upload, "综合汇总")
         assert "行业基准对比" in text
-        assert "毛利率" in text and "行业基准" in text
+        assert "本次未取得经来源、统计期间、样本和可比性核验的行业基准" in text
+
+    def test_structured_review_json_is_rendered_as_summary(self, _stub_upload):
+        """C2 原始 JSON 保留在台账，综合 PDF 只展示可读摘要表。"""
+        semantic = {
+            "overall_status": "pending_review",
+            "judgment_1": {"checks": [{"risk_id": "R001", "decision": "supported",
+                                         "conditions_aligned": True,
+                                         "evidence_ids": ["E1"]}]},
+            "judgment_2": {"checks": [{"risk_id": "R001", "decision": "pending",
+                                         "conditions_aligned": False,
+                                         "evidence_ids": []}]},
+            "checks": [{"risk_id": "R001", "state": "disputed",
+                         "decision_1": "supported", "decision_2": "pending",
+                         "evidence_ids_1": ["E1"], "evidence_ids_2": []}],
+        }
+        raw = json.dumps(semantic, ensure_ascii=False)
+        report = _rich_report()
+        report["semantic_review"] = semantic
+        report["review_conclusion"] = "复核建议扩大函证范围。\n【裁定JSON】" + raw
+        self._export_all(report)
+        text = self._text(_stub_upload, "综合汇总")
+        assert "C2关键语义复核摘要" in text
+        assert "第一次判断" in text and "第二次判断" in text
+        assert "待定" in text and "存在分歧" in text
+        assert "judgment_1" not in text
+        assert "conditions_aligned" not in text
+        assert "###" not in text and "**" not in text
+        assert "---" not in text
+        assert "扩大函证范围" in text
+
+    def test_structured_review_json_strip_handles_nested_objects(self):
+        raw = ('结论前文 {"judgment_1":{"checks":[{"risk_id":"R1",'
+               '"reason":"含 { 大括号"}]},"judgment_2":{},'
+               '"overall_status":"pending_review"} 结论后')
+        cleaned = _strip_structured_review_json(raw)
+        assert "judgment_1" not in cleaned
+        assert "结论前文" in cleaned and "结论后" in cleaned
 
 
 class TestPostProcessConsistency:

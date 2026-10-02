@@ -155,6 +155,35 @@ class TestCrossInterpretation:
     def test_no_signal_for_healthy(self):
         assert _models(_HEALTHY)["cross_interpretation"]["signal"] == "未触发模型预警"
 
+    def test_interim_report_still_scores_with_interim_caveat(self):
+        """中期报告照常出具分值（演示表格不留空），但必须附年度阈值的口径局限。"""
+        models = _models(dict(_HEALTHY, period="2025年半年度"))
+        for key in ("altman_z_score", "beneish_m_score"):
+            assert models[key]["available"] is True
+            assert models[key]["status"] == "calculated"
+            assert isinstance(models[key]["score"], float)
+            assert models[key]["interim_basis"] is True
+            assert "中期" in models[key]["interim_note"]
+            assert "年度" in models[key]["interim_note"]
+            assert "交叉印证" in models[key]["interim_note"]
+            assert "缺少" not in models[key]["interim_note"]
+        cross = models["cross_interpretation"]
+        assert cross["signal"] == "未触发模型预警"
+        assert cross["interim_basis"] is True
+        assert "中期" in cross["interpretation"]
+
+    def test_report_year_alias_preserves_interim_context(self):
+        data = {k: v for k, v in _HEALTHY.items() if k != "period"}
+        data.update(report_year="2025年半年度", year="2025")
+        result = json.loads(calculate_risk_models.invoke({"financial_data_json": json.dumps(data)}))
+        assert result["period"] == "2025年半年度"
+        assert result["risk_models"]["altman_z_score"]["status"] == "calculated"
+        assert result["risk_models"]["altman_z_score"]["interim_basis"] is True
+        assert result["risk_models"]["beneish_m_score"]["interim_basis"] is True
+        assert all(m["period"] == "2025年半年度" for m in result["metric_results"])
+        assert all(m["status"] == "calculated" for m in result["metric_results"])
+        assert result["risk_findings"] == []
+
 
 class TestAuditOpinionIdentification:
 
@@ -243,3 +272,11 @@ class TestScoreIntegration:
         op = identify_audit_opinion.invoke({"report_text": "形成否定意见的基础：未能公允反映。"})
         r = self._score(audit_opinion_json=op)
         assert r["escalation_reasons"] and "否定意见" in r["escalation_reasons"][0]
+def test_model_input_facts_keep_balance_dates_and_source_coordinates():
+    from tools.risk_models import _model_facts
+    facts, _ = _model_facts({'period':'2025年半年度','total_assets_previous':100,
+        '_field_metadata':{'total_assets_previous':{'period':'2024-12-31','page':'49',
+            'locator':'合并资产负债表','source_hash':'abc','unit':'人民币百万元'}}})
+    fact=next(f for f in facts if f['field']=='total_assets_previous')
+    assert fact['period']=='2024-12-31' and fact['page']=='49'
+    assert fact['source_hash']=='abc' and fact['unit']=='人民币百万元'

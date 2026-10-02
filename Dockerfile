@@ -1,8 +1,12 @@
-# ─── 上市公司年报风险识别 v3.0 ───
+# ─── 上市公司年报风险识别 v5.3 GA ───
 # 部署方式：docker build -t audit-ai . && docker run -p 5000:5000 audit-ai
 FROM python:3.12-slim
 
 WORKDIR /app
+
+# main.py 使用 agents/local_shims/storage 等顶层导入；
+# 显式设置 PYTHONPATH，保证容器内 uvicorn main:app 可正确导入。
+ENV PYTHONPATH=/app/src
 
 # 安装系统依赖 + uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,4 +39,4 @@ RUN uv run python -c "from chromadb.utils import embedding_functions as ef; ef.D
 EXPOSE 5000
 
 # 启动服务
-CMD ["uv", "run", "python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uv", "run", "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]

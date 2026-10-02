@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""指标计算过程视图：四项能力及补充分析 + 公式→输入→代入→结果→阈值→状态→原文定位。
+"""指标计算过程视图：财务指标与审计关注分析 + 公式→输入→代入→结果→阈值→状态→原文定位。
 
 数据源只有 ``calculate_financial_indicators`` 的结构化结果（metric_results /
 evidence）。网页与 PDF 共用本视图，避免两处各写一套渲染口径而出现数字或来源
@@ -13,19 +13,27 @@ from __future__ import annotations
 
 import json
 
-# 四项能力 + 补充分析的固定分组顺序（计划口径：偿债、营运、盈利、成长，
-# 另补现金流质量与资产质量）。指标键与 financial_calculator 保持一致。
+# 五项核心能力 + 审计关注附加组的固定分组顺序。指标键与
+# financial_calculator 保持一致；现金流质量不再混入盈利能力。
 CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("偿债能力", ("current_ratio", "quick_ratio", "debt_to_asset_ratio_pct")),
+    ("盈利能力", ("gross_margin_pct", "sales_net_margin_pct", "operating_margin_pct",
+                  "roe_weighted_pct", "roe_deducted_pct", "roa_pct", "eps_basic", "book_value_per_share")),
     ("营运能力", ("accounts_receivable_turnover_ratio", "accounts_receivable_turnover_days",
                  "inventory_turnover_ratio", "inventory_turnover_days",
-                 "fixed_asset_turnover_ratio", "accounts_receivable_to_revenue_ratio")),
-    ("盈利能力", ("gross_margin_pct",)),
+                 "fixed_asset_turnover_ratio", "current_asset_turnover_ratio", "total_asset_turnover_ratio",
+                 "accounts_receivable_to_revenue_ratio")),
+    ("偿债能力", ("current_ratio", "quick_ratio", "cash_ratio", "debt_to_asset_ratio_pct",
+                  "equity_ratio", "interest_coverage_ratio", "cash_to_short_term_debt_ratio")),
     ("成长能力", ("revenue_yoy_change_pct", "net_profit_yoy_change_pct",
-                 "construction_in_progress_change_pct")),
-    ("现金流质量（补充）", ("operating_cashflow_to_net_profit_ratio",)),
-    ("资产质量（补充）", ("goodwill_to_net_assets_ratio_pct",
+                 "net_profit_parent_yoy_change_pct", "net_profit_parent_deducted_yoy_change_pct",
+                 "total_assets_growth_pct", "net_assets_growth_pct", "construction_in_progress_change_pct")),
+    ("现金流质量", ("operating_cashflow_to_net_profit_ratio",
+                    "operating_cashflow_to_revenue_ratio",
+                    "operating_cashflow_to_total_liabilities_ratio",
+                    "operating_cashflow_to_total_assets_ratio", "free_cash_flow")),
+    ("资产质量与审计关注", ("goodwill_to_net_assets_ratio_pct",
                         "accounts_receivable_to_revenue_ratio_change_pp",
+                        "bad_debt_provision_to_gross_receivables_ratio_pct",
                         "other_receivables_to_total_assets_ratio_pct",
                         "other_payables_to_total_assets_ratio_pct")),
 )
@@ -34,16 +42,33 @@ CAPABILITY_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 _INPUT_CN = {
     "revenue_current": "营业收入(本期)", "revenue_previous": "营业收入(上期)",
     "net_profit_current": "净利润(本期)", "net_profit_previous": "净利润(上期)",
+    "net_profit_parent_current": "归母净利润(本期)", "net_profit_parent_previous": "归母净利润(上年同期)",
+    "net_profit_parent_deducted_current": "扣非归母净利润(本期)",
+    "net_profit_parent_deducted_previous": "扣非归母净利润(上年同期)",
     "cost_of_goods_current": "营业成本(本期)",
     "operating_cashflow_current": "经营活动现金流净额(本期)",
     "accounts_receivable_current": "应收账款(期末)",
     "accounts_receivable_previous": "应收账款(期初)",
+    "accounts_receivable_same_period_previous": "应收账款(上年同期末)",
     "inventory_current": "存货(期末)", "inventory_previous": "存货(期初)",
     "total_assets_current": "总资产(期末)",
     "total_liabilities_current": "总负债(期末)",
     "net_assets_current": "净资产(期末)",
     "current_assets_current": "流动资产(期末)",
     "current_liabilities_current": "流动负债(期末)",
+    "cash_and_equivalents_current": "现金及现金等价物(期末)",
+    "short_term_debt_current": "短期借款(期末)",
+    "total_assets_previous": "总资产(期初)",
+    "current_assets_previous": "流动资产(期初)",
+    "net_assets_previous": "净资产(期初)",
+    "operating_profit_current": "营业利润(本期)",
+    "profit_before_tax_current": "利润总额(本期)",
+    "income_tax_expense_current": "所得税费用(本期)",
+    "weighted_average_shares_current": "加权平均普通股股数(本期)",
+    "common_shares_current": "普通股股数(期末)",
+    "capital_expenditure_current": "资本性支出(本期)",
+    "accounts_receivable_gross_current": "应收账款账面余额(期末)",
+    "bad_debt_provision_current": "坏账准备(期末)",
     "goodwill_current": "商誉(期末)",
     "fixed_assets_current": "固定资产(期末)",
     "fixed_assets_previous": "固定资产(期初)",
@@ -66,6 +91,8 @@ def _input_text(inputs: list) -> str:
         raw = item.get("raw_value", item.get("value", ""))
         unit = str(item.get("unit", "") or "")
         suffix = "（规则默认）" if str(item.get("source", "")) == "rule_default" else ""
+        if str(item.get("source", "")) == "period_calendar":
+            suffix = "（按已声明期间日历计算）"
         parts.append(f"{label}={raw}{unit}{suffix}")
     return "；".join(parts)
 

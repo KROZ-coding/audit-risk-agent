@@ -1,0 +1,308 @@
+上市公司年报风险智能识别系统 v5.3 GA — 环境变量与关键常量清单
+==============================================================================
+
+说明：本清单列出系统全部可配置环境变量及其默认值，以及影响行为与结论的关键
+      算法常量。修改常量需同步更新 tests/ 下的对应断言，否则 CI 会失败。
+
+----------------------------------------------------------------------------
+【一】模型与 LLM 配置
+----------------------------------------------------------------------------
+变量名                  默认值                        说明
+----------------------------------------------------------------------------
+OPENAI_API_KEY          （必填，无默认）              模型服务密钥。
+                                                       示例占位值 sk-your-* 会被
+                                                       /api/status 判定为"未配置"。
+OPENAI_BASE_URL         https://api.deepseek.com     OpenAI 兼容服务地址。
+                                                       备选: 通义千问
+                                                       https://dashscope.aliyuncs.com/
+                                                       compatible-mode/v1
+                                                       智谱 https://open.bigmodel.cn/
+                                                       api/paas/v4
+FAST_MODEL              deepseek-v4-flash             快速模式主分析模型（前端 ⚡
+                                                       开关或"快速模式"关键词生效）。
+REVIEW_MODEL            deepseek-v4-flash             三方辩论复核专用模型。
+LLM_MAX_RETRIES         2                             模型调用失败后的额外重试次数。
+                                                       重试计入审查预算。
+LLM_RETRY_BASE_DELAY    1.5                           指数退避基准秒数（delay =
+                                                       base * 2^attempt）。
+
+注：主分析模型名不通过环境变量设置，读
+    config/agent_llm_config.json -> config.model。
+    temperature / top_p / max_completion_tokens / timeout 也来自该文件。
+
+----------------------------------------------------------------------------
+【二】审查（辩论复核）预算
+----------------------------------------------------------------------------
+变量名                        默认值   说明
+----------------------------------------------------------------------------
+REVIEW_ENABLED                true     复核总开关；false 时跳过辩论，
+                                        风险条目标记为待复核。
+REVIEW_MAX_CALLS              20       单次运行最多 LLM 审查调用次数。
+REVIEW_CALL_TIMEOUT           90       单次审查调用超时（秒）。
+REVIEW_STAGE_TIMEOUT          600      审查阶段总限时（秒）。
+REVIEW_SUPPLEMENT_ROUNDS      1        补充取证轮次上限。
+
+----------------------------------------------------------------------------
+【三】服务与网络
+----------------------------------------------------------------------------
+变量名                  默认值            说明
+----------------------------------------------------------------------------
+HOST                    127.0.0.1         监听地址。容器/局域网需设为 0.0.0.0。
+PORT                    5000              监听端口。被占用时自动向后避让
+                                          （最多 20 次真实 bind 探测）。
+ENV                     dev               运行环境。ENV=dev 才开启热重载；
+                                          生产环境请设 prod。
+LOG_LEVEL               INFO              日志级别 DEBUG/INFO/WARNING/ERROR。
+COZE_WORKSPACE_PATH     （自动填充）      项目根路径。启动脚本自动填当前目录；
+                                          容器内为 /app。影响知识库、产物、
+                                          字体、评估文件的定位。
+
+----------------------------------------------------------------------------
+【四】鉴权
+----------------------------------------------------------------------------
+变量名                  默认值            说明
+----------------------------------------------------------------------------
+APP_API_KEY             （空）            写操作接口鉴权密钥。为空则全部放行。
+                                          设置后 /run /stream_run
+                                          /v1/chat/completions /upload
+                                          /api/upload_kb /api/evaluate/run
+                                          需携带 X-API-Key 请求头。
+AUTH_TOKEN_HEADER       X-Auth-T​o​k​e​n      用户会话令牌请求头名（内部默认）。
+                                          登录接口签发，7 天有效。
+
+----------------------------------------------------------------------------
+【五】存储
+----------------------------------------------------------------------------
+变量名                        默认值                    说明
+----------------------------------------------------------------------------
+PGDATABASE_URL                （空，用 SQLite）         PostgreSQL 连接串。
+                                                        未设置时用
+                                                        sqlite:///<cwd>/local_data.db。
+                                                        注意：代码只读取
+                                                        PGDATABASE_URL，
+                                                        不读 DATABASE_URL。
+CHECKPOINT_DB_PATH            <cwd>/checkpoints.sqlite  Agent 检查点库路径。
+                                                        与业务库刻意分离
+                                                        （生命周期不同）。
+COZE_BUCKET_ENDPOINT_URL      （空，用本地存储）        对象存储端点。缺省时
+                                                        S3SyncStorage 抛
+                                                        ValueError，由
+                                                        local_storage 层降级本地。
+COZE_BUCKET_NAME              （空）                    对象存储 bucket 名。
+COZE_WORKLOAD_IDENTITY_T​O​K​E​N  （空）                  对象存储工作负载身份令牌。
+
+----------------------------------------------------------------------------
+【六】运行时资源定期回收（maintenance）
+----------------------------------------------------------------------------
+变量名                                默认值   说明
+----------------------------------------------------------------------------
+MAINTENANCE_ENABLED                   true     后台定期回收总开关；
+                                                false 完全停用。
+MAINTENANCE_INTERVAL_HOURS            24       回收周期（小时）。启动后先等待
+                                                min(60, max(5, 周期分钟数)) 秒
+                                                再执行首次回收，避免与首屏争 IO。
+MAINTENANCE_DRY_RUN                   false    只预览不删除。上线初期建议设
+                                                true 观察一次。
+MAINTENANCE_CHECKPOINT_KEEP_THREADS   50       检查点库保留最近 N 个线程。
+MAINTENANCE_CHECKPOINT_MAX_MB         512      检查点库超过该体积才回收
+                                                （0 表示不按体积限制）。
+MAINTENANCE_CHECKPOINT_VACUUM         true     回收后是否 VACUUM 收缩文件。
+MAINTENANCE_ARTIFACT_RETENTION_DAYS   30       产物批次保留天数。
+MAINTENANCE_ARTIFACT_MIN_BATCHES      10       产物批次最少保留个数（下限保护）。
+MAINTENANCE_LOG_RETENTION_DAYS        14       轮转日志保留天数；
+                                                当前 app.log 永不删除。
+MAINTENANCE_TEMP_RETENTION_DAYS       7        .tmp_* 临时文件保留天数；
+                                                .tmp_pytest 在保护名单。
+
+命令行用法（scripts/maintenance_cli.py）：
+    python scripts/maintenance_cli.py --dry-run         # 预览（默认即 dry-run）
+    python scripts/maintenance_cli.py --apply           # 真正执行删除
+    python scripts/maintenance_cli.py --apply --sections checkpoints,artifacts,logs,temp
+    python scripts/maintenance_cli.py --json            # 机器可读输出
+    python scripts/maintenance_cli.py --project-dir <路径>
+退出码：正常 0；有 errors 1；未知 section 2。
+只读观测接口：GET /api/maintenance/status（返回最近一次报告副本，不触发回收）。
+
+----------------------------------------------------------------------------
+【七】行业工具
+----------------------------------------------------------------------------
+变量名                  默认值   说明
+----------------------------------------------------------------------------
+OUTLOOK_FETCH_BUDGET    （代码内默认）  行业风向在线检索的抓取预算上限。
+
+----------------------------------------------------------------------------
+【八】关键算法与工程常量（代码内，非环境变量）
+----------------------------------------------------------------------------
+1) 服务层（src/main.py）
+   TIMEOUT_SECONDS              = 900              /run 非流式分析超时（秒）。
+   MAX_UPLOAD_SIZE              = 100 * 1024 * 1024 上传单文件上限（100MB）。
+   _PREPROCESS_MIN_CHARS        = 800              触发 P1 预处理注​入的文本长度门槛。
+   _EXCERPT_MAX_CHARS           = 80000           报表摘录字符上限（main.py::_financial_extraction_excerpt）。
+   _EXCERPT_HEADER_PAGES        = {1, 3}          固定保留的封面/重要提示页。
+   _EXCERPT_KEYWORDS                            29 个财务报表关键词，命中页全部纳入摘录。
+   _PROTECTED_PREFIXES                          6 个受保护写操作路由前缀。
+   ALLOWED_EXTENSIONS                           11 种允许上传的扩展名
+                                                （.pdf .xlsx .xls .csv .docx .doc
+                                                 .pptx .html .htm .txt .md）。
+
+2) 智能体层（src/agents/agent.py）
+   MAX_MESSAGES                 = 40              配对安​全滑窗保留条数。
+   LLM_MAX_RETRIES              = 2（可由环境变量覆盖，见上）
+   默认 max_t​o​k​e​n​s             = 16000           主分析模型最大输出 token。
+   默认 timeout                 = 600             主分析模型调用超时（秒）。
+   默认 temperature             = 见 config        config/agent_llm_config.json。
+
+2b) 报告身份识别（src/utils/report_identity.py）
+   _INDUSTRY_KEYWORDS                           10 组行业关键词表（能源/金融/房地产/医药/
+                                                互联网/制造业/零售/农业/军工/传媒）。
+   _COMPANY_LINE / _COMPANY_SUFFIX              封面公司名行与全文主体名正则。
+   _STOCK_CODE                                  股票代码/证券代码标签后 6 位数字。
+   _HALF_YEAR / _FULL_YEAR                      报告期正则，优先半年度。
+   识别输入窗口                              公司名/股票/报告期限前 8000 字符；
+                                                行业限前 20000 字符；审计意见到 20000 字符。
+   行业优先度                              按首次出现位置最早者优先。
+   回填策略                              别名表回填，已有非空值优先、绝不覆盖。
+
+3) 财务指标（src/tools/financial_calculator.py）
+   CALCULATION_VERSION          = "2026-09-v4"    指标计算口径版本号。
+   核心指标数                   = 16 项
+   扩展指标数                   = 3 项（在建工程变动、其他应收/其他应付占总资产）
+   条件指标数                   = 2 项（归母净利润同比、扣非归母同比，字段存在
+                                        时才注册）
+   单次最多指标数               = 21 条
+   中期识别                     H1 用 date(year,7,1)-date(year,1,1) 算 181/182 天；
+                                其他中期无明确天数返回 None；年度默认 365 天。
+
+4) 数据勾稽（src/tools/data_validator.py）
+   资产平衡阈值                 = 2%   ratio = diff / max(|assets|, |total|, 1)
+   现金流勾稽阈值               = 15%  状态恒为 limited_check
+   未分配利润阈值               = 5%   必须使用归母口径
+   候选风险编号                  V001 / V002 / ...
+   候选风险固定字段              dimension="数据可靠性风险"
+                                level="待定级"  confidence=None
+                                status="candidate"  verification_status="待复核"
+
+5) 综合评分（src/tools/risk_scorer.py）
+   WEIGHTS                      = {financial: 0.50, disclosure: 0.30,
+                                   validation: 0.20}
+   维度权重归一化                weight_sum = ΣWEIGHTS[k]（仅已获取维度）；
+                                base = Σ(v_k * W_k) / weight_sum
+   RISK_LEVELS                  = [(25,"低风险","low"), (50,"中等风险","medium"),
+                                   (75,"高风险","high"), (100,"极高风险","critical")]
+                                取首个 score <= threshold
+   财务维度每条 alert             +8；含重大/严重/持续经营/资不抵债/存贷双高/
+                                连续 再 +5；上限 100
+   校验维度                      failed_checks × 30；上限 100
+   披露维度                      直接取披露检查的 risk_score
+   抬分：Z+M 双信号               +20
+   抬分：Z 或 M 单信号            +10
+   抬分：审计意见保留/否定/无法表示 +25
+   抬分：仅 going_concern.flagged  +15
+   Z 基本面豁免                   debt_to_asset_ratio_pct < 55 且
+                                (operating_cashflow_current > 0 或
+                                 current_ratio >= 1) -> z_waived
+   最终分                        score = round(min(100, max(0, base+escalation)), 1)
+   异常兜底                      status="failed"  score=None
+                                level_key="unavailable"
+   calculation_version        = "2026-09-v3"
+
+6) 量化模型（src/tools/risk_models.py）
+   CALCULATION_VERSION          = "2026-09-v4"
+   _Z_ZONES
+       original  (safe=2.99, distress=1.81)
+       private   (safe=2.90, distress=1.23)
+       emerging  (safe=2.60, distress=1.10)
+   _M8_THRESHOLD                = -1.78
+   _M5_THRESHOLD                = -2.22
+   高危判定                      high_suspicion = m > -1.00
+   Z 公式：
+       original: Z   = 1.2X1 + 1.4X2 + 3.3X3 + 0.6X4 + 1.0X5
+       private:  Z'  = 0.717X1 + 0.847X2 + 3.107X3 + 0.420X4 + 0.998X5
+       emerging: Z'' = 6.56X1 + 3.26X2 + 6.72X3 + 1.05X4（不用 X5）
+   M8 公式：
+       M = -4.84 + 0.920*DSRI + 0.528*GMI + 0.404*AQI + 0.892*SGI
+           + 0.115*DEPI - 0.172*SGAI + 4.679*TATA - 0.327*LVGI
+   M5 降级公式（TATA 不可用）：
+       M5 = -6.065 + 0.823*DSRI + 0.906*GMI + 0.593*AQI + 0.717*SGI
+            + 0.107*DEPI
+   风险条目编号                  RM-Z-001（Z）/ RM-M-001（M）
+   结论映射                      双信号=重大；单一=重要；
+                                均未触发=一般；均未计算=None
+   中期处理                      直接 not_applicable，不做机械年化
+
+7) 披露合规（src/tools/disclosure_checker.py）
+   必备章节 7 项                 公司基本情况 / 主要会计数据和财务指标 /
+                                股东及实际控制人情况 / 董事监事高级管理人员 /
+                                公司治理 / 财务报告 / 董事会报告
+                                半年度不强制"公司治理"
+   披露事项 4 项                 关联交易 / 担保 / 诉讼仲裁 / 股权质押
+   负向模式 5 条                 NO_MATTER_PATTERNS（识别"无重大关联交易"等）
+   审计意见优先级                无法表示 > 否定 > (?<!无)保留意见 >
+                                强调事项段 > 非标准
+   审计意见加分                  非标 risk_score += 15
+   失败扣分                      每个 failed_check 扣 15 分且 checked += 1
+   计分                          compliance_score = passed/max(checked,1)*100
+                                risk_score = 100 - compliance_score
+   摘录模式                      is_excerpt=True 时两项置 None，保留 scan_score
+   固定审慎字段                  compliance_conclusion="待复核提示，尚未作出实质合规认定"
+                                confirmed_issue_count=0
+                                issue_records[].status="needs_review"
+                                formal_status="candidate"
+                                pending_verification=True
+
+8) 领域护栏（src/tools/domain_guard.py）
+   DISCLAIMER_MARKER            = "AI 辅助生成"
+   PIPELINE_RANK                = validate 0 / calculate 1 / disclosure 2 /
+                                 search 2 / score 3 / export 4
+   硬约束                        validate 必须早于 calculate（fail-closed）
+   软约束                        完整链路 rank 非递减（仅警告，不阻断）
+   SEARCH_TOOL                  = "search_regulations"
+
+9) 用户与凭据（src/storage/database/user_service.py）
+   _PBKDF2_ITERATIONS           = 120000
+   _T​O​K​E​N_TTL_DAYS              = 7
+   用户名规则                    ^[\w\u4e00-\u9fff]{2,32}$
+   口令最小长度                   6 位
+   盐                            secrets.token_hex(16)
+   令牌                          secrets.token_hex(32)
+   口令哈希                       pbkdf2_hmac("sha256", pwd, salt, 120000)
+   比对                          hmac.compare_digest（恒时）
+
+10) 数据库（src/storage/database/db.py）
+   MAX_RETRY_TIME               = 20              连接探测重试秒数上限
+   非 SQLite 连接池             pool_size=10 / max_overflow=100 /
+                                pool_recycle=1800 / pool_timeout=30
+                               pool_pre_ping=True
+
+11) 维护回收（src/maintenance.py）
+   BATCH_DIR_RE                 ^\d{8}_\d{6}$      只识别该格式的批次目录
+   TEMP_PREFIX                  .tmp_
+   PROTECTED_TEMP_NAMES         {".tmp_pytest"}
+   CHECKPOINT_DB_NAME           checkpoints.sqlite
+
+12) 启动与运行（src/local_shims.py）
+   LOG_FILE                     <cwd>/app.log
+   RotatingFileHandler          maxBytes=100MB  backupCount=5
+   run_id 正则                  [0-9a-fA-F-]{16,64}（不合法则重新生成 uuid4，
+                                防会话固定/劫持）
+   recursion_limit              50
+   parse_deadline_sec           3600
+
+13) 前端（src/web/index.html）
+   颜色变量                      --bg-base #0b0f19 / --bg-surface #131926
+                                --accent #3b82f6 / --text-primary #f1f5f9
+                                辩论三色 --debate-advocate #f87171
+                                --debate-skeptic #60a5fa
+                                --debate-arbiter #c4b5fd
+   响应式断点                    1180 / 1080 / 900 / 768（侧栏转抽屉） / 720 / 560
+   本地存储键                    audit_api_key / audit_auth_t​o​k​e​n /
+                                audit_sessions_v1
+   会话上限                      30 条（配额溢出渐进降级）
+   雷达图参数                    cx=170 cy=150 R=95 n=5；阈值 >=80 绿
+                                >=50 橙 否则红
+   第三方库                      仅 ECharts，本地 vendor
+                                /vendor/echarts.min.js (不依赖 CDN)
+
+==============================================================================
+文档版本：v5.3 GA
+==============================================================================

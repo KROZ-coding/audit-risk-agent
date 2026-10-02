@@ -11,6 +11,7 @@
 用法: uv run python scripts/real_chain_verify.py
 """
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -54,6 +55,16 @@ async def main():
     content = (f"{instruction}\n\n（分析以下文件，第 1/1 份）：\n\n"
                f"📄 **文件: 中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf**\n\n{extracted}")
     payload = {"messages": [{"role": "user", "content": content}]}
+    with open(PDF_PATH, "rb") as source:
+        source_hash = hashlib.sha256(source.read()).hexdigest()
+    from pypdf import PdfReader
+    payload["source_metadata"] = {
+        "files": [{
+            "document_name": os.path.basename(PDF_PATH),
+            "source_hash": source_hash,
+            "page_count": len(PdfReader(PDF_PATH).pages),
+        }]
+    }
 
     print("=" * 20, "步骤2：stream_sse 完整链路（含 LLM，预计 3-10 分钟）", "=" * 20)
     from main import GraphService

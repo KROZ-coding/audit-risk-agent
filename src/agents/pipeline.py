@@ -13,6 +13,8 @@
 3. 任一段失败时可降级继续（把失败说明作为摘要传下去），不中断整条链路。
 """
 
+import json
+
 # 三段流水线定义：(模块标识, 阶段名, 进度起点, 进度终点)
 # 进度区间与 P1 计划一致：① 0-35%、② 35-65%、③ 65-100%
 SYNTHESIS_STAGES = [
@@ -24,8 +26,14 @@ SYNTHESIS_STAGES = [
 # 各阶段追加给用户消息的任务指令（模块标记由 main.py 的 MODULE_MARKERS 注入）
 STAGE_INSTRUCTIONS = {
     "financial": (
-        "本阶段只做财务健康度诊断：深度解析三大报表，计算核心指标并与行业基准对比，"
-        "计算 Altman Z-Score 与 Beneish M-Score 量化预警。"
+        "本阶段只做财务健康度诊断：核实三大报表的准则、合并范围、单位和期间。"
+        "复用已完成的财务校验、指标和量化模型结果，缺少结果时再按工具链补充计算。"
+        "仅在基准来源明确且行业、期间和计算定义可比时比较行业基准。"
+        "Altman Z-Score 与 Beneish M-Score 须先核实适用性和必要因子；"
+        "中期（半年度/季度）报告照常出具分值，但必须同时引用结果中的 interim_note/limitation，"
+        "标注年度阈值属近似套用、仅作交叉印证、不单独作为风险定级依据；"
+        "已有 not_applicable / insufficient_data 结果时保留其限制，"
+        "除非取得可追溯的新增输入，不得重复调用或补造数据强行计算。"
         "严格按固定章节结构输出，不要进行披露合规与监管处罚分析（后续阶段会做）。"
     ),
     "compliance": (
@@ -35,11 +43,16 @@ STAGE_INSTRUCTIONS = {
     ),
     "synthesis": (
         "本阶段做综合研判：基于下方两个阶段的已完成结论和核心工具结构化结果，"
-        "调用 calculate_comprehensive_score（综合风险评分）、calculate_risk_models（量化模型预警）、"
-        "search_regulations（法规检索）、generate_risk_heatmap（风险热力图）完成交叉验证，"
-        "形成最终风险台账与量化评分，并导出 PDF 报告与 Excel 底稿。"
-        "注意：本阶段不要重新计算基础财务指标（由前两阶段完成），但必须通过上述工具完成"
-        "综合评分、量化模型预警、法规依据检索和可视化图表生成。"
+        "复用财务校验、指标、量化模型、披露检查和法规检索结果完成交叉验证，"
+        "形成最终风险台账与量化评分。缺少综合评分时调用 calculate_comprehensive_score；"
+        "只有法规依据仍有具体缺口时才补充 search_regulations。"
+        "不要重新计算已有基础指标或重复调用 calculate_risk_models；"
+        "模型 not_applicable / insufficient_data 属有效状态，必须原样保留原因，"
+        "不得为取得分值重新调用、补造期间或改用另一会计准则。"
+        "中期报告下 Z/M 已按年度模型近似套用并给出分值，引用时必须一并写明其 "
+        "interim_note/limitation（仅作交叉印证、不单独支撑风险定级）。"
+        "图表、PDF 报告与 Excel 底稿由系统依据最终结构化结果统一生成，"
+        "本阶段不调用图表或导出工具。"
         "最终风险台账的每条风险必须在 evidence 字段中明确引用前两阶段工具的真实输出："
         "财务错报/持续经营类风险须引用 calculate_financial_indicators 的 alerts 或 "
         "validate_financial_data 的 failed_checks；信息披露合规类风险须引用 "
@@ -67,6 +80,59 @@ check_disclosure_compliance 的 issue、identify_audit_opinion 的 opinion_type�
 
 # 摘要截断长度：过长会挤占第三阶段上下文，过短会丢结论
 _SUMMARY_MAX_CHARS = 4000
+
+
+def summarize_tool_result(content, *, tool_name: str = "") -> str:
+    """Serialize a structural projection without cutting JSON or dropping late findings.
+
+    Full source text and repeated fact tables remain in the tool ledger. All computed
+    values, unavailable states, checks, alerts and evidence links survive this handoff.
+    """
+    if isinstance(content, dict):
+        result = content
+    else:
+        try:
+            result = json.loads(content)
+        except (TypeError, ValueError):
+            if tool_name == "search_regulations" and isinstance(content, str):
+                result = {"status": "unstructured_text", "regulation_text": content}
+            else:
+                result = {"status": "invalid_tool_result",
+                          "reason": "前序工具结果不是有效 JSON，不能据此认定检查通过或不存在风险"}
+    if not isinstance(result, dict):
+        result = {"status": "invalid_tool_result", "reason": "前序工具结果顶层须为 JSON 对象"}
+
+    omitted = set()
+    repeated_fields = {"facts", "statement_items", "raw_value", "excerpt", "report_text", "source_text"}
+
+    def project(value):
+        if isinstance(value, dict):
+            projected = {}
+            for key, item in value.items():
+                if key in repeated_fields:
+                    omitted.add(key)
+                else:
+                    projected[key] = project(item)
+            return projected
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        return value
+
+    summary = project(result)
+    summary["_handoff_summary"] = {
+        "kind": "structured_projection",
+        "omitted_fields": sorted(omitted),
+        "note": "结构化摘要；仅省略重复事实表和原文，完整结果保留于工具台账。"
+                "指标数值、状态、限制、检查结果、风险提示及证据编号未按长度截断。",
+    }
+    try:
+        return json.dumps(summary, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError):
+        return json.dumps({
+            "status": "invalid_tool_result",
+            "reason": "前序工具结果含非法 JSON 值，须核实完整工具台账",
+            "_handoff_summary": {"kind": "unavailable"},
+        }, ensure_ascii=False)
 
 
 def extract_stage_summary(messages, max_chars: int = _SUMMARY_MAX_CHARS) -> str:
@@ -149,16 +215,16 @@ def build_stage_payload(base_payload: dict, module: str, marker: str,
             ("validate_financial_data", "财务数据校验结果"),
             ("check_disclosure_compliance", "披露合规检查结果"),
             ("identify_audit_opinion", "审计意见识别结果"),
+            ("calculate_risk_models", "量化模型结果与适用性限制"),
+            ("search_regulations", "已检索法规依据"),
+            ("calculate_comprehensive_score", "已有综合评分结果"),
         ]
         for tool_name, label in _CORE_TOOLS:
             content = (prior_tool_results or {}).get(tool_name, "")
             if not content:
                 continue
-            # 截断到 4000 字符，避免挤占上下文；只取 JSON 文本
-            text = str(content)
-            if len(text) > 4000:
-                text = text[:4000] + "\n…（已截断，完整结果见该阶段输出）"
-            parts.append(f"\n--- {tool_name}（{label}）---\n{text}")
+            text = summarize_tool_result(content, tool_name=tool_name)
+            parts.append(f"\n--- {tool_name}（{label}，结构化摘要）---\n```json\n{text}\n```")
     if module == "synthesis":
         parts.append(CROSS_VALIDATION_INSTRUCTION)
     parts.append("\n【原始分析请求与数据】\n" + str(original))

@@ -465,8 +465,8 @@ class TestPromptDataDiscipline:
             assert "跨期穿透" in p, "均须含跨期穿透纪律"
             assert "期后事项口径" in p, "均须含期后事项口径纪律"
             assert "量化模型预警" in p, "均须含量化模型预警纪律"
-        assert "不得自行宣称「与综合评分一致/相符」" in ARBITER_SYSTEM_PROMPT
-        assert "与低风险评分相符" in ARBITER_SYSTEM_PROMPT
+        assert "不能用候选数量改写分数" in ARBITER_SYSTEM_PROMPT
+        assert "最终证据门禁后依据已采信风险应用底线" in ARBITER_SYSTEM_PROMPT
 
     def test_prompts_have_50d_disciplines(self):
         """50d：config sp 第 9/10/11 条（评分纪律、红旗初始定级下限、企业性质不作
@@ -763,10 +763,10 @@ class TestSemanticIds:
         ]}
         _assign_semantic_ids(report_obj)
         md = _build_risk_index_md(report_obj)
-        assert "最终风险清单（系统生成，与审计底稿同源）" in md
+        assert "风险与待复核提示清单（系统生成，与审计底稿同源）" in md
         assert "FIN-001" in md and "DIS-001" in md
         assert "R006" in md                       # 仲裁新增条目必然在索引表
-        assert "【待核实】" in md                  # 置信度低的待核实标注
+        assert "【待复核提示】" in md                  # 置信度低的待复核标注
 
 
 class TestDimensionCorrection:
@@ -850,7 +850,8 @@ class TestLevelFloorRule:
     def _report(self, levels, score=10.5, level="低风险", level_key="low"):
         return {
             "risk_details": [
-                {"risk_id": f"R{i:03d}", "level": lv} for i, lv in enumerate(levels, 1)
+                {"risk_id": f"R{i:03d}", "level": lv, "formal_status": "accepted"}
+                for i, lv in enumerate(levels, 1)
             ],
             "comprehensive_score": {
                 "score": score, "level": level, "level_key": level_key,
@@ -907,7 +908,10 @@ class TestLevelFloorRule:
     def test_level_alias_counting(self):
         """等级别名同口径：高→major、中→important（防非标准取值漏计）。"""
         major, important = _count_risk_levels([
-            {"level": "高"}, {"level": "中"}, {"level": "中"}, {"level": "低"},
+            {"level": "高", "formal_status": "accepted"},
+            {"level": "中", "formal_status": "accepted"},
+            {"level": "中", "formal_status": "accepted"},
+            {"level": "低", "formal_status": "accepted"},
         ])
         assert major == 1 and important == 2
 

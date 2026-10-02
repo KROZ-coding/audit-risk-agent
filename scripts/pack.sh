@@ -10,7 +10,7 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-PACK_NAME="audit-ai_v5.0GA_${TIMESTAMP}.tar.gz"
+PACK_NAME="audit-ai_v5.3GA_${TIMESTAMP}.tar.gz"
 
 cd "$PROJECT_DIR"
 
@@ -34,6 +34,8 @@ tar -czf "$PACK_NAME" \
     --exclude='baka专用readme.html' \
     --exclude='local_storage/reports' \
     --exclude='local_storage/charts' \
+    --exclude='src/local_storage/reports' \
+    --exclude='src/local_storage/charts' \
     --exclude='app.log' \
     --exclude='.coze' \
     src/ \
@@ -41,12 +43,16 @@ tar -czf "$PACK_NAME" \
     knowledge_base/ \
     assets/ \
     tests/ \
+    docs/ \
     scripts/setup.sh \
+    scripts/maintenance_cli.py \
     pyproject.toml \
     uv.lock \
     .env.example \
     Dockerfile \
-    README.md
+    .dockerignore \
+    README.md \
+   快速上手.txt
 
 echo "[pack] ✅ 完成: ${PACK_NAME}"
 echo "[pack] 上传到服务器后执行: tar -xzf ${PACK_NAME} && bash scripts/setup.sh"

@@ -3,8 +3,8 @@
 
 用法: python scripts/pack_source.py                     # 仅本项目源码（竞赛交付）
       python scripts/pack_source.py --with-skillpacks  # 额外纳入第三方技能包
-产物: dist/audit-ai_v5.0GA_src_<时间戳>.zip
-      dist/audit-ai_v5.0GA_full_<时间戳>.zip（带 --with-skillpacks）
+产物: dist/audit-ai_v5.3GA_src_<时间戳>.zip
+      dist/audit-ai_v5.3GA_full_<时间戳>.zip（带 --with-skillpacks）
 
 白名单策略：仅打包真正属于本项目的源码/配置/文档/测试；显式排除密钥(.env)、
 口令库(*.db)、运行时产物、虚拟环境(.venv)、向量库(.chroma_db)、大安装包、
@@ -125,7 +125,7 @@ def main():
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    top = "audit-ai_v5.0GA_full" if include_skillpacks else "audit-ai_v5.0GA_src"
+    top = "audit-ai_v5.3GA_full" if include_skillpacks else "audit-ai_v5.3GA_src"
     zip_path = dist / f"{top}_{stamp}.zip"
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

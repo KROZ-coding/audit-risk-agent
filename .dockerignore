@@ -1,0 +1,78 @@
+# .dockerignore —— 控制 docker build 上下文，防止密钥/数据库/大目录进入构建
+# 注意：规则作用于整个上下文；刻意不使用 *.html / *.png 等宽泛后缀，
+# 以免误伤 src/web/index.html、src/web/vendor/echarts.min.js、src/web/*.png。
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# 密钥 / 运行配置（绝不进镜像层）
+.env
+.env.*
+!.env.example
+
+# 运行期数据库（绝不进构建上下文）
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 运行期产物
+local_storage/
+src/local_storage/
+.chroma_db/
+app.log
+*.log
+.tmp_*
+tmp/
+
+# 交付产物 / 大安装包（避免构建上下文膨胀）
+/dist/
+*.zip
+*.tar.gz
+*.exe
+*.msi
+*.iso
+*.dmg
+*.mp3
+*.mp4
+/*.jpg
+/unused.png
+
+# 版本控制 / 编辑器 / 工具
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.coze/
+.cozeproj/
+*.swp
+.DS_Store
+.coverage
+.coverage.*
+
+# 作者水印 / 本地验证脚本
+verify_authorship.py
+_gen_watermark.py
+scripts/offline_real_verify.py
+scripts/real_chain_verify.py
+
+# 文档与示例（镜像内不需要）
+/docs/
+/samples/
+/测试/
+/无用readme/
+/*.html
+/*.md
+baka专用readme.html

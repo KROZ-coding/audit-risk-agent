@@ -106,6 +106,25 @@ class TestC2ConsistencyIsNotEnough:
         assert risk["verification_status"] == "C2一致"
         assert "pending_reason" not in risk
         assert risk in report["accepted_risk_details"]
+        assert risk["level_status"] == "accepted"
+
+    def test_consistent_negative_or_pending_decisions_are_not_accepted(self):
+        """一致仅说明复核意见相同，不代表两次都支持风险成立。"""
+        for decision in ("not_supported", "pending"):
+            report = _report()
+            c2 = _c2("consistent", ["E1"], ["E1"])
+            c2["checks"][0].update(decision_1=decision, decision_2=decision)
+            _apply_review_gates(report, c2, True, _C1_COMPLETED)
+            risk = report["risk_details"][0]
+            assert report["accepted_risk_details"] == []
+            assert risk["pending_reason"] == "C2判断未支持该风险成立"
+            assert report["review_gate"]["status"] == "not_passed"
+
+    def test_acceptance_after_supplement_clears_old_pending_reason(self):
+        report = _report()
+        report["risk_details"][0]["pending_reason"] = "旧证据缺失"
+        _apply_review_gates(report, _c2("consistent", ["E1"], ["E1"]), True, _C1_COMPLETED)
+        assert "pending_reason" not in report["risk_details"][0]
 
 
 class TestSemanticDivergenceGoesToHuman:
@@ -119,6 +138,8 @@ class TestSemanticDivergenceGoesToHuman:
         assert risk["formal_status"] == "unaccepted"
         assert risk["verification_status"] == "待复核"
         assert risk["pending_reason"] == "C2两次关键语义判断未明确对齐"
+        assert report["review_gate"]["human_review_required"] is True
+        assert "1项待复核提示" in report["review_gate"]["pending_reason"]
 
     def test_two_pending_reasons_are_not_interchanged(self):
         """证据问题与语义分歧的待处理原因必须可区分。"""
@@ -151,6 +172,9 @@ class TestReviewDisabledDoesNotClaimPassed:
         report = _report()
         _apply_review_gates(report, {"status": "not_run"}, False, None)
         risk = report["risk_details"][0]
-        assert risk["formal_status"] == "accepted"
-        assert risk["status"] == "accepted_without_review"
+        assert risk["formal_status"] == "unaccepted"
+        assert risk["status"] == "pending_review"
         assert risk["verification_status"] == "未测试"
+        assert risk["level_status"] == "provisional"
+        assert risk["suggested_level"] == "重要"
+        assert report["accepted_risk_details"] == []

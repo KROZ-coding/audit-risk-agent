@@ -7,7 +7,8 @@
    → compare_multi_year → calculate_risk_models → calculate_comprehensive_score
 4. 台账构造器：仅基于工具输出（预警/问题/校验失败/意见信号）生成风险条目，
    每条注明数据来源（可追溯，不编造）
-5. _export_pdf_impl 生成三份 PDF 到 local_storage/reports/
+5. _export_pdf_impl 生成三份 PDF，经 upload_file_to_storage 落入
+   local_storage/<YYYYMMDD_HHMMSS>/reports/ 批次子目录（每次运行独立目录）
 
 用法: uv run python scripts/offline_real_verify.py
 """
@@ -26,41 +27,71 @@ from tools.risk_models import calculate_risk_models
 from tools.risk_scorer import calculate_comprehensive_score
 from tools.pdf_export import _export_pdf_impl
 
+PDF_PATH = os.path.join(os.path.dirname(__file__), "..", "测试",
+                        "中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf")
+
 # ── 中国石油 2025 半年报关键数据（单位：人民币元，摘自半年报正文，百万元×1e6）──
 # 单位约定：与预处理提取提示词/展示层 _fmt_num 一致，金额统一为元口径
 CALC_JSON = {
+    "amount_unit": "人民币元", "period": "2025年半年度", "scope": "中国准则合并",
+    "industry": "能源", "previous_period": "2024年半年度（追溯后）",
+    # 中国企业会计准则合并口径；金额为人民币元（半年报原表单位为百万元）。
     "revenue_current": 1450099000000, "revenue_previous": 1554973000000,
-    "net_profit_current": 84007000000, "net_profit_previous": 88806000000,
+    "net_profit_current": 93666000000, "net_profit_previous": 99805000000,
+    "net_profit_parent_current": 83993000000, "net_profit_parent_previous": 88802000000,
+    "net_profit_parent_deducted_current": 84116000000,
+    "net_profit_parent_deducted_previous": 91788000000,
+    "cost_of_goods_current": 1147144000000, "cost_of_goods_previous": 1228848000000,
     "operating_cashflow_current": 227063000000, "operating_cashflow_previous": 218419000000,
-    "total_assets_current": 2849390000000, "total_assets_previous": 2752751000000,
-    "total_liabilities_current": 1096474000000, "total_liabilities_previous": 1043128000000,
+    "total_assets_current": 2849632000000, "total_assets_previous": 2753007000000,
+    "total_liabilities_current": 1096490000000, "total_liabilities_previous": 1043144000000,
     "accounts_receivable_current": 119715000000, "accounts_receivable_previous": 71610000000,
+    "accounts_receivable_gross_current": 122516000000,
+    "accounts_receivable_gross_same_period_previous": 74678000000,
+    "bad_debt_provision_current": 2801000000, "bad_debt_provision_same_period_previous": 3068000000,
     "inventory_current": 155724000000, "inventory_previous": 168338000000,
     "current_assets_current": 710678000000, "current_assets_previous": 590844000000,
     "current_liabilities_current": 684270000000, "current_liabilities_previous": 637317000000,
-    "cash_and_equivalents_current": 284493000000, "cash_and_equivalents_previous": 216246000000,
+    "cash_and_equivalents_current": 224124000000, "cash_and_equivalents_previous": 172477000000,
     "goodwill_current": 7424000000, "goodwill_previous": 7436000000,
-    "net_assets_current": 1752916000000, "short_term_debt_current": 46409000000,
+    "net_assets_current": 1753142000000, "short_term_debt_current": 46409000000,
+    "other_receivables_current": 36791000000,
+    "fixed_assets_current": 461529000000, "fixed_assets_previous": 480407000000,
+    "construction_in_progress_current": 228990000000,
 }
 
 VD_JSON = {
-    "total_assets": 2849390000000, "total_liabilities": 1096474000000, "net_assets": 1752916000000,
-    "net_profit": 84007000000, "operating_cashflow": 227063000000,
-    "depreciation": 0, "amortization": 0, "working_capital_change": 0,
-    "retained_earnings_begin": 0, "retained_earnings_end": 0, "dividends": 0,
+    "amount_unit": "人民币元", "period": "2025年半年度", "scope": "中国准则合并",
+    "total_assets_current": 2849632000000, "total_liabilities_current": 1096490000000,
+    "equity_total": 1753142000000, "net_profit_current": 93666000000,
+    "net_profit_parent_current": 83993000000,
+    "operating_cashflow_current": 227063000000,
+    # 现金流量表还包含减值、投资收益、递延税等调整，不能把未摘录项目静默写成0。
+    # 缺少完整间接法调整项时 validator 会返回 limited_check，不伪造勾稽失败。
+    "retained_earnings_begin": 982234000000, "retained_earnings_end": 1020356000000,
+    "dividends": 45755000000, "retained_earnings_other_changes": -116000000,
+    "_field_metadata": {
+        "total_assets_current": {"period": "2025-06-30", "page": "47", "locator": "合并资产负债表：资产总计"},
+        "total_liabilities_current": {"period": "2025-06-30", "page": "48", "locator": "合并资产负债表：负债合计"},
+        "equity_total": {"period": "2025-06-30", "page": "48", "locator": "合并资产负债表：股东权益合计"},
+        "retained_earnings_begin": {"period": "2025-01-01", "page": "51", "locator": "合并股东权益变动表：未分配利润期初"},
+        "retained_earnings_end": {"period": "2025-06-30", "page": "51", "locator": "合并股东权益变动表：未分配利润期末"},
+        "retained_earnings_other_changes": {"period": "2025年1-6月", "page": "51", "locator": "其他权益变动—其他：未分配利润"},
+        "dividends": {"period": "2025年1-6月", "page": "51", "locator": "利润分配：对股东的分配"},
+    },
 }
 
 MY_INPUT = {
     "years": [
-        {"year": "2024H1", "revenue": 1554973000000, "net_profit": 88806000000,
+        {"year": "2024H1（追溯调整后）", "revenue": 1554973000000, "net_profit": 99805000000,
          "operating_cashflow": 218419000000, "total_assets": 2752751000000,
-         "total_liabilities": 1043128000000, "accounts_receivable": 71610000000,
+         "total_liabilities": 1043144000000, "accounts_receivable": 71610000000,
          "inventory": 168338000000, "cost_of_goods": 1228848000000,
          "current_assets": 590844000000,
          "current_liabilities": 637317000000, "goodwill": 7436000000},
-        {"year": "2025H1", "revenue": 1450099000000, "net_profit": 84007000000,
-         "operating_cashflow": 227063000000, "total_assets": 2849390000000,
-         "total_liabilities": 1096474000000, "accounts_receivable": 119715000000,
+        {"year": "2025H1", "revenue": 1450099000000, "net_profit": 93666000000,
+         "operating_cashflow": 227063000000, "total_assets": 2849632000000,
+         "total_liabilities": 1096490000000, "accounts_receivable": 119715000000,
          "inventory": 155724000000, "cost_of_goods": 1147144000000,
          "current_assets": 710678000000,
          "current_liabilities": 684270000000, "goodwill": 7424000000},
@@ -88,7 +119,7 @@ def _dim_of(text: str):
         return "信披合规"
     if any(k in text for k in ("关联")):
         return "关联交易"
-    return "财务错报"
+    return "财务风险"
 
 
 def build_ledger(fin, dc, vd, ao, my) -> dict:
@@ -121,8 +152,11 @@ def build_ledger(fin, dc, vd, ao, my) -> dict:
 
     # 2) 披露检查问题
     for j, issue in enumerate(dc.get("issues", []), len(details) + 1):
+        # 披露 issues 为「待核查线索」而非已确认违规：工具措辞均带"待核查/须核对/
+        # 不因正文未重复列示认定违规"，等级按一般（待核查）记录，避免与 risk_score=0
+        # 的合规高分自相矛盾；确需重点关注的由人工复核升级。
         add(f"R{j:03d}", "信披合规", f"披露问题：{str(issue)[:40]}",
-            _level_of(str(issue), "重要"),
+            _level_of(str(issue), "一般"),
             f"（数据来源：check_disclosure_compliance 问题清单）{issue}",
             "《上市公司信息披露管理办法》（2025修订）；《证券法》第七十八条。",
             "核查披露时点与披露内容完整性，评估对年报可信度的影响。",
@@ -135,7 +169,7 @@ def build_ledger(fin, dc, vd, ao, my) -> dict:
     for k, vr in enumerate(vd_risks, len(details) + 1):
         if not isinstance(vr, dict):
             continue
-        add(f"R{k:03d}", "财务错报", f"数据可靠性：{str(vr.get('message', ''))[:40]}",
+        add(f"R{k:03d}", "财务风险", f"数据可靠性：{str(vr.get('message', ''))[:40]}",
             "一般", f"（数据来源：validate_financial_data 勾稽校验未通过项）{vr.get('message', '')}",
             "三大勾稽校验规则（资产负债表平衡/现金流勾稽/利润分配一致性）。",
             "核对原始报表附注数据，修正后重新校验。",
@@ -146,7 +180,11 @@ def build_ledger(fin, dc, vd, ao, my) -> dict:
     # 4) 审计意见信号（非标/持续经营/关键审计事项）
     op = (ao.get("audit_opinion") or {})
     gc = (ao.get("going_concern") or {})
-    if not op.get("is_standard_opinion", True) and op.get("identified"):
+    # 仅「明确非标意见」才立为风险：未经审计（半年度报告）的 is_standard_opinion=None
+    # 属资料属性而非非标意见，不得误立（与全系统"未经审计仅是资料属性"口径一致）。
+    if op.get("identified") and (
+            op.get("is_standard_opinion") is False
+            or str(op.get("opinion_nature", "") or "") == "非标准"):
         add(f"R{len(details) + 1:03d}", "信披合规",
             f"审计意见为非标准（{op.get('opinion_type', '')}），年报可信度受影响",
             _level_of(str(op.get("risk_level", "")), "重要"),
@@ -191,7 +229,7 @@ def build_ledger(fin, dc, vd, ao, my) -> dict:
             "company_profile": "中国石油天然气股份有限公司是中国油气行业占主导地位的油气生产和销售商，"
                                "主要业务涵盖原油和天然气的勘探、开发、生产和销售，以及炼油、化工、"
                                "成品油销售和天然气管道运输等。报告期（2025年上半年）营业收入14,500.99亿元，"
-                               "同比下降6.7%；归母净利润840.07亿元，同比下降5.4%。",
+                               "同比下降6.7%；合并净利润936.66亿元，归母净利润839.93亿元，同比下降5.4%。",
         },
         "risk_summary": {
             "total_risks": len(details),
@@ -210,8 +248,13 @@ def build_ledger(fin, dc, vd, ao, my) -> dict:
 
 
 def main():
-    text = open(os.path.join(os.path.dirname(__file__), "..", ".tmp_cnpc.txt"),
-                encoding="utf-8").read()
+    # 直接读取测试案例集中的源 PDF；不依赖可能过期或不存在的临时抽取文件。
+    from pypdf import PdfReader
+    reader = PdfReader(PDF_PATH)
+    text = "\n\n".join(
+        f"--- 第 {i + 1} 页 ---\n{page.extract_text() or ''}"
+        for i, page in enumerate(reader.pages)
+    )[:200_000]
 
     # 1. 真实工具链
     vd_raw = validate_financial_data.invoke({"financial_data_json": json.dumps(VD_JSON)})
@@ -249,7 +292,15 @@ def main():
         "risk_models_json": rm,
         "audit_opinion_json": ao_raw,
     })
-    print("综合评分:", json.loads(score).get("score"), json.loads(score).get("level"))
+    score_data = json.loads(score) if isinstance(score, str) else (score or {})
+    print("综合评分:", score_data.get("score"), score_data.get("level"))
+
+    # 评分快照写入台账：结论章与封面分数一致（L 补丁）
+    report["comprehensive_score_snapshot"] = {
+        "score": score_data.get("score"),
+        "level": score_data.get("level") or "",
+        "basis": "综合评分由真实工具链计算，与封面一致",
+    }
 
     # 4. 导出三份 PDF
     result = _export_pdf_impl(

@@ -47,7 +47,7 @@ class TestDataValidator:
         assert result["data_validation"]["failed_checks"] >= 1
 
     def test_cashflow_reconciliation_pass(self):
-        """现金流勾稽关系成立时应通过"""
+        """Selected adjustments can pass screening without completing indirect reconciliation."""
         result = self._invoke({
             "net_profit": 1000,
             "operating_cashflow": 1100,
@@ -58,6 +58,9 @@ class TestDataValidator:
         checks = result["data_validation"]["all_checks"]
         cf_check = next(c for c in checks if "现金流" in c["check"])
         assert cf_check["passed"] is True
+        assert cf_check["status"] == "limited_check"
+        assert cf_check["evidence"]["verified"] is False
+        assert "不能视为完整间接法勾稽" in cf_check["message"]
 
     def test_insufficient_data_skip(self):
         """数据不足时应跳过校验而非报错"""
@@ -89,8 +92,8 @@ class TestDataValidator:
             assert len(risks) > 0
             assert all(r["dimension"] == "数据可靠性风险" for r in risks)
 
-    def test_all_checks_pass(self):
-        """数据完全一致时总体结论应为通过"""
+    def test_partial_cashflow_and_equity_checks_are_not_full_validation(self):
+        """Directional/selected-component checks must remain partially tested overall."""
         result = self._invoke({
             "total_assets": 10000,
             "total_liabilities": 6000,
@@ -105,7 +108,90 @@ class TestDataValidator:
             "retained_earnings_end": 2800,
             "dividends": 0,
         })
-        assert result["data_validation"]["validation_result"] == "通过"
+        validation = result["data_validation"]
+        assert validation["validation_result"] == "部分完成"
+        assert validation["status"] == "partially_tested"
+        assert validation["passed_checks"] == 1
+        assert validation["limited_checks"] == 2
+        assert validation["failed_checks"] == 0
+        assert len(validation["pending_checks"]) == 2
+
+    def test_current_aliases_keep_original_source_fields_and_dates(self):
+        result = self._invoke({
+            "report_period": "2025年半年度", "amount_unit": "百万元", "scope": "中国准则合并",
+            "total_assets_current": "2,849,632", "total_liabilities_current": 1096490,
+            "equity_total": 1753142, "net_profit_current": 93666,
+            "operating_cashflow_current": 227063, "net_profit_parent_current": 83993,
+            "retained_earnings_begin": 982234, "retained_earnings_end": 1020356, "dividends": 45755,
+            "_field_metadata": {
+                "total_assets_current": {"page": "47", "period": "2025-06-30", "locator": "合并资产总计"},
+                "equity_total": {"page": "48", "period": "2025-06-30"},
+                "retained_earnings_begin": {"page": "51", "period": "2025-01-01"},
+            },
+        })
+        checks = result["results"]
+        balance = checks[0]
+        assert balance["difference"] == 0
+        assert balance["passed"] is True
+        asset = next(f for f in balance["facts"] if f["field"] == "total_assets_current")
+        assert asset["fact_id"] == "F-total_assets_current"
+        assert asset["raw_value"] == "2,849,632"
+        assert asset["period"] == "2025-06-30"
+        assert balance["evidence"]["page"] == "47；48"
+        assert result["period"] == "2025年半年度"
+        assert checks[1]["status"] == "limited_check"
+        assert checks[2]["difference"] == 116
+        assert checks[2]["status"] == "limited_check"
+        assert "内部5%筛查阈值内" in checks[2]["message"]
+
+    def test_conflicting_alias_values_require_resolution(self):
+        result = self._invoke({"total_assets": 1000, "total_assets_current": 2000,
+                               "total_liabilities_current": 400, "equity_total": 600})
+        assert result["results"][0]["passed"] is None
+        assert result["input_warnings"]
+        assert result["results"][0]["status"] == "insufficient_data"
+
+    def test_nonzero_balance_difference_is_not_announced_as_balanced(self):
+        result = self._invoke({"total_assets": 1000, "total_liabilities": 400, "net_assets": 610})
+        balance = result["results"][0]
+        assert balance["passed"] is True
+        assert balance["difference"] == 10
+        assert balance["exact_match"] is False
+        assert balance["status"] == "limited_check"
+        assert "不能据此认定严格平衡" in balance["message"]
+
+    def test_zero_cashflow_has_no_directional_pass(self):
+        result = self._invoke({"net_profit_current": 100, "operating_cashflow_current": 0})
+        cashflow = result["results"][1]
+        assert cashflow["passed"] is None
+        assert "方向比较不具判别力" in cashflow["message"]
+
+    def test_disclosed_other_equity_change_reconciles_actual_petrochina_difference(self):
+        result = self._invoke({
+            "amount_unit": "百万元", "period": "2025年半年度", "scope": "中国准则合并",
+            "net_profit_parent_current": 83993, "retained_earnings_begin": 982234,
+            "retained_earnings_end": 1020356, "dividends": 45755,
+            "retained_earnings_other_changes": -116,
+            "_field_metadata": {"retained_earnings_other_changes": {
+                "page": "51", "locator": "合并股东权益变动表：其他权益变动-其他，未分配利润栏",
+            }},
+        })
+        equity = result["results"][2]
+        assert equity["difference"] == 0
+        assert equity["expected_change"] == equity["actual_change"] == 38122
+        assert equity["status"] == "calculated"
+        assert equity["other_changes"] == -116
+        assert equity["evidence"]["page"] == "51"
+        assert "F-retained_earnings_other_changes" in equity["evidence"]["fact_ids"]
+
+    def test_missing_equity_changes_are_not_invented_as_zero(self):
+        result = self._invoke({"net_profit_parent_current": 500, "retained_earnings_begin": 1000,
+                               "retained_earnings_end": 1500, "dividends": 0})
+        equity = result["results"][2]
+        assert equity["passed"] is True
+        assert equity["other_changes"] is None
+        assert equity["status"] == "limited_check"
+        assert all(f["field"] != "retained_earnings_other_changes" for f in equity["facts"])
 
 class TestParentCaliber:
     """R 补丁：未分配利润勾稽必须用归母口径，缺归母净利润即不判定。"""
@@ -152,10 +238,12 @@ class TestParentCaliber:
     def test_parent_scale_used_when_provided(self):
         from tools.data_validator import validate_financial_data
         data = json.dumps({
-            "net_profit_parent": 84007, "net_profit": 93666,
+            "net_profit_parent": 83993, "net_profit": 93666,
             "retained_earnings_begin": 982234, "retained_earnings_end": 1020356,
             "dividends": 45755,
         }, ensure_ascii=False)
         r = json.loads(validate_financial_data.invoke({"financial_data_json": data}))
         re_chk = next(c for c in r["data_validation"]["all_checks"] if "未分配利润" in c["check"])
         assert re_chk["passed"] is True and "归母" in re_chk["net_profit_note"]
+        assert re_chk["difference"] == 116
+        assert re_chk["status"] == "limited_check"

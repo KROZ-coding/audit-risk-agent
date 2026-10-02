@@ -1,4 +1,4 @@
-﻿"""系统效果量化评估脚本 v3.0 - 多模式性能指标与基线对比报告
+﻿"""系统效果量化评估脚本 v5.3 GA - 多模式性能指标与基线对比报告
 
 本模块实现竞赛手册 7.1 评分维度中"效果评估（15分）"的全部核心内容：
 - 风险识别准确率（Precision）：系统标记的风险中有多少确实存在
@@ -853,7 +853,7 @@ async def run_agent_evaluation():
         print(f"  {'维度':<25} {'Precision':<10} {'Recall':<10} {'F1':<10}")
         print(f"  {'─'*55}")
         dim_names = {
-            "financial_misstatement": "财务错报风险",
+            "financial_misstatement": "财务风险",
             "related_party": "关联交易风险",
             "disclosure_compliance": "信息披露合规风险",
             "going_concern": "持续经营风险",
@@ -880,8 +880,13 @@ async def run_agent_evaluation():
 # 报告生成器 + 主入口
 # ═══════════════════════════════════════════════════════════════════
 
-def generate_tool_report():
-    """运行工具模式评估并生成量化报告。"""
+def generate_tool_report(include_zero_shot: bool = False):
+    """运行工具模式评估并生成量化报告。
+
+    工具模式默认保持本地、确定性和快速。零样本 LLM 基线会产生一组
+    外部模型请求，因此只有在命令行显式开启时才执行，避免 Web 评估接口
+    被可选的对比实验拖慢。
+    """
     print("=" * 70)
     print("  上市公司年报风险识别 - 效果量化评估报告（工具模式）")
     print(f"  评估时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -909,10 +914,19 @@ def generate_tool_report():
     blind_normal_correct = sum(1 for r in blind_normal if r["correct"])
 
     # ─── 零样本 LLM 基线（可选，需 API Key）───
-    zero_shot_results = [run_zero_shot_baseline(case) for case in TEST_CASES]
-    zero_shot_valid = [r for r in zero_shot_results if not r.get("skipped")]
-    zero_shot_recalls = [r.get("recall", 0) for r in zero_shot_valid if r.get("recall") is not None]
-    zero_shot_avg_recall = sum(zero_shot_recalls) / len(zero_shot_recalls) if zero_shot_recalls else 0
+    zero_shot_valid = []
+    zero_shot_avg_recall = None
+    if include_zero_shot:
+        zero_shot_results = [run_zero_shot_baseline(case) for case in TEST_CASES]
+        zero_shot_valid = [r for r in zero_shot_results if not r.get("skipped")]
+        zero_shot_recalls = [
+            r.get("recall", 0) for r in zero_shot_valid
+            if r.get("recall") is not None
+        ]
+        zero_shot_avg_recall = (
+            sum(zero_shot_recalls) / len(zero_shot_recalls)
+            if zero_shot_recalls else 0
+        )
 
     # ─── 汇总统计 ───
     risk_cases = [r for r in results if r.get("expected") != "无风险"]
@@ -986,7 +1000,7 @@ def generate_tool_report():
     print("  三、分维度指标")
     print(f"{'─' * 70}")
     dim_names = {
-        "financial_misstatement": "财务错报风险",
+        "financial_misstatement": "财务风险",
         "related_party": "关联交易风险",
         "disclosure_compliance": "信息披露合规风险",
         "going_concern": "持续经营风险",
@@ -1052,8 +1066,14 @@ def generate_tool_report():
             "system_normal_total": len(normal_cases),
             "baseline_normal_correct": baseline_correct,
             "baseline_normal_total": len(baseline_results),
-            "zero_shot_llm_recall": round(zero_shot_avg_recall, 3),
-            "zero_shot_llm_improvement": round(avg_recall - zero_shot_avg_recall, 3) if zero_shot_valid else None,
+            "zero_shot_llm_recall": (
+                round(zero_shot_avg_recall, 3)
+                if zero_shot_avg_recall is not None else None
+            ),
+            "zero_shot_llm_improvement": (
+                round(avg_recall - zero_shot_avg_recall, 3)
+                if zero_shot_valid and zero_shot_avg_recall is not None else None
+            ),
             "zero_shot_llm_cases": len(zero_shot_valid),
         },
         "dimension_metrics": dim_metrics,
@@ -1062,28 +1082,8 @@ def generate_tool_report():
     return report_data
 
 
-def main():
-    """主入口：解析命令行参数并运行相应模式的评估。
-
-    模式说明：
-    - tool: 快速工具级评估（默认），仅测试财务指标计算规则
-    - agent: 全链路 Agent 评估（LLM + RAG + 辩论 + 思维链）
-    - all: 两种模式均运行
-    """
-    parser = argparse.ArgumentParser(description="年报风险识别系统效果评估工具")
-    parser.add_argument(
-        "--mode", choices=["tool", "agent", "all"], default="tool",
-        help="评估模式：tool=工具级（快速）, agent=全链路LLM, all=全部"
-    )
-    parser.add_argument(
-        "--output", default=None,
-        help="输出 JSON 文件路径（默认 evaluation_results.json）"
-    )
-    args = parser.parse_args()
-
-    output_dir = os.path.dirname(__file__) or "."
-    output_path = args.output or os.path.join(output_dir, "evaluation_results.json")
-
+def build_full_report(mode="tool", include_zero_shot: bool = False):
+    """构造评估结果，不负责文件写入，供 CLI 与 Web API 共用。"""
     full_report = {
         "generated_at": datetime.now().isoformat(),
         "test_suite": {
@@ -1093,24 +1093,49 @@ def main():
         "results": {},
     }
 
-    # ─── 工具模式 ───
-    if args.mode in ("tool", "all"):
+    if mode in ("tool", "all"):
         print("\n🔧 运行工具模式评估...")
-        tool_report = generate_tool_report()
+        tool_report = generate_tool_report(include_zero_shot=include_zero_shot)
         if tool_report:
             full_report["results"]["tool"] = tool_report
 
-    # ─── Agent 模式 ───
-    if args.mode in ("agent", "all"):
+    if mode in ("agent", "all"):
         print("\n🤖 运行 Agent 模式评估...")
         agent_report = asyncio.run(run_agent_evaluation())
         if agent_report:
             full_report["results"]["agent"] = agent_report
 
-    # ─── 写入 JSON 文件（供 Web UI 读取）───
+    return full_report
+
+
+def run_evaluation(mode="tool", output_path=None, include_zero_shot: bool = False):
+    """运行评估并写出结果；返回与 ``evaluation_results.json`` 相同的对象。"""
+    output_path = output_path or os.path.join(
+        os.path.dirname(__file__) or ".", "evaluation_results.json")
+    full_report = build_full_report(mode, include_zero_shot=include_zero_shot)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(full_report, f, ensure_ascii=False, indent=2)
     print(f"\n  📄 评估结果已保存至: {output_path}")
+    return full_report
+
+
+def main():
+    """命令行入口：tool 快速评估，agent 全链路评估，all 两者均执行。"""
+    parser = argparse.ArgumentParser(description="年报风险识别系统效果评估工具")
+    parser.add_argument(
+        "--mode", choices=["tool", "agent", "all"], default="tool",
+        help="评估模式：tool=工具级（快速）, agent=全链路LLM, all=全部"
+    )
+    parser.add_argument(
+        "--output", default=None,
+        help="输出 JSON 文件路径（默认 evaluation_results.json）"
+    )
+    parser.add_argument(
+        "--include-zero-shot", action="store_true",
+        help="额外运行零样本 LLM 基线（会产生外部模型请求，默认关闭）"
+    )
+    args = parser.parse_args()
+    run_evaluation(args.mode, args.output, include_zero_shot=args.include_zero_shot)
 
 
 if __name__ == "__main__":

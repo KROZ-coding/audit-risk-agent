@@ -428,7 +428,7 @@ def calculate_comprehensive_score(
                                 for k in available)
             renorm_notes.append(
                 f"{'、'.join(_DIM_CN.get(k, k) for k in missing)}维度未获取，"
-                f"总分已按剩余维度权重归一化计算（{'、'.join(renorm)}），"
+                f"总分已按剩余维度权重归一化计算（{renorm}），"
                 f"未获取维度不参与计分")
 
         # 量化模型与审计意见带来的风险抬升（可选输入，不传则为 0）
@@ -446,10 +446,10 @@ def calculate_comprehensive_score(
 
         # 生成一句话总结
         level_desc = {
-            "low": "该公司年报整体风险较低，各项指标基本正常",
-            "medium": "该公司年报存在一定风险信号，建议关注相关指标变动",
-            "high": "该公司年报存在较多风险信号，建议重点核查并追加审计程序",
-            "critical": "该公司年报存在重大风险信号，强烈建议全面深入审计",
+            "low": "现有可用输入的量化评分处于低风险区间，不代表已排除重大错报或其他风险",
+            "medium": "现有可用输入的量化评分处于中等风险区间，建议关注相关指标变动",
+            "high": "现有可用输入的量化评分处于高风险区间，建议重点核查并追加审计程序",
+            "critical": "现有可用输入的量化评分处于极高风险区间，建议扩大审计核查范围",
         }
         summary = level_desc.get(level_key, "")
         if missing:

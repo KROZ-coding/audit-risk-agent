@@ -94,13 +94,13 @@ class TestSubstitution:
 
 
 class TestIndicatorView:
-    """四项能力及补充分析视图：分组、未计算清单与定位。"""
+    """财务指标与审计关注分析视图：分组、未计算清单与定位。"""
 
     def test_groups_follow_planned_order(self):
         view = build_indicator_view(_calc())
         labels = [group["label"] for group in view["groups"]]
-        assert labels[:5] == ["偿债能力", "营运能力", "盈利能力", "成长能力", "现金流质量（补充）"]
-        assert "资产质量（补充）" in labels
+        assert labels[:5] == ["盈利能力", "营运能力", "偿债能力", "成长能力", "现金流质量"]
+        assert "资产质量与审计关注" in labels
 
     def test_each_metric_carries_full_chain(self):
         view = build_indicator_view(_calc())
@@ -201,7 +201,7 @@ class TestExportSurfaces:
         text = "".join((pg.extract_text() or "") for pg in pypdf.PdfReader(path).pages)
         text = "".join(text.split())
         assert "（三）指标计算过程与依据" in text
-        assert "代入过程（含结果）" in text
+        assert "公式、输入值及单位、代入过程" in text
         assert "120,000.00万元-100,000.00万元" in text
         # 未计算指标不进分组表，另列名称、状态与原因，不以中性值补齐
         assert "未计算指标" in text

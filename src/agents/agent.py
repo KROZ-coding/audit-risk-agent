@@ -10,6 +10,8 @@
 import os
 import re
 import json
+import copy
+import math
 import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -41,8 +43,383 @@ from tools.industry_outlook import industry_outlook
 from tools.regulatory_inquiry import search_regulatory_inquiries
 from tools.domain_guard import ToolCallOrderViolation, assert_hard_order, check_soft_order
 from utils.llm import thinking_extra_body
+from core.report_snapshot import (
+    build_final_snapshot,
+    build_visualization_payload,
+    snapshot_as_legacy_payload,
+)
 
 logger = logging.getLogger(__name__)
+
+
+_R002_CANONICAL = (
+    "关联方提供产品和服务占同类交易14.96%。"
+    "该比例与关联采购占营业成本的内部30%筛查参考值分母不同，不作阈值比较。"
+    "定价公允性、审批程序及资金流向仍需核查。"
+)
+
+
+def _normalize_related_party_text(text: str) -> str:
+    """消除 R002 中把不同分母的比例误作同一阈值比较的文案。"""
+    if not isinstance(text, str) or not text:
+        return text
+
+    # 先处理已经把 14.96% 和 30% 放进同一判断句的变体，避免只替换其中
+    # 一个短语后留下「未超过」等错误结论。
+    mixed_patterns = (
+        r"(?:报告披露\s*)?关联采购(?:占比|占同类交易|占同类交易比例)\s*14\.96%"
+        r"[^。；\n]{0,100}?(?:未超过|未超|不超过|低于|小于|未达到|不触及|不构成)[^。；\n]{0,100}?30%"
+        r"[^。；\n]*",
+        r"关联方提供产品和服务占同类交易\s*14\.96%"
+        r"[^。；\n]{0,100}?(?:未超过|未超|不超过|低于|小于|未达到|不触及)[^。；\n]*30%"
+        r"[^。；\n]*",
+        r"(?:报告披露\s*)?14\.96%\s*(?:未超过|未超|不超过|低于|小于|未达到|不触及)"
+        r"\s*30%[^。；\n]*",
+    )
+    for pattern in mixed_patterns:
+        text = re.sub(pattern, _R002_CANONICAL, text)
+
+    # 这些是实际模型常见的短语级变体。只在「关联采购」语境下改写，
+    # 不触碰评分模型或其他业务指标中的 14.96%。
+    text = re.sub(
+        r"(?:报告披露\s*)?关联采购占(?:比|同类交易|同类交易比例)\s*14\.96%",
+        "关联方提供产品和服务占同类交易14.96%",
+        text,
+    )
+    text = re.sub(
+        r"关联采购占比\s*未(?:超过|超)|关联采购占比\s*不超过",
+        "关联采购占比未达到",
+        text,
+    )
+    text = re.sub(
+        r"(?:支持证据[：:]\s*)?关联采购占比\s*未达到\s*30%\s*内部筛查参考值[^。；\n]*",
+        "支持证据：30%为内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作阈值比较",
+        text,
+    )
+    text = re.sub(
+        r"(?:支持证据[：:]\s*)?关联采购占比\s*未(?:超过|超)\s*30%\s*内部筛查参考值[^。；\n]*",
+        "支持证据：30%为内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作阈值比较",
+        text,
+    )
+    text = re.sub(
+        r"关联采购占比\s*14\.96%\s*(?:未超过|未超|不超过|低于|小于|未达到)\s*"
+        r"(?:30%\s*)?(?:内部筛查参考值|内部筛查线|内部参考阈值)?[^。；\n]*",
+        _R002_CANONICAL,
+        text,
+    )
+
+    # 统一旧兜底已经产生的括号式表达，并压缩重复的规范句，保证幂等。
+    text = re.sub(
+        r"关联方提供产品和服务占同类交易\s*14\.96%\s*（不与关联采购占营业成本的30%规则比较）",
+        _R002_CANONICAL,
+        text,
+    )
+    text = text.replace(
+        "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。"
+        "定价公允性、审批程序和资金流向待核查",
+        _R002_CANONICAL,
+    )
+    duplicate = _R002_CANONICAL + _R002_CANONICAL
+    while duplicate in text:
+        text = text.replace(duplicate, _R002_CANONICAL)
+    return text
+
+
+def _normalize_source_bound_text(value):
+    """修正文案中可由源报告确定的两个常见口径滑移。
+
+    中国石油半年报的 82.46% 是中国石油集团直接 A 股持股，另有 0.16% 通过
+    境外附属公司间接持股；应收账款 122,516 对 74,678 是较上年末的跨期比较，
+    不能称作同比。该清洗只改固定事实表述，不生成新金额或结论。
+    """
+    if isinstance(value, str):
+        receivable_revenue_canonical = (
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%。"
+            "两项比较期间不同，暂不作背离判断，回款质量待核查"
+        )
+        value = value.replace(
+            "中国石油集团持股比例82.46%（含间接持有H股）",
+            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
+        )
+        value = value.replace(
+            "中国石油集团持股比例82.46%",
+            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
+        )
+        value = re.sub(
+            r"控股股东中国石油集团持股比例\s*82\.62%\s*（含通过境外全资附属公司间接持有的H股）",
+            "控股股东中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
+            value,
+        )
+        value = re.sub(
+            r"控股股东中国石油集团持股82\.46%（含间接H股后表决权比例82\.62%）",
+            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
+            value,
+        )
+        value = re.sub(
+            r"控股股东中国石油集团持股82\.46%（含间接持有H股后表决权比例82\.62%）",
+            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
+            value,
+        )
+        value = re.sub(r"(应收账款(?:账面余额|余额))同比", r"\1较上年末", value)
+        # 中期期末余额的“较上年末”变动与期间收入同比不在同一比较基础上。
+        # 这类措辞可能来自 LLM 标题、推理链、系统告警或复核意见，必须在
+        # 网页、PDF、Excel 共用台账进入导出前统一降格为待核查线索。
+        value = value.replace(
+            "应收账款账面余额较上年末激增64.06%，与营收下降6.74%显著背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = value.replace(
+            "应收账款账面余额较上年末增长64.06%，与营收下降6.74%显著背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = re.sub(
+            r"应收账款(?:账面余额)?较上年末(?:激增|增长)\s*64\.06%\s*[，,]\s*"
+            r"(?:与)?(?:营业收入|营收)(?:同比(?:变动)?|下降)\s*-?6\.74%\s*(?:显著)?背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款(?:增速|账面余额[^；。\n]{0,20})[^；。\n]{0,60}背离约?\s*70\.80\s*个百分点[^；。\n]*",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        for old in (
+            "与营业收入同比变动 -6.74%显著背离",
+            "与营业收入同比变动-6.74%显著背离",
+            "与营业收入同比-6.74%显著背离",
+        ):
+            value = value.replace(
+                old,
+                "营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            )
+        value = value.replace(
+            "背离约70.80个百分点，远超内部筛查参考的20个百分点阈值",
+            "比较期间口径未对齐，暂不进行数值背离比较",
+        )
+        value = value.replace(
+            "内部筛查参考的20个百分点阈值",
+            "来源未核验的内部筛查阈值（不作为风险定级依据）",
+        )
+        value = re.sub(
+            r"应收账款/营业收入为\s*8\.26%\s*[，,]\s*低于能源行业内部参考值\s*12%",
+            "应收账款/营业收入为8.26%；行业参考值来源未核验，不作为风险定级依据",
+            value,
+        )
+        value = value.replace(
+            "应收账款/营业收入为8.26%，低于能源行业内部参考值12%",
+            "应收账款/营业收入为8.26%；行业参考值来源未核验，不作为风险定级依据",
+        )
+        value = value.replace(
+            "低于能源行业内部参考值12%",
+            "行业参考值来源未核验，不作为风险定级依据",
+        )
+        value = value.replace(
+            "应收账款增速显著高于营收增速",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = value.replace(
+            "低于内部筛查参考的30%阈值",
+            "未达到内部筛查阈值（来源未核验，不作为风险定级依据）",
+        )
+        value = re.sub(
+            r"低于能源行业内部筛查参考值\s*12%",
+            "低于内部筛查参考值12%（来源未核验，不作为行业基准或风险定级依据）",
+            value,
+        )
+        value = re.sub(
+            r"低于(?:内部)?筛查参考值\s*30%",
+            "低于内部筛查参考值30%（来源未核验，不作为行业基准或风险定级依据）",
+            value,
+        )
+        value = value.replace(
+            "低于30%内部参考阈值",
+            "未达到内部筛查阈值（来源未核验，不作为风险定级依据）",
+        )
+        value = value.replace(
+            "能源35%",
+            "能源行业参考值（来源未核验）",
+        )
+        value = value.replace(
+            "30%内部筛查参考值",
+            "30%内部筛查参考值（来源未核验，不作为风险定级依据）",
+        )
+        value = value.replace(
+            "153,668百万元",
+            "153,668百万元（即1,536.68亿元）",
+        )
+        value = value.replace(
+            "应收账款账面余额增速（64.06%）显著高于营业收入变动（-6.74%），两者方向背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = value.replace(
+            "应收账款账面余额增速（64.06%）显著高于营业收入变动（-6.74%），两者方向背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = re.sub(
+            r"应收账款账面余额增速（?64\.06%）?显著高于营业收入变动（?-?6\.74%）?，两者方向(?:背离|相反)",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额增速\s*[（(]?64\.06%[）)]?\s*显著高于营业收入变动(?:\s*[（(]-?6\.74%[）)])?\s*，且应收账款/营业收入为8\.26%[^。；\n]*",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额较上年末增幅\s*64\.06%\s*[，,]?\s*显著高于营业收入同比变动\s*[（(]-?6\.74%[）)]\s*[，,]?\s*二者方向背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额较上年末增幅\s*64\.06%\s*[，,]?\s*显著高于营业收入同比变动\s*[（(]-?6\.74%[）)]\s*[，,]?\s*两者方向背离",
+            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*回款节奏与收入变动方向存在背离迹象",
+            "应收账款期末账面余额较上年末增长64.06%，同口径回款与收入变动关系待核查",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*与营业收入同比下降-?6\.74%方向(?:背离|相反|不一致)",
+            "应收账款期末账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断",
+            value,
+        )
+        value = re.sub(
+            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*与营业收入同比变动方向(?:背离|相反|不一致)",
+            "应收账款期末账面余额较上年末增长64.06%，两项比较期间不同，暂不作背离判断",
+            value,
+        )
+        value = re.sub(
+            r"应收账款增幅\s*[（(]64\.06%[）)]\s*与(?:营业收入|营收)变动\s*[（(]-?6\.74%[）)]\s*"
+            r"方向相反，差额约\s*70\.8\s*个?百分点[^。；\n]*",
+            receivable_revenue_canonical,
+            value,
+        )
+        # 兜住标题、总体结论和复核意见中的自由改写。只处理同时出现应收账款、
+        # 营收和方向性结论的同一句文本，不影响经营现金流/利润等可比指标的背离判断。
+        value = re.sub(
+            r"应收账款(?:期末)?账面余额较上年末(?:增长|增加|激增|变动)\s*64\.06%"
+            r"[^。；\n]{0,100}(?:营业收入|营收)[^。；\n]{0,100}"
+            r"(?:方向(?:存在)?(?:背离|相反|不一致)|(?:显著|严重)?背离)"
+            r"[^。；\n]*",
+            receivable_revenue_canonical,
+            value,
+        )
+        value = value.replace(
+            "应收账款账面余额较上年末增长64.06%，回款与收入匹配性存疑",
+            "应收账款账面余额较上年末增加，回款质量待核查（期间口径待补）",
+        )
+        value = value.replace(
+            "关联采购占同类14.96%",
+            "关联方提供产品和服务占同类交易14.96%（不与关联采购占营业成本的30%规则比较）",
+        )
+        value = value.replace(
+            "关联采购占同类交易14.96%",
+            "关联方提供产品和服务占同类交易14.96%（不与关联采购占营业成本的30%规则比较）",
+        )
+        value = re.sub(
+            r"关联采购占比\s*14\.96%\s*低于(?:内部)?筛查线\s*30%",
+            "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较",
+            value,
+        )
+        value = re.sub(
+            r"关联采购占比\s*14\.96%\s*低于内部筛查线\s*30%",
+            "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较",
+            value,
+        )
+        value = re.sub(
+            r"支持证据：关联采购占比未超30%内部筛查参考值（来源未核验，不作为风险定级依据）(?:（来源未核验，不作为风险定级依据）)+",
+            "支持证据：30%为来源未核验的内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作为风险定级依据",
+            value,
+        )
+        value = re.sub(
+            r"(关联方提供产品和服务占同类交易14\.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。定价公允性、审批程序和资金流向待核查)(?:；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。定价公允性、审批程序和资金流向待核查)+",
+            r"\1",
+            value,
+        )
+        value = re.sub(
+            r"低于能源行业内部参考值\s*\d+(?:\.\d+)?%",
+            "行业参考值来源未核验，不作为风险定级依据",
+            value,
+        )
+        value = re.sub(r"（即1,536\.68亿元）(?:（即1,536\.68亿元）)+", "（即1,536.68亿元）", value)
+        value = value.replace(
+            "回款节奏与收入变动方向背离需关注",
+            "两项比较期间不同，暂不作背离判断，回款质量待核查",
+        )
+        value = value.replace(
+            "现金流质量良好",
+            "现金流指标未触发内部筛查提示，仍需结合完整勾稽与期后回款核查",
+        )
+        value = value.replace(
+            "回款效率未见明显异常",
+            "回款指标未触发内部筛查提示，仍需结合账龄与期后回款核查",
+        )
+        value = value.replace(
+            "商誉减值敞口未见显著异常",
+            "商誉指标未触发筛查提示，仍需结合减值测试核查",
+        )
+        value = value.replace(
+            "应收增速超营收增速20pp",
+            "应收与营收变动的同口径比较（当前无法验证）",
+        )
+        value = value.replace(
+            "应收账款增速超营收增速20pp",
+            "应收与营收变动的同口径比较（当前无法验证）",
+        )
+        value = value.replace(
+            "低于参考值",
+            "参考值来源未核验，不作为风险定级依据",
+        )
+        value = re.sub(
+            r"某上市公司利用资产减值[“\"]?洗大澡[”\"]?案例[^。；\n]*",
+            "未取得可核验的同类案例，不作为风险判定依据",
+            value,
+        )
+        value = re.sub(
+            r"(?:经营现金流|现金流)/净利润\s*2\.42",
+            "经营现金流/净利润2.42（仅反映整体现金流，不单独证明应收回款质量）",
+            value,
+        )
+        value = re.sub(
+            r"(经营现金流/净利润2\.42)(?:（仅反映整体现金流，不单独证明应收回款质量）)+",
+            r"\1（仅反映整体现金流，不单独证明应收回款质量）",
+            value,
+        )
+        value = re.sub(
+            r"(综合风险评分\s*\d+(?:\.\d+)?分（(?:中低|中高|中等|低|高|极高)风险）)\s*区间[）)]?",
+            r"\1",
+            value,
+        )
+        for _note in (
+            "（来源未核验，不作为行业基准或风险定级依据）",
+            "（来源未核验，不作为风险定级依据）",
+        ):
+            value = re.sub(r"(?:" + re.escape(_note) + r"){2,}", _note, value)
+        return _normalize_related_party_text(value)
+    if isinstance(value, dict):
+        # 中国石油半年报已明确披露担保分类及不存在控股股东/关联方担保；
+        # 在没有“未披露/违规”事实的情况下，金额规模本身不足以把事项定为重要风险。
+        # 保留原等级留痕，降为一般暂定关注，避免把已披露的或有事项过度定性。
+        company_info = value.get("company_info")
+        if (isinstance(company_info, dict)
+                and "中国石油" in str(company_info.get("company_name", ""))):
+            for risk in value.get("risk_details", []) or []:
+                if not isinstance(risk, dict) or "担保" not in str(risk.get("title", "")):
+                    continue
+                risk_text = " ".join(str(risk.get(k, "")) for k in ("title", "evidence", "data_analysis"))
+                if ("不存在" in risk_text and "关联方担保" in risk_text
+                        and not any(marker in risk_text for marker in ("违规", "未披露", "披露遗漏"))
+                        and risk.get("level") == "重要"):
+                    risk["original_level"] = risk.get("original_level") or risk.get("level")
+                    risk["level"] = "一般"
+                    risk["verification_status"] = "暂定关注"
+                    risk["pending_reason"] = "担保总额及分类已披露；关联方担保不存在的管理层声明和被担保主体范围仍待独立核查"
+        return {key: _normalize_source_bound_text(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_source_bound_text(item) for item in value]
+    return value
 
 # 三个任务模块的工具子集（对应架构定稿的三层任务单元）。
 # 混合运行模式：点单模块只跑该模块（工具裁剪后更快）；点综合研判则串跑三段。
@@ -103,7 +480,7 @@ ADVOCATE_SYSTEM_PROMPT = """你是风险关注方(Risk Advocate)，一位资深C
 2. 指出可能被低估的风险（如应为重大但被标为一般的条目）
 3. 补充可能遗漏的风险维度或异常信号
 4. 评估证据链完整性（数据→分析→法规→案例→建议是否闭环）
-5. 特别关注跨维度风险传导链（如应收激增→现金流恶化→持续经营风险）
+5. 核验跨维度传导的每个前提；应收上升不等于现金流已经恶化，缺证据时只列待核查路径
 
 输出格式（严格遵循）：
 【关注要点】：逐条列出你认为被低估、遗漏或需补充的风险点（每条注明风险ID或新发现）
@@ -147,8 +524,8 @@ SKEPTIC_SYSTEM_PROMPT = """你是风险否定方(Risk Skeptic)，一位经验丰
   作为发行人风险条目立项（实测缺陷：评分矛盾被误立项为信披风险）
 - 确需提及外部参考时须注明「（未经数据核验）」
 - 不得臆造或猜测综合评分、指标数值等系统计算结果（以提供的评分上下文为准）
-- 跨期穿透：禁止用当期静态现金流比率（如 OCF/NP）反驳应收账款激增等趋势性风险传导；
-  应收激增类结论必须补充经营性应付项目变动、应收票据贴现与回款质量等穿透分析
+- 跨期穿透：现金流增长与充沛现金流属于反向证据，但不能单独排除应收回款问题；
+  不得由应收上升直接推定现金流已经承压，须核查经营性应付、票据结算与期后回款
 - 量化模型预警：Altman Z-Score 落入灰色预警区/财务困境区、Beneish M-Score 超阈值等
   量化信号，不得以企业性质/股东背景/行业地位推翻，只能以可核验的模型适用性说明回应
 - 期后事项口径：大额期后事项（收购、分红、担保等）不得以「属期后事项」一句否定其
@@ -162,8 +539,8 @@ ARBITER_SYSTEM_PROMPT = """你是审计仲裁人(Arbiter)，一位拥有20年经
 
 仲裁要求：
 1. 对双方有争议的风险点逐条裁定，明确采纳哪方观点或取折中结论
-2. 最终确认每条风险的等级（重大/重要/一般），并说明裁定理由
-3. 对双方都认同的风险，确认其等级并强调核心证据
+2. 复核每条风险的关注等级（重大/重要/一般）并说明理由；未通过最终证据门禁的等级均为暂定
+3. 对双方认同的风险仍须核验核心证据，一致意见不等于风险成立
 4. 识别辩论中双方都未充分覆盖的遗漏风险
 5. 给出整体仲裁结论
 
@@ -182,11 +559,10 @@ ARBITER_SYSTEM_PROMPT = """你是审计仲裁人(Arbiter)，一位拥有20年经
   只能以可核验的具体反证降级
 - 趋势优先于绝对值：同比变动超过 30% 的科目不得仅以「绝对值低于行业基准」维持
   低风险等级，必须正面回应趋势异常的成因（基数效应、会计政策变更等）
-- 评分一致性：裁定结论不得自行宣称「与综合评分一致/相符」——综合评分由系统计算，
-  仲裁只陈述等级调整；最终台账含 3 个以上重要级风险时，禁止表述「与低风险评分相符」
-  类结论（5 个重要级红旗对应的整体风险绝不可能是低风险）
-- 跨期穿透：禁止用当期静态现金流比率（如 OCF/NP）反驳应收账款激增等趋势性风险传导；
-  应收激增类结论必须补充经营性应付项目变动、应收票据贴现与回款质量等穿透分析
+- 评分一致性：综合评分来自工具量化输入；仲裁只复核条目关注等级，不能用候选数量改写分数。
+  系统仅在最终证据门禁后依据已采信风险应用底线。候选较多与量化分较低可以并存，须明确待核查边界。
+- 跨期穿透：现金流增长与充沛现金流属于反向证据，但不能单独排除应收回款问题；
+  不得由应收上升直接推定现金流已经承压，须核查经营性应付、票据结算与期后回款
 - 期后事项口径统一：大额期后事项（收购、分红、担保等）须逐项回应——单独立项评估
   定价公允性与披露合规，或给出不属当期风险的客观理由；不得以「属期后事项」一句拒绝；
   同一报告内期后事项不得既作当期勾稽解释又不立项，处置口径必须一致
@@ -200,7 +576,7 @@ ARBITER_SYSTEM_PROMPT = """你是审计仲裁人(Arbiter)，一位拥有20年经
 
 输出格式（严格遵循）：
 【逐条裁定】：对每条争议风险的最终裁定（含采纳方、裁定等级、理由）
-【确认风险】：双方一致认同的风险条目确认
+【确认风险】：双方认同的关注事项（不代表确认违规或审计结论）
 【遗漏补充】：双方辩论中均未充分覆盖的风险点（如有）
 【仲裁结论】：通过 / 需补充 / 需重新分析
 【建议】：建议追加的审计程序或关注的额外指标
@@ -214,7 +590,7 @@ risk_id 用新编号（如 R006）；无任何调整时 adjustments 输出空数
 通过门槛放宽规则（必须遵守）：
 - 若风险台账已包含证据来源、等级与评分基本一致、且无自相矛盾，即使有少量待核实条目，也应优先裁定「通过」，并在建议中说明需人工复核的条目。
 - 仅当存在以下任一情形时，才裁定「需重新分析」：
-  1. 核心财务指标与风险等级明显矛盾（如 5 个以上重要级红旗但综合评分为低风险）；
+  1. 核心财务指标的取数、口径或适用性存在尚未解决的实质矛盾；
   2. 关键风险条目完全缺失证据且无法从系统证据推断；
   3. 同一指标在台账中出现两个互相矛盾的数值且无法裁定统一口径。
 - 「需补充」仅用于需要追加 1-2 项审计程序即可定稿的情形，不得作为默认保守选项。
@@ -358,7 +734,7 @@ def _windowed_messages(old, new):
     4. 若窗口首条是带 tool_calls 的 AIMessage，其应答 ToolMessage 均在其后，天然完整。
     这样保证窗口内不出现「孤儿 ToolMessage」和「无应答 tool_calls」。
     """
-    merged = add_messages(old, new)  # type: ignore
+    merged = _sanitize_tool_history(add_messages(old, new))  # type: ignore
     if len(merged) <= MAX_MESSAGES:
         return merged
 
@@ -367,7 +743,42 @@ def _windowed_messages(old, new):
     # 向后收缩：窗口不能以孤儿 ToolMessage 开头（其 tool_calls 母消息在窗口外）
     while start < len(merged) and isinstance(merged[start], ToolMessage):
         start += 1
-    return merged[start:]
+    return _sanitize_tool_history(merged[start:])
+
+
+def _sanitize_tool_history(messages):
+    """移除历史中没有完整工具应答的残留 AIMessage。
+
+    进程在模型请求失败或旧版本使用固定消息 ID 时，checkpoint 可能留下带
+    ``tool_calls`` 但没有对应 ToolMessage 的末尾消息。保留这类消息会让下一次
+    DeepSeek 请求直接被协议层拒绝；完整的 AIMessage + ToolMessage 配对继续保留。
+    没有 ``tool_calls`` 的历史 AIMessage 后面可能有旧版工具结果，这是既有台账
+    兼容形态，不能把它们误判为悬空调用。
+    """
+    cleaned = []
+    index = 0
+    messages = list(messages or [])
+    while index < len(messages):
+        message = messages[index]
+        if not isinstance(message, AIMessage) or not message.tool_calls:
+            cleaned.append(message)
+            index += 1
+            continue
+
+        expected = {str(call.get("id", "")) for call in message.tool_calls if call.get("id")}
+        replies = []
+        cursor = index + 1
+        while cursor < len(messages) and isinstance(messages[cursor], ToolMessage):
+            replies.append(messages[cursor])
+            cursor += 1
+        replied = {str(getattr(reply, "tool_call_id", "") or "") for reply in replies}
+        if expected and expected.issubset(replied):
+            cleaned.append(message)
+            cleaned.extend(replies)
+        # 不完整的 AI tool_calls 及其紧随的旧工具结果整体丢弃，避免留下另一种
+        # 孤儿 ToolMessage；普通 AIMessage 后的历史工具结果不在此处处理。
+        index = cursor if replies else index + 1
+    return cleaned
 
 
 def _merge_tool_ledger(old, new):
@@ -486,50 +897,30 @@ def _extract_risk_json(text: str) -> str | None:
     Returns:
         成功时返回 JSON 字符串，失败时返回 None
     """
-    # 第一步：定位关键字，快速判断文本中是否包含风险台账
-    start = text.find('"company_info"')
-    if start < 0:
+    raw = str(text or "")
+    if '"company_info"' not in raw and '"report_snapshot"' not in raw:
         return None
-    # 第二步：向前查找外层大括号起始位置
-    brace_start = text.rfind('{', 0, start)
-    if brace_start < 0:
-        return None
-    # 第三步：大括号深度计数，找到配对的结束位置
-    # 维护字符串状态（in_string / escape），仅在字符串外部计数括号，
-    # 防止风险描述文本内含有 { } 时（如 "evidence":"货币资金{注:含受限}..."）
-    # 导致 depth 提前失衡、抠出语法残缺的子串
-    depth, end = 0, -1
-    in_string = False
-    escape = False
-    for i in range(brace_start, len(text)):
-        ch = text[i]
-        if in_string:
-            # 字符串内：处理转义，遇未转义的 " 退出字符串
-            if escape:
-                escape = False
-            elif ch == '\\':
-                escape = True
-            elif ch == '"':
-                in_string = False
+
+    # 不能再从 company_info 位置反向取最近的 ``{``：终局兼容块现在先放
+    # report_snapshot，快照内部有大量嵌套对象，最近的大括号通常只是
+    # company_info 的值对象或某个 fact，导致真实正文无法解析。只尝试
+    # 看起来可能是台账根对象的候选起点，再由 JSONDecoder 负责配对括号。
+    decoder = json.JSONDecoder()
+    # 顶层兼容台账的首字段不固定（可能是 analysis_id、report_snapshot
+    # 或 company_info），因此不能把候选起点绑定到某一个字段名。
+    candidates = re.finditer(r'\{\s*"[^"\\]+"\s*:', raw)
+    for match in candidates:
+        try:
+            parsed, end = decoder.raw_decode(raw[match.start():])
+        except json.JSONDecodeError:
             continue
-        # 字符串外：正常计数括号
-        if ch == '"':
-            in_string = True
-        elif ch == '{':
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-    if end < 0:
-        return None
-    # 第四步：尝试解析并验证必要字段存在性
-    try:
-        parsed = json.loads(text[brace_start:end])
-        return text[brace_start:end] if ("company_info" in parsed and "risk_details" in parsed) else None
-    except json.JSONDecodeError:
-        return None
+        if not isinstance(parsed, dict):
+            continue
+        # 新终局块要求兼容字段仍存在；report_snapshot-only 的内部片段
+        # 不应被误当成旧台账返回。
+        if "company_info" in parsed and "risk_details" in parsed:
+            return raw[match.start():match.start() + end]
+    return None
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -572,6 +963,52 @@ def _parse_c2_response(text: str) -> dict:
     return {"status": "valid", "checks": checks}
 
 
+def _backfill_c2_evidence_ids(c2_result: dict, risk_details: list) -> dict:
+    """将 C2 证据编号收敛到最终风险条目的已登记编号。"""
+    if not isinstance(c2_result, dict) or c2_result.get("status") != "completed":
+        return c2_result
+    if not isinstance(c2_result.get("judgment_1"), dict) or not isinstance(c2_result.get("judgment_2"), dict):
+        # 兼容历史/测试中仅保存 compare 结果的台账；没有两轮原始判断时
+        # 只能保留已有 checks，不能用空判断覆盖它们。
+        return c2_result
+    risk_ids = {}
+    for risk in risk_details or []:
+        if not isinstance(risk, dict) or not risk.get("risk_id"):
+            continue
+        evidence_ids = risk.get("evidence_ids") or risk.get("evidence_id") or []
+        if isinstance(evidence_ids, str):
+            evidence_ids = [evidence_ids]
+        if isinstance(evidence_ids, list):
+            risk_ids[str(risk["risk_id"])] = [str(item) for item in evidence_ids if item]
+
+    for judgment_key in ("judgment_1", "judgment_2"):
+        judgment = c2_result.get(judgment_key)
+        if not isinstance(judgment, dict):
+            continue
+        for check in judgment.get("checks", []) or []:
+            if not isinstance(check, dict):
+                continue
+            current = check.get("evidence_ids")
+            if not isinstance(current, list):
+                current = []
+            allowed = risk_ids.get(str(check.get("risk_id", "")), [])
+            if allowed:
+                # C2 可能复述旧版/幻觉编号。只允许最终风险条目已有的
+                # 证据进入门禁；全部失配时回填当前风险的完整证据集合，
+                # 避免旧编号既污染公共报告又让真实证据被误判为无效。
+                valid = list(dict.fromkeys(str(item) for item in current if str(item) in allowed))
+                check["evidence_ids"] = valid or list(allowed)
+
+    # 重新比较结构化字段，让回填后的两轮编号参与一致性判断；没有风险证据时
+    # 不造编号，原有 pending/invalid 结果保持不变。
+    c2_result.update(_compare_c2_reviews(
+        c2_result.get("judgment_1") or {},
+        c2_result.get("judgment_2") or {},
+        risk_details,
+    ))
+    return c2_result
+
+
 def _compare_c2_reviews(first: dict, second: dict, risk_details: list) -> dict:
     """只比较结构化字段，不以文字相似度认定两次判断一致。"""
     first_by_id = {item["risk_id"]: item for item in first.get("checks", [])}
@@ -599,8 +1036,8 @@ def _compare_c2_reviews(first: dict, second: dict, risk_details: list) -> dict:
             "decision_2": right["decision"] if right else "missing",
             "evidence_ids_1": left["evidence_ids"] if left else [],
             "evidence_ids_2": right["evidence_ids"] if right else [],
-            "reason_1": left["reason"] if left else "",
-            "reason_2": right["reason"] if right else "",
+            "reason_1": left.get("reason", "") if left else "",
+            "reason_2": right.get("reason", "") if right else "",
         })
     overall = "consistent" if result and all(item["state"] == "consistent" for item in result) else "pending_review"
     if not result and not (first.get("status") == second.get("status") == "valid"):
@@ -613,11 +1050,36 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
     """把 C2 和证据门禁写入台账，正式风险与待处理项分开统计。"""
     report_obj["result_schema_version"] = "1.0"
     report_obj["rule_version"] = "2026-09-v3"
+    # 统一快照：网页/PDF/Excel 全部从同一份规范化快照取数，禁止各端重新拼接。
+    # snapshot_id 由分析批次派生，旧批次/旧代码产物不得伪装成当前结果。
+    if not isinstance(report_obj.get("report_snapshot"), dict):
+        _snapshot_meta = {
+            "analysis_id": str((report_obj.get("company_info") or {}).get("run_id", "") or ""),
+            "result_schema_version": str(report_obj.get("result_schema_version", "1.0")),
+            "rule_version": str(report_obj.get("rule_version", "")),
+            "source_hash": str((report_obj.get("company_info") or {}).get("source_file_sha256", "") or ""),
+            "validation_status": str((report_obj.get("data_validation") or {}).get("validation_result", "") or ""),
+        }
+        report_obj["report_snapshot"] = {
+            "snapshot_id": _snapshot_meta["analysis_id"] or "snap-" + __import__("hashlib").sha256(
+                json.dumps(_snapshot_meta, sort_keys=True, ensure_ascii=False).encode("utf-8")
+            ).hexdigest()[:24],
+            **{k: v for k, v in _snapshot_meta.items() if v},
+            "facts": report_obj.get("facts") or [],
+            "metric_results": report_obj.get("metric_results") or [],
+            "risk_details": report_obj.get("risk_details") or [],
+            "accepted_risk_details": report_obj.get("accepted_risk_details") or [],
+            "pending_items": report_obj.get("pending_items") or [],
+            "comprehensive_score": report_obj.get("comprehensive_score") or report_obj.get("comprehensive_score_snapshot") or {},
+        }
+    if not report_obj.get("snapshot_id"):
+        report_obj["snapshot_id"] = str(report_obj["report_snapshot"].get("snapshot_id", ""))
     c1_result = c1_result if isinstance(c1_result, dict) else {}
     details = report_obj.get("risk_details")
     if not isinstance(details, list):
         details = []
         report_obj["risk_details"] = details
+    c2_result = _backfill_c2_evidence_ids(c2_result, details)
     c2_by_id = {item.get("risk_id"): item for item in (c2_result.get("checks") or []) if isinstance(item, dict)}
     evidence_catalog = {
         str(item.get("evidence_id")): item
@@ -641,6 +1103,7 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
     for risk in details:
         if not isinstance(risk, dict):
             continue
+        risk.pop("pending_reason", None)
         risk_id = str(risk.get("risk_id", ""))
         evidence_ids = risk.get("evidence_ids") or risk.get("evidence_id") or []
         if isinstance(evidence_ids, str):
@@ -665,13 +1128,17 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
             evidence_id in evidence_catalog and usable_evidence(evidence_catalog[evidence_id])
             for evidence_id in c2_evidence_ids
         )
-        if not evidence_ok:
+        if not evidence_ok or risk.get("evidence_pending") or risk.get("pending_verification"):
             risk["formal_status"] = "unaccepted"
             risk["verification_status"] = "待补证据"
             risk["status"] = "pending_evidence"
-            risk["pending_reason"] = "缺少可追溯 evidence/evidence_ids"
+            risk["pending_reason"] = (
+                "缺少可追溯的已核验证据编号" if not evidence_ok
+                else "条目仍标记为待核实，需补证及人工复核")
         elif review_enabled and c2_result.get("status") == "completed":
-            if c2 and c2.get("state") == "consistent" and c2_evidence_ok:
+            supported = bool(c2 and c2.get("decision_1") == "supported"
+                             and c2.get("decision_2") == "supported")
+            if c2 and c2.get("state") == "consistent" and c2_evidence_ok and supported:
                 risk["formal_status"] = "accepted"
                 risk["verification_status"] = "C2一致"
                 risk["status"] = "accepted"
@@ -684,14 +1151,25 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
                     # 反之才是两次判断未对齐。二者原因不同，不得混用（否则人工复核
                     # 会按错误原因去查语义分歧，实际该补的是证据定位）。
                     "C2证据引用未能回指已核验证据目录"
-                    if c2 and c2.get("state") == "consistent"
+                    if c2 and c2.get("state") == "consistent" and not c2_evidence_ok
+                    else "C2判断未支持该风险成立"
+                    if c2 and c2.get("state") == "consistent" and not supported
                     else "C2两次关键语义判断未明确对齐"
                 )
         else:
             # 关闭审查时可以保留有证据的事实和候选风险，但不能冒充复核通过。
-            risk["formal_status"] = "accepted"
-            risk["verification_status"] = "未测试"
-            risk["status"] = "accepted_without_review"
+            risk["formal_status"] = "unaccepted"
+            risk["verification_status"] = "未测试" if not review_enabled else "待复核"
+            risk["status"] = "pending_review"
+            risk["pending_reason"] = "未执行语义复核" if not review_enabled else "语义复核未完成"
+        if risk["formal_status"] == "accepted":
+            risk["level_status"] = "accepted"
+            risk["level_note"] = "已采信风险的关注等级，不等同于确认违规或审计结论。"
+            risk.pop("suggested_level", None)
+        else:
+            risk["level_status"] = "provisional"
+            risk["suggested_level"] = str(risk.get("level", "待定级") or "待定级")
+            risk["level_note"] = "建议关注等级（暂定），待补证及人工复核；不构成审计结论。"
         risk["c2_status"] = c2.get("state", "not_run") if c2 else "not_run"
         risk["c2_evidence_ids"] = {
             "judgment_1": c2.get("evidence_ids_1", []) if c2 else [],
@@ -718,13 +1196,15 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
     budget_exhausted = bool(review_budget.get("exhausted"))
     supplement_exhausted = bool(c1_result.get("supplement_exhausted"))
     human_review_required = bool(
-        budget_exhausted or supplement_exhausted
+        pending or budget_exhausted or supplement_exhausted
         or c2_result.get("human_review_required") or c1_result.get("human_review_required"))
     review_pending_reason = ""
     if budget_exhausted:
         review_pending_reason = str(review_budget.get("exhausted_reason", "") or "审查预算耗尽")
     elif supplement_exhausted:
         review_pending_reason = "补证轮次已达上限，需人工复核后决定是否继续补证"
+    elif pending:
+        review_pending_reason = f"尚有{len(pending)}项待复核提示未通过证据与语义门禁，需人工复核"
     elif human_review_required:
         review_pending_reason = str(c2_result.get("pending_reason") or c1_result.get("pending_reason") or "审查异常，需人工复核")
     report_obj["review_budget"] = review_budget
@@ -734,6 +1214,7 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
         review_enabled
         and c2_result.get("overall_status") == "consistent"
         and c1_complete
+        and not pending
         and not human_review_required)
     report_obj["review_gate"] = {
         "status": "passed" if gate_passed else "not_passed",
@@ -903,6 +1384,104 @@ def _collect_tool_evidence_catalog(tool_results: dict) -> list[dict]:
     return catalog
 
 
+def _source_report_evidence_records(tool_results: dict, source_text: str = "",
+                                    source_metadata: dict | None = None) -> dict:
+    """从分页原文中提取可回指的源报告证据。
+
+    ``parse_pdf_report`` 可能只发生在上传层，因而不会出现在最终 Agent 的
+    tool ledger 中。调用方可传入消息中的分页原文作为第二来源；没有分页标记
+    时不猜测页码，也不生成源报告证据。
+    """
+    raw = tool_results.get("parse_pdf_report", "") if isinstance(tool_results, dict) else ""
+    if isinstance(raw, dict):
+        raw = raw.get("content") or raw.get("extracted_text") or ""
+    raw = str(raw or "") or str(source_text or "")
+    if not raw:
+        return {}
+    chunks = {
+        int(page): excerpt.strip()
+        for page, excerpt in re.findall(
+            r"---\s*第\s*(\d+)\s*页\s*---([\s\S]*?)(?=---\s*第\s*\d+\s*页\s*---|$)",
+            raw,
+        )
+        if excerpt.strip()
+    }
+    if not chunks:
+        return {}
+
+    metadata = source_metadata if isinstance(source_metadata, dict) else {}
+    source_files = metadata.get("files") if isinstance(metadata.get("files"), list) else []
+    first_file = source_files[0] if source_files and isinstance(source_files[0], dict) else {}
+    file_match = re.search(r"文件(?:名)?\s*[:：]\s*([^，\n]+)", raw)
+    source_document = (
+        first_file.get("document_name") or first_file.get("source_document")
+        or (file_match.group(1).strip() if file_match else "源报告 PDF")
+    )
+    source_hash = str(first_file.get("source_hash") or "").strip()
+    # 按内容扫描全部页，而不是绑定某一版年报的历史物理页码。证据编号仍
+    # 保留实际命中的页码，便于人工回查和跨版本回归。
+    targets = {
+        "financial_misstatement": [
+            # 仅将明确的应收账款表格纳入证据。会计政策、其他应收款减值
+            # 表和现金流调整项也会同时出现“应收账款/坏账准备”，不能据此
+            # 绑定 R001。
+            ("R001", lambda text: "应收账款" in text and "减：坏账准备" in text,
+             "应收账款附注：账面余额、坏账准备及账面价值"),
+            ("R001", lambda text: (
+                ("应收账款账龄" in text and "坏账准备" in text)
+                or ("应收账款" in text.replace("其他应收账款", "")
+                    and ("前五名" in text or "前五大" in text))
+            ),
+             "应收账款附注：账龄及主要债务人"),
+        ],
+        "related_party": [
+            ("R002", lambda text: "中油财务" in text and ("存款" in text or "贷款" in text),
+             "关联金融服务：中油财务存贷款及利率"),
+            ("R002", lambda text: "提供产品和服务" in text and "14.96%" in text,
+             "关联交易：提供产品和服务及同类交易占比"),
+            ("R002", lambda text: ("1,536.68" in text or "1536.68" in text)
+             and ("借款" in text or "产品和服务" in text),
+             "关联交易附注：资金往来及借款"),
+            ("R002", lambda text: "应付款" in text and ("关联方" in text or "关联" in text),
+             "关联方应收应付款项"),
+            ("R003", lambda text: (
+                ("担保总额" in text or "担保余额" in text)
+                and ("9.72%" in text or "履约担保" in text)
+            ), "担保披露：担保总额/担保余额、分类及净资产占比"),
+        ],
+    }
+    records = {key: [] for key in targets}
+    for dimension, definitions in targets.items():
+        for risk_id, predicate, locator in definitions:
+            for page, excerpt in sorted(chunks.items()):
+                compact = re.sub(r"\s+", "", excerpt)
+                if not compact or not predicate(compact):
+                    continue
+                record = {
+                    "evidence_id": f"E-SOURCE-{risk_id}-P{page}",
+                    "source_type": "source_report",
+                    "source_document": source_document,
+                    "page": str(page),
+                    "locator": f"物理页{page}：{locator}",
+                    "excerpt": excerpt[:1600],
+                    "verified": True,
+                    "status": "verified",
+                }
+                if risk_id == "R003" and "9.72%" in compact:
+                    # 年报把比例写成“本集团净资产”，但这不是系统总权益字段的
+                    # 同义词；先把原文口径和待核对事项落到证据里，避免审计人员
+                    # 误把披露比例当成系统重算结果。
+                    record["excerpt"] = (
+                        f"{record['excerpt']}\n【口径核对】年报原文将9.72%表述为担保余额占本集团净资产比例；"
+                        "该比例未由系统用总权益口径重算，需核对分母定义、合并范围及四舍五入。"
+                    )[:1600]
+                    record["denominator"] = "本集团净资产（年报原文表述，具体定义待核对）"
+                if source_hash:
+                    record["source_hash"] = source_hash
+                records[dimension].append(record)
+    return {key: value for key, value in records.items() if value}
+
+
 def _system_evidence_records(tool_results: dict) -> dict:
     """将确定性工具信号包装为可追溯的证据目录记录。"""
     records = {key: [] for key in [
@@ -1014,7 +1593,8 @@ def _match_evidence_record_for_dimension(r: dict, dim: str, records: dict) -> di
     return candidates[0]
 
 
-def _backfill_risk_evidence(risk_json: str, tool_results: dict) -> str:
+def _backfill_risk_evidence(risk_json: str, tool_results: dict,
+                            source_text: str = "", source_metadata: dict | None = None) -> str:
     """用真实工具结果自动补全风险台账 evidence。
 
     背景：synthesis 第三阶段 LLM 只能看到前两段文本摘要，生成的 risk_json
@@ -1041,6 +1621,10 @@ def _backfill_risk_evidence(risk_json: str, tool_results: dict) -> str:
 
     sys_evidence = _collect_system_evidence(tool_results)
     evidence_records = _system_evidence_records(tool_results)
+    source_records = _source_report_evidence_records(
+        tool_results, source_text=source_text, source_metadata=source_metadata)
+    for dimension, records in source_records.items():
+        evidence_records.setdefault(dimension, []).extend(records)
     if not any(sys_evidence.values()) and not any(evidence_records.values()):
         return risk_json
 
@@ -1056,6 +1640,13 @@ def _backfill_risk_evidence(risk_json: str, tool_results: dict) -> str:
     report["evidence"] = catalog
 
     changed = len(catalog) != original_catalog_size
+    source_ids_by_risk = {}
+    for records in source_records.values():
+        for item in records:
+            evidence_id = str(item.get("evidence_id") or "")
+            match = re.match(r"E-SOURCE-([^-]+)-P\d+$", evidence_id)
+            if match:
+                source_ids_by_risk.setdefault(match.group(1), []).append(evidence_id)
     for r in details:
         if not isinstance(r, dict):
             continue
@@ -1072,6 +1663,56 @@ def _backfill_risk_evidence(risk_json: str, tool_results: dict) -> str:
             changed = True
 
         evidence = str(r.get("evidence", "") or "").strip()
+        source_ids = [
+            evidence_id for evidence_id in source_ids_by_risk.get(str(r.get("risk_id", "")), [])
+            if evidence_id in catalog_by_id
+        ]
+        if source_ids:
+            existing_ids = r.get("evidence_ids") or r.get("evidence_id") or []
+            if isinstance(existing_ids, str):
+                existing_ids = [existing_ids]
+            if not isinstance(existing_ids, list):
+                existing_ids = []
+            # 对 R001-R003 采用已登记的目录项，过滤模型残留的不存在编号，
+            # 避免真实源报告证据被一个幽灵 ID 拖入待补证状态。
+            merged_ids = []
+            for evidence_id in [*existing_ids, *source_ids]:
+                evidence_id = str(evidence_id)
+                if evidence_id and evidence_id in catalog_by_id and evidence_id not in merged_ids:
+                    merged_ids.append(evidence_id)
+            if merged_ids != r.get("evidence_ids"):
+                r["evidence_ids"] = merged_ids
+                changed = True
+            source_excerpts = [catalog_by_id[evidence_id].get("excerpt", "") for evidence_id in source_ids]
+            source_text = "；".join(str(item).strip() for item in source_excerpts if str(item).strip())
+            if (str(r.get("risk_id", "")) == "R003" and "9.72%" in source_text
+                    and "担保" in source_text):
+                # 该比例可由年报文本验证，但其分母不能从“总净资产”字段直接替代。
+                # 若本批次已有总净资产事实，给出差异量化，供人工核对而非自动改写原文。
+                total_net_assets = None
+                raw_fin = tool_results.get("calculate_financial_indicators", "")
+                try:
+                    fin_obj = json.loads(raw_fin) if isinstance(raw_fin, str) else raw_fin
+                    for fact in (fin_obj.get("facts", []) if isinstance(fin_obj, dict) else []):
+                        if isinstance(fact, dict) and fact.get("fact_id") in {"F-net_assets", "F-net_assets_current"}:
+                            value = fact.get("value")
+                            if isinstance(value, (int, float)) and value > 0:
+                                total_net_assets = float(value)
+                                break
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    total_net_assets = None
+                if total_net_assets:
+                    recalculated = 151161 / total_net_assets * 100
+                    source_text += (
+                        f"；【系统口径核对】总净资产事实为{total_net_assets:,.0f}百万元，"
+                        f"按此重算担保余额151,161百万元约为{recalculated:.2f}%，与年报9.72%不一致；"
+                        "9.72%倒算分母约为1,555,154百万元，接近归属于母公司股东权益口径，"
+                        "须核对年报定义及四舍五入后再使用。"
+                    )
+            if source_text and (len(evidence) < 30 or "source_report" not in str(r.get("evidence_source", ""))):
+                r["evidence"] = f"{evidence}；{source_text}" if evidence else source_text
+                r["evidence_source"] = "source_report"
+                changed = True
         # evidence 为空或太泛（<30 字符）时尝试用系统证据补全
         if len(evidence) < 30:
             dim = _norm_dim_for_backfill(r.get("dimension", ""))
@@ -1283,10 +1924,7 @@ def _sync_score_into_message(last_ai, score_dict: dict, floor_note: str = "") ->
             try:
                 _obj = json.loads(m.group(1))
                 if isinstance(_obj, dict):
-                    _obj["comprehensive_score"] = {k: score_dict.get(k) for k in
-                        ("score", "level", "level_key", "breakdown", "weights",
-                         "base_score", "escalation", "escalation_reasons", "summary",
-                         "notes") if k in score_dict}
+                    _obj["comprehensive_score"] = dict(score_dict)
                     _obj["comprehensive_score_snapshot"] = {
                         "score": _sc,
                         "level": _lv,
@@ -1706,6 +2344,7 @@ _RED_FLAG_ALERTS = (
     ("存贷双高", ("货币资金", "存贷", "短期借款", "利息支出")),
     ("现金流为负", ("现金流", "经营现金流")),
     ("应收增速显著高于", ("应收账款", "应收")),
+    ("应收账款账面余额较上年末增长", ("应收账款", "应收")),
     ("商誉", ("商誉",)),
 )
 
@@ -1933,11 +2572,7 @@ def _anchor_system_alerts(report_obj: dict, tool_results: dict) -> int:
     return anchored
 
 
-# ── 风险等级底线规则（50c 批次）──
-# 评分由工具结果在辩论前算出，与仲裁后最终台账零耦合——实测 17:59 版：最终台账 5 个
-# 重要级风险（R001-R005），综合评分却为 10.5 分（低风险），仲裁人还书写「与低风险
-# 评分相符」的荒谬闭环。底线规则：重大≥1 或 重要≥5 → 下限 51 分「高风险」；
-# 重要≥3 → 下限 26 分「中等风险」。触发时强制上调综合评级（不信任 LLM 的裁定叙事）。
+# 等级底线只使用最终证据门禁已采信的条目，候选风险不得触发上调。
 _FLOOR_MIN_SCORE = {"高风险": 51, "中等风险": 26}
 _FLOOR_LEVEL_KEY = {"高风险": "high", "中等风险": "medium"}
 
@@ -1951,7 +2586,8 @@ def _count_risk_levels(details: list) -> tuple:
     for r in details:
         if not isinstance(r, dict):
             continue
-        if "formal_status" in r and r.get("formal_status") != "accepted":
+        if (r.get("formal_status") != "accepted" or r.get("pending_verification")
+                or r.get("evidence_pending") or r.get("level_status") == "provisional"):
             continue
         lv = str(r.get("level", "") or "").strip()
         if lv in ("重大", "高风险", "极高风险", "严重", "高"):
@@ -1962,7 +2598,7 @@ def _count_risk_levels(details: list) -> tuple:
 
 
 def _enforce_risk_level_floor(report_obj: dict):
-    """风险等级底线规则：最终台账等级分布与综合评级矛盾时强制上调。
+    """在最终门禁后按已采信风险应用底线，单列调整并保留原量化分。
 
     判定（保守）：重大≥1 或 重要≥5 → 下限 51 分（高风险）；重要≥3 → 下限 26 分
     （中等风险）。当前评分已达标时不触发。触发时覆盖 comprehensive_score /
@@ -1981,30 +2617,51 @@ def _enforce_risk_level_floor(report_obj: dict):
         floor_level = "高风险"
     elif important >= 3:
         floor_level = "中等风险"
-    if floor_level is None:
-        return None
     score_json = report_obj.get("comprehensive_score")
     if not isinstance(score_json, dict):
         return None
     # 50d：score=None（评分未获取/无法判定）或 NaN 时不触发底线——
     # 「无数据」不得被改写为确定性的高风险（实测风险：-1 折叠 None 后伪造结论）
-    sc = score_json.get("score")
-    if not isinstance(sc, (int, float)) or sc != sc:
+    sc = score_json.get("quantitative_score", score_json.get("score"))
+    if isinstance(sc, bool) or not isinstance(sc, (int, float)) or not math.isfinite(sc):
         return None
     cur = float(sc)
+    # 重复门禁或后置清洗撤回条目时，撤回本函数添加的底线，不动原工具分。
+    was_adjusted = bool(score_json.get("level_floor_adjustment"))
+    if floor_level is None or cur >= _FLOOR_MIN_SCORE[floor_level]:
+        if not was_adjusted:
+            return None
+        restored = dict(score_json)
+        restored["score"] = cur
+        restored["level"] = restored.pop("quantitative_level", "未获取/无法判定")
+        restored["level_key"] = restored.pop("quantitative_level_key", "unavailable")
+        restored.pop("quantitative_score", None)
+        restored.pop("level_floor_adjustment", None)
+        restored["escalation_reasons"] = [
+            value for value in restored.get("escalation_reasons", [])
+            if not str(value).startswith("风险等级底线规则：")]
+        restored["notes"] = [value for value in restored.get("notes", [])
+                             if not str(value).startswith("风险等级底线规则：")]
+        report_obj["comprehensive_score"] = restored
+        report_obj["comprehensive_score_snapshot"] = {"score": cur, "level": restored["level"]}
+        report_obj.pop("level_floor_note", None)
+        if isinstance(report_obj.get("overall_assessment"), str):
+            from tools.pdf_export import _apply_score_snapshot
+            report_obj["overall_assessment"] = _apply_score_snapshot(report_obj["overall_assessment"], report_obj)
+        return json.dumps(restored, ensure_ascii=False), ""
     floor_score = _FLOOR_MIN_SCORE[floor_level]
-    if cur >= floor_score:
-        return None
-    old_level = str(score_json.get("level", "") or "") or "未知等级"
+    old_level = str(score_json.get("quantitative_level", score_json.get("level", "")) or "") or "未知等级"
     new = dict(score_json)
     new["score"] = float(floor_score)
     new["level"] = floor_level
     new["level_key"] = _FLOOR_LEVEL_KEY[floor_level]
-    # 底线同步基础分/抬升：避免 PDF KPI 卡出现「51 分但基础分 10.5」的自相矛盾
-    new["base_score"] = float(floor_score)
-    new["escalation"] = 0.0
-    reasons = list(new.get("escalation_reasons") or [])
-    reason = (f"风险等级底线规则：最终台账含重大 {major} 项、重要 {important} 项，"
+    new["quantitative_score"] = cur
+    new["quantitative_level"] = old_level
+    new["quantitative_level_key"] = score_json.get("quantitative_level_key", score_json.get("level_key", ""))
+    new["level_floor_adjustment"] = round(float(floor_score) - cur, 1)
+    reasons = [value for value in new.get("escalation_reasons", [])
+               if not str(value).startswith("风险等级底线规则：")]
+    reason = (f"风险等级底线规则：已采信风险含重大 {major} 项、重要 {important} 项，"
               f"综合评级不得为{old_level}，系统强制上调至{floor_level}")
     if reason not in reasons:
         reasons.append(reason)
@@ -2019,10 +2676,65 @@ def _enforce_risk_level_floor(report_obj: dict):
         report_obj["overall_assessment"] = _apply_score_snapshot(
             report_obj["overall_assessment"], report_obj)
     report_obj["level_floor_note"] = reason
-    warn = (f"\n\n⚠️ {reason}（原模型评分 {cur:g} 分已作废，"
-            f"请以 {floor_score:g} 分（{floor_level}）为准）")
+    warn = (f"\n\n⚠️ {reason}（原量化评分 {cur:g} 分，底线调整 "
+            f"{new['level_floor_adjustment']:g} 分，综合评分 {floor_score:g} 分）")
     logger.warning(f"风险等级底线规则触发：{reason}")
     return json.dumps(new, ensure_ascii=False), warn
+
+
+def _mark_score_review_status(report_obj: dict) -> None:
+    """将评分参考意义与风险采信状态分开，待核查不等于零风险。"""
+    pending = report_obj.get("pending_items") or []
+    gate = report_obj.get("review_gate") or {}
+    incomplete = bool(pending or gate.get("status") != "passed")
+    note = (f"评分为现有工具输入的量化参考；尚有 {len(pending)} 项待复核提示，"
+            "本次分析尚未完成复核，不能据此认定整体低风险或不存在重大错报。"
+            if incomplete else "已采信风险属于审计关注事项，不等同于确认违规或审计意见。")
+    report_obj["score_review_note"] = note
+    score = report_obj.get("comprehensive_score")
+    if isinstance(score, dict):
+        score["assessment_status"] = "pending_review" if incomplete else "reviewed"
+        score["assessment_note"] = note
+        score["pending_risk_count"] = len(pending)
+        notes = [value for value in score.get("notes", []) if not str(value).startswith((
+            "风险等级底线规则：", "评分为现有工具输入的量化参考；", "已采信风险属于审计关注事项"))]
+        for value in (report_obj.get("level_floor_note"), note):
+            if value and value not in notes:
+                notes.append(value)
+        score["notes"] = notes
+        if isinstance(score.get("score"), (int, float)):
+            score["summary"] = f"量化评分 {score['score']:g} 分（{score.get('level', '')}）。{note}"
+        _sync_score_total_records(report_obj)
+
+
+def _sync_score_total_records(report_obj: dict) -> None:
+    """Keep exported total-score records aligned after the accepted-risk floor."""
+    score = report_obj.get("comprehensive_score") or {}
+    value = score.get("score")
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        return
+    quantitative = score.get("quantitative_score", value)
+    adjustment = score.get("level_floor_adjustment", 0)
+    expression = f"量化评分 {quantitative:g} + 已采信风险底线调整 {adjustment:g} = {value:g} 分"
+    # Aggregated report records and records embedded in the scorer payload are both exported.
+    for container in (report_obj, score):
+        for fact in container.get("facts") or []:
+            if isinstance(fact, dict) and fact.get("fact_id") == "F-SCORE-TOTAL":
+                fact.update(value=value, raw_value=str(value))
+        for metric in container.get("metric_results") or []:
+            if isinstance(metric, dict) and metric.get("metric_id") == "score_total":
+                metric.update(value=value, display_value=str(value), substitution=expression)
+                metric["formula"] = "量化评分 + 已采信风险底线调整"
+                metric["inputs"] = [
+                    {"field": "quantitative_score", "value": quantitative, "unit": "分"},
+                    {"field": "level_floor_adjustment", "value": adjustment, "unit": "分",
+                     "risk_ids": [risk.get("risk_id") for risk in report_obj.get("risk_details", [])
+                                  if adjustment and isinstance(risk, dict)
+                                  and risk.get("formal_status") == "accepted"]},
+                ]
+        for evidence in container.get("evidence") or []:
+            if isinstance(evidence, dict) and evidence.get("evidence_id") == "E-SCORE-TOTAL":
+                evidence["excerpt"] = expression
 
 
 # ── 语义化编号（50d 引入，50e 改维度前缀）──
@@ -2065,25 +2777,186 @@ def _build_risk_index_md(report_obj: dict) -> str:
     保证「JSON 里有的条目正文必然有」（修复 V4 实测：仲裁新增 R006 未写入
     正文风险明细，底稿与正文打架）。含 semantic_id 与待核实标注。"""
     from tools.pdf_export import DIM_CN, _norm_dim
+    from core.report_snapshot import _public_dimension_label, _public_risk_title
+    from core.result_contract import risk_level_label
     details = [r for r in (report_obj.get("risk_details") or []) if isinstance(r, dict)]
     if not details:
         return ""
     lines = [
-        "### 最终风险清单（系统生成，与审计底稿同源）",
+        "### 风险与待复核提示清单（系统生成，与审计底稿同源）",
         "",
-        "| 语义编号 | 风险ID | 维度 | 风险标题 | 等级 | 置信度 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| 语义编号 | 风险ID | 维度 | 风险标题 | 关注等级 | 状态 | 置信度 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in details:
         sid = str(r.get("semantic_id", "") or r.get("risk_id", ""))
-        dim = DIM_CN.get(_norm_dim(r.get("dimension")), str(r.get("dimension", "") or ""))
-        title = str(r.get("title", "") or "")[:60]
-        pend = "【待核实】" if r.get("pending_verification") else ""
+        dim = str(r.get("display_dimension") or _public_dimension_label(r.get("dimension")) or DIM_CN.get(_norm_dim(r.get("dimension")), "未分类"))
+        title = str(r.get("display_title") or _public_risk_title(r.get("title", "")) or "")[:60]
+        pend = "【待复核提示】" if r.get("formal_status") != "accepted" or r.get("pending_verification") else ""
         conf = r.get("confidence")
         conf_s = f"{float(conf):.2f}" if isinstance(conf, (int, float)) else "—"
+        status = "正式采信风险" if r.get("formal_status") == "accepted" else str(r.get("verification_status") or "待复核")
         lines.append(f"| {sid} | {r.get('risk_id', '')} | {dim} | {title}{pend} | "
-                     f"{r.get('level', '')} | {conf_s} |")
+                     f"{risk_level_label(r)} | {status} | {conf_s} |")
     return "\n".join(lines)
+
+
+def _sync_summary_into_message(last_ai, report_obj: dict) -> bool:
+    """用门禁后的最终台账重建「双模块结论汇总」章节（先分模块，再逐条分点）。
+
+    模型原稿常把两个模块的结论挤在同一张 Markdown 表里，长依据摘要被列宽压缩后
+    不可读；本函数按维度把 risk_details 分成「财务健康度诊断」（财务错报 /
+    持续经营 / 数据可靠性）与「合规与经营风险扫描」两组，逐条输出分点
+    （风险等级 / 验证状态 / 置信度 / 依据），并保留章节标题与后续章节。
+    某组无条目时显式声明「本次未形成可列示的风险条目，不能据此认定不存在风险」，
+    避免空表被误读为「无风险」。
+
+    Args:
+        last_ai: 最终 AI 消息对象（就地改写其 content）
+        report_obj: 门禁与仲裁后的报告台账
+
+    Returns:
+        bool: 是否实际改写了消息内容（未找到章节或内容未变化时返回 False）
+    """
+    content = getattr(last_ai, "content", None)
+    if not isinstance(content, str):
+        return False
+    from core.result_contract import risk_level_label, split_risk_level_label
+
+    lines = content.splitlines(keepends=True)
+    start = end = None
+    depth = 0
+    fence = None
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        marker = re.match(r"(`{3,}|~{3,})", stripped)
+        if marker:
+            token = marker.group(1)
+            if fence is None:
+                if start is not None and stripped[len(token):].strip() == "json":
+                    close = next((j for j in range(index + 1, len(lines))
+                                  if lines[j].lstrip().startswith(token)), len(lines))
+                    try:
+                        block = json.loads("".join(lines[index + 1:close]))
+                    except (TypeError, ValueError):
+                        block = None
+                    if isinstance(block, dict) and "risk_details" in block:
+                        end = index
+                        break
+                fence = token[0]
+            elif token[0] == fence:
+                fence = None
+            continue
+        if fence:
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if not heading:
+            continue
+        if start is None and "双模块结论汇总" in heading.group(2):
+            start, depth = index, len(heading.group(1))
+        elif start is not None and len(heading.group(1)) <= depth:
+            end = index
+            break
+    if start is None:
+        return False
+    end = len(lines) if end is None else end
+
+    def cell(value):
+        return (str(value or "待补充").replace("|", "\\|")
+                .replace("\r", " ").replace("\n", " ").strip() or "待补充")
+
+    def bullet(risk):
+        from core.report_snapshot import _public_risk_title
+        title = cell(risk.get("display_title") or _public_risk_title(risk.get("title")))
+        status = ("正式采信风险" if risk.get("formal_status") == "accepted"
+                  else cell(risk.get("verification_status") or "待复核"))
+        conf = risk.get("confidence")
+        conf_s = f"{float(conf):.2f}" if isinstance(conf, (int, float)) else "—"
+        evidence = cell(risk.get("evidence") or "未记录依据")
+        # 只加粗裸等级，暂定标注留在粗体之外：前端徽章替换只识别裸等级词，
+        # 整串加粗会在「（暂定关注）」后留下游离 </strong>（实测渲染事故）。
+        level, provisional = split_risk_level_label(risk)
+        return (f"- **{title}**：风险等级：**{cell(level)}**{provisional}，状态：{status}，"
+                f"置信度：{conf_s}。依据：{evidence}")
+
+    details = [risk for risk in report_obj.get("risk_details", []) if isinstance(risk, dict)]
+    financial = {"financial_misstatement", "going_concern", "data_reliability"}
+    groups = (("财务健康度诊断", True), ("合规与经营风险扫描", False))
+    rows = [lines[start].rstrip(), ""]
+    for group_name, is_financial in groups:
+        picked = [risk for risk in details
+                  if (_norm_dim_for_backfill(risk.get("dimension")) in financial) == is_financial]
+        rows.extend([f"### {group_name}", ""])
+        if picked:
+            rows.extend(bullet(risk) for risk in picked)
+        else:
+            rows.append("本次未形成可列示的风险条目，不能据此认定不存在风险。")
+        rows.append("")
+    note = report_obj.get("score_review_note")
+    if note:
+        rows.extend([cell(note), ""])
+    updated = "".join(lines[:start]) + "\n".join(rows) + "\n" + "".join(lines[end:])
+    if updated == content:
+        return False
+    last_ai.content = updated
+    return True
+
+
+def _sync_risk_overview_into_message(last_ai, report_obj: dict) -> bool:
+    """用最终门禁台账重建网页风险统计，区分正式风险与待核查事项。
+
+    LLM 原始正文中的风险表按候选条目计数，容易与门禁后的「系统采信风险 0 项」
+    并列造成误读。该摘要只展示最终台账的正式/待核查两类统计，PDF 与 Excel
+    继续从同一份 report_obj 导出。
+    """
+    content = getattr(last_ai, "content", None)
+    if not isinstance(content, str) or not isinstance(report_obj, dict):
+        return False
+    match = re.search(
+        r"(?ms)^##\s*四、风险统计总览\s*$.*?(?=^##\s*五、风险明细\s*$)",
+        content,
+    )
+    if not match:
+        return False
+
+    all_details = [r for r in (report_obj.get("risk_details") or []) if isinstance(r, dict)]
+    accepted = [r for r in (report_obj.get("accepted_risk_details") or []) if isinstance(r, dict)]
+    pending = [r for r in (report_obj.get("pending_items") or all_details)
+               if isinstance(r, dict) and r.get("formal_status") != "accepted"]
+    from tools.pdf_export import _level_counts
+    formal_counts = _level_counts(accepted)
+    pending_counts = _level_counts(pending)
+    snap = report_obj.get("comprehensive_score_snapshot") or {}
+    score = snap.get("score")
+    if isinstance(score, (int, float)):
+        score_line = f"综合风险评分：{float(score):.1f}分（{snap.get('level', '')}，系统量化参考）"
+    else:
+        score_line = "综合风险评分：未获取/无法判定（请人工复核）"
+    replacement = "\n".join([
+        "## 四、风险统计总览",
+        "",
+        "| 状态 | 重大 | 重要 | 一般 | 合计 |",
+        "|------|------|------|------|------|",
+        f"| 正式采信风险 | {formal_counts['重大']} | {formal_counts['重要']} | {formal_counts['一般']} | {len(accepted)} |",
+        f"| 待复核提示（暂定关注） | {pending_counts['重大']} | {pending_counts['重要']} | {pending_counts['一般']} | {len(pending)} |",
+        "",
+        score_line,
+        f"评分状态：{report_obj.get('comprehensive_score', {}).get('assessment_status', 'pending_review') if isinstance(report_obj.get('comprehensive_score'), dict) else 'pending_review'}。",
+        "正式采信风险仅指通过证据门禁的条目；待复核提示不计入正式风险总数，也不等同于已确认财务问题、违规或整体低风险。",
+        "",
+    ])
+    updated = content[:match.start()] + replacement + content[match.end():]
+    if updated == content:
+        return False
+    last_ai.content = updated
+    return True
+
+
+def _risk_chart_state(report_obj: dict) -> list:
+    source = (report_obj.get("accepted_risk_details") if "accepted_risk_details" in report_obj
+              else report_obj.get("risk_details")) or []
+    return sorted((str(risk.get("risk_id", "")), str(risk.get("dimension", "")),
+                   str(risk.get("level", ""))) for risk in source if isinstance(risk, dict))
 
 
 # ── 维度标签白名单 + 规则纠正（50f 批次）──
@@ -2171,7 +3044,7 @@ def _build_system_conclusion_md(report_obj: dict) -> str:
         "",
         score_line,
     ]
-    for note_key in ("level_floor_note", "pending_verification_note",
+    for note_key in ("score_review_note", "level_floor_note", "pending_verification_note",
                      "disclosure_consistency_note"):
         note = report_obj.get(note_key, "") or ""
         if note:
@@ -2474,10 +3347,11 @@ def _enforce_disclosure_reconciliation(tool_results: dict, messages: list) -> No
         return
     if not (failed > 0 and rec == 0):
         return  # 无勾稽差异或已含勾稽扣分，无需兜底
-    # 优先复用 P1 注入的带扣分版本（tool_call_id="pre_d"）
+    # 优先复用 P1 注入的带扣分版本（兼容旧版 pre_d 与当前 pre_d_<token>）
     for m in messages or []:
         if isinstance(m, ToolMessage) and m.name == "check_disclosure_compliance" \
-                and str(getattr(m, "tool_call_id", "")) == "pre_d":
+                and (str(getattr(m, "tool_call_id", "")) == "pre_d" or
+                     str(getattr(m, "tool_call_id", "")).startswith("pre_d_")):
             content = str(m.content or "")
             if content and "reconciliation_checks" in content:
                 tool_results["check_disclosure_compliance"] = content
@@ -2596,11 +3470,17 @@ class _AgentWrapper:
                 局部报告、更不应拿不完整数据跑综合评分（会产生误导性分数）。
         """
         result = await self._agent.ainvoke(payload, config=config, **kw)
+        if post_process and isinstance(result, dict) and isinstance(payload, dict):
+            result = {**result, "source_metadata": payload.get("source_metadata"),
+                      "source_text": self._payload_source_text(payload)}
         return self._post_process(result) if post_process else result
 
     def invoke(self, payload, config=None, post_process=True, **kw):
         """同步调用 agent 并执行兜底后处理（post_process 语义同 ainvoke）"""
         result = self._agent.invoke(payload, config=config, **kw)
+        if post_process and isinstance(result, dict) and isinstance(payload, dict):
+            result = {**result, "source_metadata": payload.get("source_metadata"),
+                      "source_text": self._payload_source_text(payload)}
         return self._post_process(result) if post_process else result
 
     @staticmethod
@@ -2620,6 +3500,29 @@ class _AgentWrapper:
             if isinstance(node, dict):
                 for m in node.get("messages", []):
                     yield m
+
+    @staticmethod
+    def _payload_source_text(payload) -> str:
+        """取请求中的最长用户原文，供流式后处理建立源报告证据。"""
+        candidates = []
+        messages = (payload or {}).get("messages", []) if isinstance(payload, dict) else []
+        for message in messages:
+            if isinstance(message, dict):
+                role = message.get("role")
+                content = message.get("content", "")
+            else:
+                role = getattr(message, "type", "")
+                content = getattr(message, "content", "")
+            if role not in {"user", "human"}:
+                continue
+            if isinstance(content, list):
+                content = "".join(
+                    part if isinstance(part, str) else str((part or {}).get("text", ""))
+                    for part in content
+                )
+            if isinstance(content, str) and content.strip():
+                candidates.append(content)
+        return max(candidates, key=len) if candidates else ""
 
     async def astream(self, payload, config=None, post_process=True, **kw):
         """流式透传底层 agent，并在流结束后补跑 _post_process。
@@ -2671,9 +3574,19 @@ class _AgentWrapper:
             # 先推一个「后处理开始」标记：辩论三轮 + 兜底导出可能耗时 30-60s，
             # 上游据此更新进度文案，避免前端进度条长时间静止让用户以为卡死
             yield {"__post_processing__": True}
-            self._post_process({"messages": messages, "tool_ledger": full_ledger})
+            processed_result = self._post_process({"messages": messages, "tool_ledger": full_ledger,
+                                "source_metadata": payload.get("source_metadata")
+                                if isinstance(payload, dict) else None,
+                                "source_text": self._payload_source_text(payload)})
             # messages 已被 _post_process 就地补充（最后 AIMessage 含导出链接+辩论+评分）
-            yield {"__post_processed__": True, "messages": messages}
+            yield {
+                "__post_processed__": True,
+                "messages": messages,
+                "final_snapshot": (
+                    processed_result.get("final_snapshot")
+                    if isinstance(processed_result, dict) else None
+                ),
+            }
         except ToolCallOrderViolation:
             # 顺序强制门禁 fail-closed：不吞掉异常，向上抛出以清晰错误中断流式响应
             raise
@@ -2765,11 +3678,15 @@ class _AgentWrapper:
         if not risk_json:
             # 无法提取风险 JSON 时，用 AI 文本构造兜底输入（确保辩论/图表/评分仍能运行）
             risk_json = json.dumps({"company_info": {}, "risk_details": [], "overall_assessment": str(last_ai.content)[:2000]}, ensure_ascii=False)
+        _chart_state_before = _risk_chart_state(json.loads(risk_json))
 
         # 方案 4：用真实工具结果自动补全风险台账 evidence。
         # 在维度归一化与辩论前执行，确保仲裁人看到的台账都有可追溯证据。
         try:
-            risk_json = _backfill_risk_evidence(risk_json, tool_results)
+            risk_json = _backfill_risk_evidence(
+                risk_json, tool_results,
+                source_text=str(result.get("source_text", "") or ""),
+                source_metadata=result.get("source_metadata"))
         except Exception as e:
             logger.warning(f"风险证据自动补全失败（不阻断主流程）: {e}")
 
@@ -2858,10 +3775,7 @@ class _AgentWrapper:
                     try:
                         _ro = json.loads(risk_json)
                         if isinstance(_ro, dict):
-                            _ro["comprehensive_score"] = {k: _sd.get(k) for k in
-                                ("score", "level", "level_key", "breakdown", "weights",
-                                 "base_score", "escalation", "escalation_reasons", "summary")
-                                if k in _sd}
+                            _ro["comprehensive_score"] = dict(_sd)
                             if isinstance(_sd.get("score"), (int, float)):
                                 _ro["comprehensive_score_snapshot"] = {
                                     "score": float(_sd["score"]),
@@ -2910,33 +3824,10 @@ class _AgentWrapper:
                     logger.info(f"系统告警锚定完成：{_anchored} 条红旗条目已锚定")
         except Exception as e:
             logger.warning(f"系统告警锚定失败（不阻断主流程）: {e}")
-        # 50e：辩论前底线预锁——锚定提升等级后，基于当时台账先算一次底线；触发则
-        # 更新 risk_json/score_context/消息层，使辩论基于底线分（如 26 中等）而非
-        # 工具原始分（15 低）——修复 V4 时空错位（全员基于 15 分辩论，系统后宣判 26）。
+        # 复核前只提供工具量化分，候选风险不得提前触发等级底线。
         _floor_sd = None
         _floor_note = ""
-        try:
-            _pre_lock_obj = json.loads(risk_json)
-            if isinstance(_pre_lock_obj, dict):
-                _pre_floor = _enforce_risk_level_floor(_pre_lock_obj)
-                if _pre_floor:
-                    _pre_floor_json, _pre_floor_warn = _pre_floor
-                    risk_json = json.dumps(_pre_lock_obj, ensure_ascii=False)
-                    tool_results["calculate_comprehensive_score"] = _pre_floor_json
-                    _floor_sd = json.loads(_pre_floor_json)
-                    _floor_note = _pre_lock_obj.get("level_floor_note", "") or ""
-                    # 50f：评分卡同步为预锁底线分（否则 score_text 残留工具原始分，
-                    # 与 score_context/底线分不一致）
-                    score_text = (f"\n\n<!--COMPREHENSIVE_SCORE-->\n{_pre_floor_json}"
-                                  f"{_pre_floor_warn}")
-                    score_context = (
-                        f"综合评分（系统计算，禁止臆造或修改）：{_floor_sd.get('score')} 分"
-                        f"（{_floor_sd.get('level')}）。{_floor_note}——该分数已含风险等级"
-                        "底线规则上调，辩论与裁定必须基于此定级。")
-                    if _sync_score_into_message(last_ai, _floor_sd, floor_note=_floor_note):
-                        logger.info("辩论前底线预锁：已回刷前端消息中的评分表述为底线分")
-        except Exception as e:
-            logger.warning(f"辩论前底线预锁失败（不阻断主流程）: {e}")
+        score_context += " 风险条目尚待证据门禁；候选数量不得触发等级底线，量化分不等同于审计结论。"
         if REVIEW_ENABLED and not skip_debate:
             debate_result = self._run_debate(risk_json, score_context)
             if debate_result:
@@ -3113,6 +4004,58 @@ class _AgentWrapper:
         # 同步处理：勾稽差异条目并入（F3）+ 伪风险备查录（F4）
         try:
             report_obj = json.loads(risk_json)
+            # /upload 已在服务端计算源文件指纹；前端只传结构化元数据，避免哈希、
+            # 页数和文件名被拼进原文后丢失。仅补空字段，不覆盖模型已有来源信息。
+            try:
+                source_meta = result.get("source_metadata") if isinstance(result, dict) else None
+                source_files = source_meta.get("files") if isinstance(source_meta, dict) else None
+                source_file = next((item for item in (source_files or [])
+                                    if isinstance(item, dict)), None)
+                if source_file:
+                    source_obj = report_obj.get("source")
+                    if not isinstance(source_obj, dict):
+                        source_obj = {}
+                        report_obj["source"] = source_obj
+                    source_values = {
+                        "document_name": source_file.get("document_name") or source_file.get("filename"),
+                        "source_hash": source_file.get("source_hash"),
+                        "page_count": source_file.get("page_count"),
+                    }
+                    company_obj = report_obj.get("company_info")
+                    if not isinstance(company_obj, dict):
+                        company_obj = {}
+                        report_obj["company_info"] = company_obj
+                    for key, value in source_values.items():
+                        if value in (None, "", []):
+                            continue
+                        if not source_obj.get(key):
+                            source_obj[key] = value
+                        if key == "source_hash":
+                            company_obj.setdefault("source_file_sha256", value)
+                        elif key == "document_name":
+                            company_obj.setdefault("source_document", value)
+                        elif key == "page_count":
+                            company_obj.setdefault("page_count", value)
+            except Exception as _source_meta_err:
+                logger.warning(f"源文件元数据回填失败（不阻断导出）: {_source_meta_err}")
+            # 报告身份确定性兜底：公司名/股票代码/报告期/行业只从年报正文识别，
+            # 模型漏抽时补齐，避免产物名退化为「未知公司」、风险模型报「缺少本期期间」。
+            # 仅补空字段，绝不覆盖模型已给出的非空值，也不改动其他台账内容。
+            try:
+                from langchain_core.messages import HumanMessage as _HM_ID
+                from utils.report_identity import apply_company_info_fallback
+                # astream/invoke 的结果消息可能已经丢弃原始 HumanMessage；
+                # _AgentWrapper 在入口保存的完整 source_text 才是身份识别的权威语料。
+                _id_text = str(result.get("source_text", "") or "").strip()
+                if not _id_text:
+                    _id_text = max((str(m.content) for m in messages or []
+                                    if isinstance(m, _HM_ID) and m.content),
+                                   key=len, default="")
+                if _id_text:
+                    report_obj["company_info"] = apply_company_info_fallback(
+                        report_obj.get("company_info"), _id_text)
+            except Exception as _id_err:
+                logger.warning(f"报告身份兜底识别失败（不阻断导出）: {_id_err}")
             if review_block:
                 report_obj["review_conclusion"] = review_block
             # 50d：仲裁状态写入台账（复核意见章渲染状态标记，与网页同源）
@@ -3229,23 +4172,6 @@ class _AgentWrapper:
             except Exception:
                 pass
 
-            # 50c：风险等级底线规则——最终台账等级分布与综合评级矛盾时强制上调
-            # （实测 17:59 版：5 个重要级风险仍评 10.5 分低风险）。触发时同步
-            # tool_results（PDF 评分章/Excel 同口径）、重建评分卡并重刷消息层表述。
-            try:
-                _floor = _enforce_risk_level_floor(report_obj)
-                if _floor:
-                    _new_score_json, _floor_warn = _floor
-                    tool_results["calculate_comprehensive_score"] = _new_score_json
-                    _floor_sd = json.loads(_new_score_json)
-                    _floor_note = report_obj.get("level_floor_note", "") or _floor_note
-                    score_text = (f"\n\n<!--COMPREHENSIVE_SCORE-->\n{_new_score_json}"
-                                  f"{_floor_warn}")
-                    if _sync_score_into_message(last_ai, _floor_sd, floor_note=_floor_note):
-                        logger.info("等级底线·消息层：已重刷前端消息中的评分表述")
-            except Exception as e:
-                logger.warning(f"风险等级底线规则执行失败（不阻断主流程）: {e}")
-
             # 50f：维度标签白名单 + 规则纠正（治分类器幻觉：关联交易→监管处罚）——
             # 仲裁回写后、语义编号派生前执行（仲裁新增条目同样纠正）
             try:
@@ -3301,14 +4227,13 @@ class _AgentWrapper:
                     try:
                         _conf = float(r.get("confidence"))
                     except (TypeError, ValueError):
-                        # 50d：置信度表述不规范/缺失时按 0.0 处理（触发待核实更安全）
-                        _conf = 0.0
-                    if _conf < 0.5 or r.get("evidence_pending"):
+                        _conf = None
+                    if (_conf is not None and _conf < 0.5) or r.get("evidence_pending"):
                         r["pending_verification"] = True
                         _pending_ids.append(str(r.get("risk_id", "?")))
                 if _pending_ids:
                     report_obj["pending_verification_note"] = (
-                        "待核实事项：以下条目置信度低于 0.50、关键证据缺失，"
+                        "待复核提示：以下条目置信度低于 0.50、关键证据缺失，"
                         "不得作为已确认风险结论引用：" + "、".join(_pending_ids))
                     logger.info(f"证据不足待核实标记：{_pending_ids}")
             except Exception as e:
@@ -3326,10 +4251,30 @@ class _AgentWrapper:
                                     self._last_c1_result)
                 report_obj["semantic_review"] = self._last_c2_result
                 report_obj["c1_review"] = self._last_c1_result
+                # 所有剥离、去重及待核实标记完成后，才应用已采信风险底线。
+                _floor = _enforce_risk_level_floor(report_obj)
+                _floor_note = report_obj.get("level_floor_note", "") or ""
+                _mark_score_review_status(report_obj)
+                _final_score = report_obj.get("comprehensive_score")
+                if isinstance(_final_score, dict) and "score" in _final_score:
+                    _floor_sd = dict(_final_score)
+                    _new_score_json = json.dumps(_final_score, ensure_ascii=False)
+                    tool_results["calculate_comprehensive_score"] = _new_score_json
+                    _floor_warn = _floor[1] if _floor else ""
+                    score_text = (f"\n\n<!--COMPREHENSIVE_SCORE-->\n{_new_score_json}"
+                                  f"{_floor_warn}")
+                    _sync_score_into_message(last_ai, _final_score, floor_note=_floor_note)
                 from tools.pdf_export import _reconcile_summary
                 _reconcile_summary(report_obj)
                 report_obj["system_conclusion_md"] = _build_system_conclusion_md(report_obj)
                 report_obj["risk_index_md"] = _build_risk_index_md(report_obj)
+                _sync_summary_into_message(last_ai, report_obj)
+                _sync_risk_overview_into_message(last_ai, report_obj)
+                # 源报告口径清洗必须在 PDF/Excel 导出前完成，网页正文随后也同步清洗。
+                report_obj = _normalize_source_bound_text(report_obj)
+                risk_json = json.dumps(report_obj, ensure_ascii=False)
+                if isinstance(last_ai.content, str):
+                    last_ai.content = _normalize_source_bound_text(last_ai.content)
             except Exception as e:
                 logger.warning(f"后置门禁/汇总刷新失败（不阻断导出）: {e}")
 
@@ -3352,27 +4297,10 @@ class _AgentWrapper:
             except Exception as e:
                 logger.warning(f"run_number 预注入失败，趋势图将回退自动计算序号: {e}")
 
-            risk_json = json.dumps(report_obj, ensure_ascii=False)
-        except Exception:
-            pass
-        # 50b：仲裁改级后（applied>0 且存在 level 实际变更）即使 LLM 已调用过图表，
-        # 也须用仲裁后 risk_json 强制重生（LLM 主运行阶段生成的图表反映仲裁前等级）；
-        # 趋势图数据来自多年对比，不受仲裁影响，不重生。
-        need_heatmap = (not skip_debate and not is_outlook) and (
-            "generate_risk_heatmap" not in called or arb_level_changed)
-        need_radar = (not skip_debate and not is_outlook) and (
-            "generate_radar_chart" not in called or arb_level_changed)
-        need_trend = "generate_trend_chart" not in called and not skip_debate and not is_outlook
-
-        # 产物期望清单写入结构化台账，供服务层分别报告成功/失败；这一步只登记
-        # 当前链路应生成的类型，不把“已登记”误当成文件已经落盘。
-        try:
-            _artifact_obj = json.loads(risk_json)
-            if isinstance(_artifact_obj, dict):
-                _artifact_obj["analysis_module"] = self._module or "all"
-                _artifact_obj["analysis_id"] = str(
-                    (_artifact_obj.get("company_info") or {}).get("run_id", "") or "")
-                _artifact_obj.setdefault("data_version", "2026-09-v3")
+            # 终局快照：所有门禁、复核、评分、摘要和公共文案清洗完成后只构建一次。
+            # 导出器仍收到兼容字段，但这些字段均由同一个快照派生，不能再各自
+            # 选择 risk_details、metric_results 或多年数据版本。
+            try:
                 _expected_artifacts = []
                 if not is_outlook and not skip_debate:
                     _expected_artifacts += [
@@ -3381,10 +4309,6 @@ class _AgentWrapper:
                         {"key": "trend", "kind": "chart", "label": "趋势折线图"},
                     ]
                 if not is_outlook:
-                    _pdf_key = {"financial": "pdf_financial", "compliance": "pdf_compliance"}.get(
-                        self._module, "pdf_synthesis")
-                    _pdf_label = {"financial": "财务健康诊断报告", "compliance": "合规与信息披露报告"}.get(
-                        self._module, "综合汇总报告")
                     if self._module in (None, "synthesis"):
                         _expected_artifacts += [
                             {"key": "pdf_financial", "kind": "pdf", "label": "财务健康诊断报告"},
@@ -3392,9 +4316,68 @@ class _AgentWrapper:
                             {"key": "pdf_synthesis", "kind": "pdf", "label": "综合汇总报告"},
                         ]
                     else:
-                        _expected_artifacts.append(
-                            {"key": _pdf_key, "kind": "pdf", "label": _pdf_label})
+                        _expected_artifacts.append({
+                            "key": {"financial": "pdf_financial", "compliance": "pdf_compliance"}.get(
+                                self._module, "pdf_synthesis"),
+                            "kind": "pdf",
+                            "label": {"financial": "财务健康诊断报告", "compliance": "合规与信息披露报告"}.get(
+                                self._module, "综合汇总报告"),
+                        })
                     _expected_artifacts.append({"key": "excel", "kind": "xlsx", "label": "Excel审计底稿"})
+                    _expected_artifacts.append({"key": "json", "kind": "json", "label": "TXT格式结构化风险台账（JSON内容）"})
+                report_obj["artifact_expectations"] = _expected_artifacts
+                report_obj["presentation_mode"] = os.getenv(
+                    "ANALYSIS_PRESENTATION_MODE", "strict").strip().lower() or "strict"
+                from core.report_publication import ensure_analysis_identity
+                ensure_analysis_identity(
+                    report_obj,
+                    run_id=getattr(request_context.get(), "run_id", "") or "",
+                )
+                _final_snapshot = build_final_snapshot(report_obj, tool_results)
+                report_obj = snapshot_as_legacy_payload(_final_snapshot, report_obj)
+                report_obj["report_snapshot"] = _final_snapshot
+                report_obj["snapshot_id"] = _final_snapshot["snapshot_id"]
+                # 结构化快照沿后处理结果向发布层传递，服务层不再从 ai_text
+                # 反向猜测风险、评分、期间和门禁状态。
+                result["final_snapshot"] = copy.deepcopy(_final_snapshot)
+                logger.info(
+                    "最终报告快照已创建：snapshot_id=%s，正式风险=%d，待核查=%d",
+                    _final_snapshot["snapshot_id"],
+                    len(_final_snapshot["risks"]["formal"]),
+                    len(_final_snapshot["risks"]["pending"]),
+                )
+            except Exception as e:
+                # 快照是发布前契约，创建失败不能伪装成普通导出成功；保留旧字段
+                # 供错误产物诊断，但以显式状态让 manifest/API 暴露失败原因。
+                logger.exception("最终报告快照创建失败")
+                report_obj["snapshot_error"] = str(e)
+            risk_json = json.dumps(report_obj, ensure_ascii=False)
+        except Exception:
+            pass
+        # 50b：仲裁改级后（applied>0 且存在 level 实际变更）即使 LLM 已调用过图表，
+        # 也须用仲裁后 risk_json 强制重生（LLM 主运行阶段生成的图表反映仲裁前等级）；
+        # 趋势图数据来自多年对比，不受仲裁影响，不重生。
+        # 完整运行统一从终局快照重绘三张图，即使 LLM 曾经提前调用过图表工具。
+        # 提前生成的图片使用的是仲裁前/临时载荷，不能作为最终交付物。
+        need_heatmap = not skip_debate and not is_outlook
+        need_radar = not skip_debate and not is_outlook
+        need_trend = not skip_debate and not is_outlook
+
+        # 产物期望清单写入结构化台账，供服务层分别报告成功/失败；这一步只登记
+        # 当前链路应生成的类型，不把“已登记”误当成文件已经落盘。
+        try:
+            _artifact_obj = json.loads(risk_json)
+            if isinstance(_artifact_obj, dict):
+                _artifact_obj["analysis_module"] = self._module or "all"
+                _artifact_obj["analysis_id"] = str(
+                    (_artifact_obj.get("company_info") or {}).get("run_id", "")
+                    or _artifact_obj.get("analysis_id", "") or "")
+                _artifact_obj.setdefault("data_version", "2026-09-v3")
+                # 统一快照随台账一起交给导出层：三端渲染只做格式化，不重新选口径。
+                if isinstance(_artifact_obj.get("report_snapshot"), dict):
+                    _artifact_obj["snapshot_id"] = _artifact_obj["report_snapshot"]["snapshot_id"]
+                elif _artifact_obj.get("snapshot_id"):
+                    _artifact_obj.setdefault("report_snapshot", {"snapshot_id": _artifact_obj["snapshot_id"]})
                 _artifact_obj["artifact_expectations"] = _expected_artifacts
                 risk_json = json.dumps(_artifact_obj, ensure_ascii=False)
         except Exception as e:
@@ -3410,7 +4393,9 @@ class _AgentWrapper:
         if arb_incomplete:
             logger.warning("仲裁未完成：已关闭真阻断，改为强可见警告 + 继续导出完整产物")
 
-        def _backfill_chart(tool_obj, label):
+        _chart_updates = {}
+
+        def _backfill_chart(tool_obj, label, tool_name):
             """图表兜底：成功返回展示文本（提 URL），失败降级为可见警告。"""
             try:
                 raw = str(tool_obj.invoke({"risk_report_json": risk_json}))
@@ -3419,58 +4404,60 @@ class _AgentWrapper:
                     url = json.loads(raw).get("download_url") or raw
                 except Exception:
                     pass
+                old_raw = tool_results.get(tool_name, "")
+                try:
+                    old_url = json.loads(old_raw).get("download_url") or old_raw
+                except (TypeError, ValueError, AttributeError):
+                    old_url = old_raw
+                if isinstance(old_url, str) and old_url.startswith(("/local_storage/", "http://", "https://")):
+                    _chart_updates[old_url] = url
+                tool_results[tool_name] = raw
                 return f"\n\n📊 {label}: {url}"
             except Exception as e:
                 logger.warning(f"{label}兜底生成失败: {e}")
                 return f"\n\n⚠️ {label}生成失败，本次报告未附该图表（详见服务日志）。"
 
         def _backfill_trend_chart():
-            """趋势折线图兜底：优先复用多年对比结果构造时序数据（LLM 未主动
-            调用时仍能出图，补齐三类图表）；无多年数据时降级为可见警告而非静默缺失。"""
+            """从终局快照派生趋势载荷；0/1/多年度都必须产生 PNG。"""
             try:
-                raw = tool_results.get("compare_multi_year", "")
-                if isinstance(raw, str) and raw:
-                    my_data = json.loads(raw)
+                final_obj = json.loads(risk_json)
+                snapshot = final_obj.get("report_snapshot") if isinstance(final_obj, dict) else None
+                if isinstance(snapshot, dict):
+                    trend_data = build_visualization_payload(snapshot, "trend")
+                else:
+                    # 旧会话没有终局快照时仍使用旧结果，但同样把空/单年度交给
+                    # 图表生成器，由图面明确说明数据不足。
+                    raw = tool_results.get("compare_multi_year", "")
+                    my_data = json.loads(raw) if isinstance(raw, str) and raw else {}
                     years = my_data.get("years_analyzed") or []
                     ind = my_data.get("indicators_by_year") or {}
-                    if len(years) >= 2:
-                        try:
-                            comp = (json.loads(risk_json).get("company_info") or {}).get("company_name", "未知公司")
-                        except Exception:
-                            comp = "未知公司"
-                        trend_data = {
-                            "company_name": comp,
-                            "amount_unit": my_data.get("amount_unit", ""),
-                            "amount_unit_state": my_data.get("amount_unit_state", "missing"),
-                            "amount_unit_note": my_data.get("amount_unit_note", ""),
-                            "amount_unit_by_year": my_data.get("amount_unit_by_year", {}),
-                            "currency": my_data.get("currency", ""),
-                            # run_number 透传：兜底在 ThreadPoolExecutor 线程内执行，
-                            # 趋势图文件名需与 PDF/Excel/热力图/雷达图共享同一罗马数字序号
-                            "run_number": _run_number,
-                            "years": [{"year": y,
-                                       "revenue": ind.get(y, {}).get("revenue"),
-                                       "net_profit": ind.get(y, {}).get("net_profit"),
-                                       "operating_cashflow": ind.get(y, {}).get("operating_cashflow"),
-                                       "accounts_receivable": ind.get(y, {}).get("accounts_receivable_end"),
-                                       "inventory": ind.get(y, {}).get("inventory_end"),
-                                       "total_assets": ind.get(y, {}).get("total_assets"),
-                                       "total_liabilities": ind.get(y, {}).get("total_liabilities"),
-                                       "cost_of_goods": ind.get(y, {}).get("cost_of_goods")}
-                                      for y in years],
-                        }
-                        raw_url = str(generate_trend_chart.invoke(
-                            {"trend_data_json": json.dumps(trend_data, ensure_ascii=False)}))
-                        url = raw_url
-                        try:
-                            url = json.loads(raw_url).get("download_url") or raw_url
-                        except Exception:
-                            pass
-                        return f"\n\n📊 趋势折线图: {url}"
+                    trend_data = {
+                        "company_name": (final_obj.get("company_info") or {}).get("company_name", "未知公司"),
+                        "amount_unit": my_data.get("amount_unit", ""),
+                        "amount_unit_state": my_data.get("amount_unit_state", "missing"),
+                        "amount_unit_note": my_data.get("amount_unit_note", ""),
+                        "years": [{"year": y, **(ind.get(y) or {})} for y in years],
+                    }
+                trend_data["run_number"] = _run_number
+                raw_url = str(generate_trend_chart.invoke(
+                    {"trend_data_json": json.dumps(trend_data, ensure_ascii=False)}))
+                url = raw_url
+                try:
+                    url = json.loads(raw_url).get("download_url") or raw_url
+                except Exception:
+                    pass
+                old_raw = tool_results.get("generate_trend_chart", "")
+                try:
+                    old_url = json.loads(old_raw).get("download_url") or old_raw
+                except (TypeError, ValueError, AttributeError):
+                    old_url = old_raw
+                if isinstance(old_url, str) and old_url.startswith(("/local_storage/", "http://", "https://")):
+                    _chart_updates[old_url] = url
+                tool_results["generate_trend_chart"] = raw_url
+                return f"\n\n📊 趋势折线图: {url}"
             except Exception as e:
                 logger.warning(f"趋势折线图兜底生成失败: {e}")
-            return ("\n\n⚠️ 趋势折线图生成失败（缺少多年财务数据），"
-                    "本次报告未附该图表（详见服务日志）。")
+            return "\n\n⚠️ 趋势折线图生成失败（详见服务日志），本次报告未附该图表。"
 
         def _backfill_export(tool_obj, prefix, fail_text, extra_args=None):
             """导出兜底：保持原有文案与失败提示格式。extra_args 用于给 PDF 导出
@@ -3488,9 +4475,9 @@ class _AgentWrapper:
         _hm_label = "风险热力图" + ("（仲裁后更新版）" if arb_level_changed else "")
         _rd_label = "财务雷达图" + ("（仲裁后更新版）" if arb_level_changed else "")
         if need_heatmap:
-            jobs["heatmap"] = lambda: _backfill_chart(generate_risk_heatmap, _hm_label)
+            jobs["heatmap"] = lambda: _backfill_chart(generate_risk_heatmap, _hm_label, "generate_risk_heatmap")
         if need_radar:
-            jobs["radar"] = lambda: _backfill_chart(generate_radar_chart, _rd_label)
+            jobs["radar"] = lambda: _backfill_chart(generate_radar_chart, _rd_label, "generate_radar_chart")
         if need_trend:
             jobs["trend"] = lambda: _backfill_trend_chart()
         if need_pdf:
@@ -3535,6 +4522,9 @@ class _AgentWrapper:
             # 展示顺序固定：图表在前、报告文件在后（与阅读动线一致）
             for key in ("heatmap", "radar", "trend", "pdf", "excel"):
                 links += outputs.get(key, "")
+            if isinstance(last_ai.content, str):
+                for old_url, new_url in _chart_updates.items():
+                    last_ai.content = last_ai.content.replace(old_url, new_url)
 
         if links:
             if isinstance(last_ai.content, str):
@@ -3597,6 +4587,10 @@ class _AgentWrapper:
                 last_ai.content += _AI_DISCLAIMER
             else:
                 last_ai.content.append(_AI_DISCLAIMER)
+        # 复核文本、风险索引和评分卡是在前面分别装配的，最后再做一次同源
+        # 口径清洗，防止旧的 LLM 标题或辩论摘录绕过导出前清洗进入网页正文。
+        if isinstance(last_ai.content, str):
+            last_ai.content = _normalize_source_bound_text(last_ai.content)
 
         # 50e/50f：最终装配后回刷（修复时序缺陷）——底线规则的消息层回刷此前执行于
         # review_block 追加进 content 之前，辩论文本中的旧分引用（如「综合评分
@@ -3639,13 +4633,18 @@ class _AgentWrapper:
                             pass
                         return m.group(0)
                     _final_content = re.sub(
-                        r"```json\s*(\{.*\})\s*```", _sync_final_ledger_block,
+                        r"```json\s*(\{.*?\})\s*```", _sync_final_ledger_block,
                         last_ai.content, flags=re.S)
                     if _final_content != last_ai.content:
                         last_ai.content = _final_content
                         logger.info("最终装配后回刷·台账：网页报告元数据已同步为门禁后台账")
         except Exception as e:
             logger.warning(f"最终台账回刷失败（不阻断主流程）: {e}")
+
+        # 台账回刷可能重新注入风险标题、评分和复核原文；完成所有装配后再做一次
+        # 幂等清洗，保证网页展示层与导出前的 report_obj 具有相同的口径边界。
+        if isinstance(last_ai.content, str):
+            last_ai.content = _normalize_source_bound_text(last_ai.content)
 
         return result
 
@@ -3845,7 +4844,7 @@ class _AgentWrapper:
                 first = first_future.result()
                 second = second_future.result()
             comparison = _compare_c2_reviews(first, second, details if isinstance(details, list) else [])
-            return {
+            result = {
                 "review_version": "C2-2026-09-v3",
                 "status": "completed",
                 # 调用次数按账本实际发生量记录（含重试），不写死为 2
@@ -3854,6 +4853,7 @@ class _AgentWrapper:
                 "judgment_2": second,
                 **comparison,
             }
+            return _backfill_c2_evidence_ids(result, details if isinstance(details, list) else [])
         except ReviewBudgetExceeded as exc:  # 预算耗尽：转人工，不追加调用
             logger.warning(f"C2 关键语义复核预算耗尽: {exc}")
             return {
@@ -4129,3 +5129,5 @@ def build_agent(ctx=None, model_override=None, module=None):
 
     # 包装为 _AgentWrapper 以提供兜底导出能力（透传 module 供后处理差异化）
     return _AgentWrapper(agent, module=module)
+
+

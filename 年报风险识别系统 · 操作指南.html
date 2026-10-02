@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>年报风险识别系统 · 操作指南 v5.0 GA</title>
+    <title>年报风险识别系统 · 操作指南 v5.3 GA</title>
     <style>
         :root {
             --bg-deep: #0a0f1a;
@@ -167,7 +167,7 @@
     <div class="hero glass-card visible">
         <span class="main-icon">📊</span>
         <h1>年报风险识别系统 · 操作指南</h1>
-        <div class="version-tag">v5.0 GA · AI Agent 智能审计分析平台</div>
+        <div class="version-tag">v5.3 GA · AI Agent 智能审计分析平台</div>
         <p style="color: var(--text-muted); margin-top: 10px; max-width: 640px; margin-left: auto; margin-right: auto;">
             基于 LangGraph Multi-Agent 架构的上市公司年报风险智能识别系统。<br>
             一键部署、五大核心模块、多智能体辩论、量化效果评估。<br>
@@ -410,7 +410,7 @@
         <p>启动 HTTP 服务后，点击顶部栏 <strong>📊 效果评估</strong> 按钮查看：</p>
         <ul>
             <li><strong>指标卡片</strong>：Precision（准确率）、Recall（召回率）、F1 分数、基线提升、平均耗时</li>
-            <li><strong>五维雷达图</strong>：按五大风险维度（财务错报、关联交易、信披合规、持续经营、监管处罚）展示识别准确率</li>
+            <li><strong>五维雷达图</strong>：按五大风险维度（财务风险、关联交易、信披合规、持续经营、监管处罚）展示识别准确率</li>
             <li><strong>基线对比表格</strong>：与简单规则引擎（仅检查负债率>70%）的召回率提升对比</li>
             <li><strong>逐用例明细</strong>：每个测试用例的预期/实际告警、F1 分数、耗时等详细信息</li>
         </ul>
@@ -431,7 +431,7 @@
         <h3>4.4 测试用例覆盖</h3>
         <p>工具模式评估包含 <strong>22 个合成标注样本</strong>（验证规则正确性）+ <strong>5 个盲测样本</strong>（真实处罚案例公开数据，未参与阈值设计，验证泛化能力，两组指标分开报告），合成集覆盖：</p>
         <div class="feature-grid">
-            <div class="feature-chip"><span class="feat-icon">📊</span>财务错报风险<br><small style="color:var(--text-muted)">10 用例</small></div>
+            <div class="feature-chip"><span class="feat-icon">📊</span>财务风险<br><small style="color:var(--text-muted)">10 用例</small></div>
             <div class="feature-chip"><span class="feat-icon">🔗</span>关联交易风险<br><small style="color:var(--text-muted)">2 用例</small></div>
             <div class="feature-chip"><span class="feat-icon">📋</span>信息披露合规风险<br><small style="color:var(--text-muted)">2 用例</small></div>
             <div class="feature-chip"><span class="feat-icon">💹</span>持续经营风险<br><small style="color:var(--text-muted)">9 用例</small></div>

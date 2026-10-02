@@ -55,4 +55,12 @@ class AnalysisHistory(Base):
     mode: Mapped[str] = mapped_column(String(8), default="pro", nullable=False)      # pro / flash
     files_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)      # 报告/图表路径列表(JSON)
     summary: Mapped[str] = mapped_column(Text, default="", nullable=False)           # 一句话结论摘要
+    # 新快照链路：历史列表使用 metadata/manifest，详情可恢复完整快照。
+    # 使用 JSON 文本而非数据库方言 JSON，兼容 SQLite 和 PostgreSQL。
+    report_snapshot_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    artifact_manifest_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    report_metadata_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    ai_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    data_status: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    task_status: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True, nullable=False)
