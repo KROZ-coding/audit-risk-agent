@@ -33,6 +33,36 @@ class LocalKnowledgeBase:
         os.makedirs(persist_dir, exist_ok=True)
         return chromadb.PersistentClient(path=persist_dir)
 
+    def _rebuild_chroma_index(self):
+        """删除损坏的持久化 collection 并按内存中的文档重建一次。"""
+        client = self._get_chroma_client()
+        collection_name = "audit_regulations"
+        chunks = [str(doc.get("content", "")) for doc in self.documents]
+        metadatas = [
+            {"source": doc.get("source", ""), "chunk_id": doc.get("chunk_id", 0)}
+            for doc in self.documents
+        ]
+        import hashlib
+        fingerprint = hashlib.md5(
+            ("\x1f".join(chunks) + f"|n={len(chunks)}").encode("utf-8")
+        ).hexdigest()
+        try:
+            client.delete_collection(collection_name)
+        except Exception:
+            pass
+        self._collection = client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine", "content_fingerprint": fingerprint},
+        )
+        ids = [f"doc_{i}" for i in range(len(chunks))]
+        for start in range(0, len(chunks), 100):
+            end = min(start + 100, len(chunks))
+            self._collection.add(
+                documents=chunks[start:end],
+                metadatas=metadatas[start:end],
+                ids=ids[start:end],
+            )
+
     def load(self):
         if self._loaded:
             return
@@ -188,6 +218,27 @@ class LocalKnowledgeBase:
             })
         return results
 
+    def _chroma_search(self, query: str, top_k: int, min_score: float) -> List[Dict]:
+        """执行一次 Chroma 查询；异常交由调用方决定是否重建。"""
+        results = self._collection.query(
+            query_texts=[query],
+            n_results=min(top_k, len(self.documents)),
+        )
+        output = []
+        if results and results["documents"] and results["documents"][0]:
+            docs = results["documents"][0]
+            dists = results["distances"][0] if results.get("distances") else [0] * len(docs)
+            metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
+            for doc_text, dist, meta in zip(docs, dists, metas):
+                score = round(1.0 - dist, 4)
+                if score >= min_score:
+                    output.append({
+                        "content": doc_text,
+                        "score": score,
+                        "source": meta.get("source", "unknown"),
+                    })
+        return output[:top_k]
+
     def search(self, query: str, top_k: int = 8, min_score: float = 0.05) -> List[Dict]:
         """语义检索：通过 ChromaDB 向量相似度匹配，返回最相关的法规条文和案例。
 
@@ -206,27 +257,21 @@ class LocalKnowledgeBase:
         # 优先使用 ChromaDB 向量检索
         if self._collection is not None:
             try:
-                results = self._collection.query(
-                    query_texts=[query],
-                    n_results=min(top_k, len(self.documents)),
-                )
-                output = []
-                if results and results["documents"] and results["documents"][0]:
-                    docs = results["documents"][0]
-                    dists = results["distances"][0] if results.get("distances") else [0] * len(docs)
-                    metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
-                    for doc_text, dist, meta in zip(docs, dists, metas):
-                        # ChromaDB cosine distance -> similarity score (1 - distance)
-                        score = round(1.0 - dist, 4)
-                        if score >= min_score:
-                            output.append({
-                                "content": doc_text,
-                                "score": score,
-                                "source": meta.get("source", "unknown"),
-                            })
-                return output[:top_k]
+                return self._chroma_search(query, top_k, min_score)
             except Exception as e:
                 logger.warning(f"ChromaDB 检索失败，回退 TF-IDF: {e}")
+                original_collection = self._collection
+                try:
+                    # 持久化 HNSW 文件损坏时，单纯回退会让每次检索都降级；
+                    # 重建一次后立即重试，失败才进入 TF-IDF，并保留可见日志。
+                    self._rebuild_chroma_index()
+                    logger.info("ChromaDB 索引已自愈重建，重试向量检索")
+                    return self._chroma_search(query, top_k, min_score)
+                except Exception as rebuild_error:
+                    logger.warning(f"ChromaDB 自愈重建失败，使用 TF-IDF: {rebuild_error}")
+                    # 保留原 collection 句柄，兼容调用方对“索引已初始化但
+                    # 查询暂时降级”的状态判断；下一次查询仍可再次尝试自愈。
+                    self._collection = original_collection
 
         # 回退到 TF-IDF
         return self._tfidf_search_fallback(query, top_k, min_score)

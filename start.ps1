@@ -354,17 +354,49 @@ if ($env:PYTHONPATH) {
 $mainPy = Join-Path $SrcDir "main.py"
 $baseArgs = @($mainPy, "-m")
 
-# 启动前预检端口占用（web/http 模式）：这是最常见的启动失败场景，
-# 提前给出明确提示，而不是等 uvicorn 报错退出后用户对着窗口猜
-if ($Mode -in @("web", "http")) {
-    try {
-        $busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-        if ($busy) {
-            Write-Warn "端口 $Port 已被占用（PID: $(($busy.OwningProcess | Select-Object -Unique) -join ', ')）"
-            Write-Info "请先停掉占用端口的进程，或换端口重启: .\start.ps1 -Port 8080"
-            Write-Host ""
+# ── 启动前端口自愈（web/http 模式）────────────────────────
+# 旧实现只查 Get-NetTCPConnection -State Listen，查不到「以 Bound 状态占口」的
+# 代理/加速器进程（如 Watt Toolkit / Steam++ 会同时占住 5000-5002 等一大批端口），
+# 预检静默漏过后由 uvicorn 报 WinError 10013 退出，用户一脸茫然。
+# 这里改为「真实 bind 探测 + 自动顺延空闲端口」：探测同时覆盖回环与通配地址，
+# 端口被占用时自动改用后续空闲端口，并把新端口用于启动与浏览器打开。
+function Test-PortFree {
+    param([int]$p)
+    foreach ($addr in @("127.0.0.1", "0.0.0.0")) {
+        $listener = $null
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse($addr), $p)
+            $listener.Start()
+        } catch {
+            return $false
+        } finally {
+            if ($listener) { try { $listener.Stop() } catch { } }
         }
-    } catch { }  # 检测失败不阻断启动，uvicorn 自己会报错
+    }
+    return $true
+}
+
+if ($Mode -in @("web", "http")) {
+    if (Test-PortFree -p $Port) {
+        Write-Ok "端口 $Port 可用"
+    } else {
+        $requestedPort = $Port
+        $owner = (Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
+                  Select-Object -ExpandProperty OwningProcess -Unique) -join ', '
+        $newPort = 0
+        for ($cand = $Port + 1; $cand -le $Port + 20; $cand++) {
+            if (Test-PortFree -p $cand) { $newPort = $cand; break }
+        }
+        if ($newPort -gt 0) {
+            $ownerHint = if ($owner) { "（PID: $owner）" } else { "" }
+            Write-Warn "端口 $Port 已被占用$ownerHint"
+            Write-Info "已自动改用空闲端口 $newPort（原端口 $requestedPort）"
+            $Port = $newPort
+        } else {
+            Stop-WithHint "端口 $Port 被占用，且 $($Port + 1)-$($Port + 20) 区间无空闲端口" `
+                "请释放端口，或显式指定其它端口: .\start.ps1 -Port 8080"
+        }
+    }
 }
 
 switch ($Mode) {
@@ -415,14 +447,8 @@ for (`$i = 0; `$i -lt 240; `$i++) {
         Write-Host ""
     }
     "node" {
-        if (-not $Node) {
-            Stop-WithHint "node 模式需要指定 -Node 参数" `
-                "示例: .\start.ps1 -Mode node -Node node_1 -UserInput '{`"text`":`"测试`"}'"
-        }
-        $baseArgs += @("node", "-n", $Node)
-        if ($UserInput) { $baseArgs += @("-i", $UserInput) }
-        Write-Host "  🚀 CLI 模式 - 运行节点: $Node" -ForegroundColor Green
-        Write-Host ""
+        Stop-WithHint "当前版本未实现 node 模式（src/graphs/nodes 为空）" `
+            "请使用完整流程模式: .\start.ps1 -Mode flow，或移除 -Mode node"
     }
 }
 

@@ -59,6 +59,7 @@ class TestRiskScorer:
         assert "披露合规维度未获取" in notes
         assert "归一化" in notes
         assert "归一化" in str(result.get("summary", ""))
+        assert "财务指标 0.71、数据校验 0.29" in notes
 
     def test_high_risk_all_dimensions(self):
         """三维度均高风险时应合成为极高风险(critical)"""

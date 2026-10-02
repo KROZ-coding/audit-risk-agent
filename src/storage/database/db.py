@@ -19,7 +19,7 @@
 """
 import os
 import time
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 import logging
@@ -41,8 +41,10 @@ def get_db_url() -> str:
 
     连接 URL 的优先级：
     1. 环境变量 PGDATABASE_URL（适用于 PostgreSQL 等远程数据库）
-    2. 环境变量 DATABASE_URL（兼容通用命名）
-    3. SQLite 本地文件（当前目录下的 local_data.db，零配置即可运行）
+    2. SQLite 本地文件（当前目录下的 local_data.db，零配置即可运行）
+
+    注意：代码只读取 PGDATABASE_URL；未实现 DATABASE_URL 兼容读取
+    （如需通用命名，请在部署配置中改为 PGDATABASE_URL）。
 
     Returns:
         数据库连接 URL 字符串，
@@ -163,10 +165,40 @@ def get_session():
     return get_sessionmaker()()
 
 
+def init_tables() -> None:
+    """创建业务表并为已有数据库补齐快照历史列。
+
+    ``Base.metadata.create_all`` 不会给存量 SQLite/PostgreSQL 表增加新列，
+    因而快照历史字段需要一个幂等、无外部迁移依赖的轻量升级步骤。
+    """
+    from storage.database.shared.model import Base
+
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    required = {
+        "report_snapshot_json": "TEXT",
+        "artifact_manifest_json": "TEXT",
+        "report_metadata_json": "TEXT",
+        "ai_text": "TEXT",
+        "data_status": "VARCHAR(32)",
+        "task_status": "VARCHAR(32)",
+    }
+    existing = {str(column.get("name")) for column in inspect(engine).get_columns("analysis_history")}
+    missing = [(name, sql_type) for name, sql_type in required.items() if name not in existing]
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for name, sql_type in missing:
+            connection.execute(text(
+                f"ALTER TABLE analysis_history ADD COLUMN {name} {sql_type}"
+            ))
+
+
 # 导出公共接口，供 other 模块使用
 __all__ = [
     "get_db_url",
     "get_engine",
     "get_sessionmaker",
     "get_session",
+    "init_tables",
 ]

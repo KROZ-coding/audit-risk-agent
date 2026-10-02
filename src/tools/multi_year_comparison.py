@@ -3,7 +3,7 @@
 支持对多个年度的财务数据进行跨年对比分析，识别趋势性风险。
 
 核心功能：
-1. 从多年数据中计算 11 项关键财务指标（毛利率、资产负债率、流动比率等）
+1. 从多年数据中计算 15 项关键财务指标（毛利率、资产负债率、流动比率等）
 2. 计算相邻年度间的同比变动百分比
 3. 基于多年趋势判定每项指标的方向（持续上升/持续下降/波动）
 4. 针对 6 类高风险趋势自动生成预警（毛利率连降、应收连升、现金流连负等）
@@ -104,7 +104,7 @@ def _legacy_compare_multi_year_impl(financial_data_json: str) -> str:
 
     处理流程：
     1. 解析输入 JSON，兼容两种输入格式（years 数组 / 年度字典）
-    2. 按年度排序后，逐一计算每年度 11 项财务指标
+    2. 按年度排序后，逐一计算每年度 15 项财务指标
     3. 计算相邻年度间的同比变动百分比
     4. 对每项指标进行多年趋势判定（3年+使用持续上升/下降/波动，2年使用同比上升/下降/持平）
     5. 针对 6 类高风险趋势自动生成预警文本
@@ -117,7 +117,7 @@ def _legacy_compare_multi_year_impl(financial_data_json: str) -> str:
     Returns:
         JSON 字符串，包含：
         - years_analyzed: 分析的年度列表
-        - indicators_by_year: 各年度 11 项指标明细
+        - indicators_by_year: 各年度 15 项指标明细
         - yoy_changes: 相邻年度同比变动百分比
         - trends: 各项指标的趋势判定
         - trend_alerts: 趋势性风险预警列表
@@ -580,7 +580,7 @@ def _compare_multi_year_impl(financial_data_json: str) -> str:
 def compare_multi_year(multi_year_data_json: str) -> str:
     """多年财务数据跨年对比分析，识别趋势性风险。
 
-    对多个年度的财务数据计算 11 项关键指标，分析同比变动和多年趋势方向，
+    对多个年度的财务数据计算 15 项关键指标，分析同比变动和多年趋势方向，
     并针对 6 类高风险趋势模式（毛利率连降、应收连升、现金流连负、
     流动比率持续恶化、负债率连升超 70%、存货周转连降）自动生成预警。
 
@@ -592,7 +592,7 @@ def compare_multi_year(multi_year_data_json: str) -> str:
     Returns:
         JSON 字符串，包含：
         - years_analyzed / year_count：分析年度与年数（建议覆盖最近 5-6 年）
-        - indicators_by_year：各年度 11 项指标明细
+        - indicators_by_year：各年度 15 项指标明细
         - yoy_changes / trends：同比变动与多年趋势判定
         - timeseries：{"xAxis": [年份...], "series": [{"name": 指标名, "data": [...]}]}
           可直接用于 echarts 图表块与年份×指标时序表格；缺年度为 null（未披露）

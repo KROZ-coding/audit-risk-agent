@@ -66,11 +66,11 @@ class TestExpectedArtifacts:
     def test_full_pipeline_lists_all(self):
         keys = [item["key"] for item in expected_artifacts(None, False)]
         assert keys == ["heatmap", "radar", "trend", "pdf_financial", "pdf_compliance",
-                        "pdf_synthesis", "excel"]
+                        "pdf_synthesis", "excel", "json"]
 
     def test_fast_mode_skips_charts(self):
         keys = [item["key"] for item in expected_artifacts("financial", True)]
-        assert keys == ["pdf_financial", "excel"]
+        assert keys == ["pdf_financial", "excel", "json"]
 
     def test_compliance_module_only_compliance_pdf(self):
         keys = [item["key"] for item in expected_artifacts("compliance", False)]
@@ -143,7 +143,7 @@ class TestWebSections:
         assert "数据来源与完整性说明" in html
 
     def test_capability_section_present(self, html):
-        assert "四项能力及补充分析（指标计算过程与依据）" in html
+        assert "财务指标与审计关注分析（指标计算过程与依据）" in html
         assert "report.indicator_view" in html
         assert "代入过程（含结果）" in html
 

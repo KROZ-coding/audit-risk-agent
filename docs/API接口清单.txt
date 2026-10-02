@@ -1,0 +1,228 @@
+上市公司年报风险智能识别系统 v5.3 GA — API 接口清单
+==============================================================================
+
+说明：本清单列出系统全部 HTTP 接口、SSE 事件协议、工具链与 LLM 可调用工具。
+接口定义源文件：src/main.py；工具白名单源文件：config/agent_llm_config.json。
+鉴权说明：X-API-Key 是"服务访问密钥"（APP_API_KEY 为空则完全放行）；
+          X-Auth-Token 是"用户会话令牌"（登录后签发，7 天有效）。两者互相独立。
+
+----------------------------------------------------------------------------
+【一】HTTP 接口总表（21 个路由）
+----------------------------------------------------------------------------
+序号  方法  路径                          鉴权          说明
+----------------------------------------------------------------------------
+ 1   GET   /                             -             Web 控制台（强制 no-cache）
+ 2   GET   /baka                         -             HTML 文档页（部署指南）
+ 3   GET   /readme                       -             HTML 文档页（正式版指南）
+ 4   GET   /api/status                   -             系统组件状态（api_key 未配置判定、
+                                                     不暴露绝对路径）
+ 5   POST  /api/auth/register            -             注册并自动登录，返回令牌
+                                                     入参: {username, password}
+                                                     口令 >= 6 位；用户名 2~32 位
+                                                     错误: 400（非法/重名）
+ 6   POST  /api/auth/login               -             口令登录，签发 7 天令牌
+                                                     入参: {username, password}
+                                                     错误: 401（统一提示，防枚举）
+ 7   POST  /api/auth/logout              X-Auth-Token  注销并删除当前令牌（幂等）
+ 8   GET   /api/auth/me                  X-Auth-Token  查询当前登录态
+                                                     错误: 401
+ 9   GET   /api/history                  X-Auth-Token  当前用户历史列表，倒序，<=50 条
+                                                     错误: 401
+10   GET   /api/history/{record_id}      X-Auth-Token  单条历史详情
+                                                     他人记录与不存在统一 404（防探测）
+11   POST  /run                          X-API-Key     同步分析（阻塞等待完整结果）
+                                                     入参: {messages:[...], ...}
+                                                     超时: asyncio.wait_for 900 秒
+                                                     超时返回 {"status":"timeout"}
+12   POST  /stream_run                   X-API-Key     SSE 流式分析（前端主通道）
+                                                     Content-Type: text/event-stream
+13   POST  /v1/chat/completions          X-API-Key     OpenAI 兼容端点
+                                                     已知限制: 仅取最后一条 message，
+                                                     响应缺 id/object/created/model/
+                                                     usage/finish_reason
+14   GET   /api/files                    -             列出产物（rglob，仅 .pdf/.xlsx/
+                                                     .png/.jpg，最多 50 条）
+15   GET   /health                       -             存活探针
+16   GET   /api/maintenance/status       -             只读返回最近一次回收报告
+                                                     （不触发回收）
+17   POST  /upload                       X-API-Key     上传年报文件
+                                                     11 种扩展名白名单、单文件 100MB、
+                                                     1MB 分块流式落盘、超限删半成品、
+                                                     文件名清洗 + uuid 前缀
+                                                     错误: 400（格式）/ 413（超限）
+18   GET   /api/reload_kb                -             热重载知识库（无需重启）
+                                                     失败返回 200 + status:"error"
+19   POST  /api/upload_kb                X-API-Key     上传法规文本进知识库并热重载
+                                                     100MB 上限；分块累积读取
+20   GET   /api/evaluate/status          -             读取评估结果状态（缓存 JSON）
+21   POST  /api/evaluate/run             X-API-Key     触发效果评估
+                                                     query 参数 mode: tool/agent/all
+                                                     仅 tool 真正执行；本地确定性逻辑在线程中运行
+                                                     （接口超时上限 30 秒，正常请求通常数秒内完成）
+
+----------------------------------------------------------------------------
+【二】SSE 事件协议
+----------------------------------------------------------------------------
+后端固定输出格式（src/main.py::_sse）：
+
+    event: message
+    data: {"type": "...", ...}
+    <空行>
+
+事件名恒为 message，真实类型由 JSON 的 type 字段区分，共四类：
+
+type              含义                  关键字段
+----------------------------------------------------------------------------
+progress          分析进度              step(阶段名), percent(百分比)
+final_report      最终结构化报告        percent:100 + 报告全部字段
+artifact_status   产物生成状态          产物清单/状态（PDF/Excel/图表）
+error             通用错误（已脱敏）    content
+
+设计说明：
+1. 固定事件名 + data.type，前端只需一个 onmessage 分支，减少浏览器差异；
+2. 进度单调不减：current_pct = max(current_pct, pct)，乱序/重复不会倒退；
+3. AI 正文流每来一段 +1 且封顶 96，最终报告固定 100。
+
+----------------------------------------------------------------------------
+【三】17 项工具链（进度展示口径）
+----------------------------------------------------------------------------
+源文件：src/main.py L54-72 的 TOOL_PIPELINE
+
+序号  工具名                              中文名                进度
+----------------------------------------------------------------------------
+ 1   parse_pdf_report                    解析年报文件            8%
+ 2   validate_financial_data             校验财务数据           18%
+ 3   calculate_financial_indicators      计算财务指标           30%
+ 4   calculate_risk_models               量化风险模型预警       36%
+ 5   check_disclosure_compliance         检查披露合规           42%
+ 6   identify_audit_opinion              识别审计意见           48%
+ 7   search_regulations                  检索法规条文           55%
+ 8   search_regulatory_inquiries         查询监管问询           56%
+ 9   industry_outlook                    研判行业风向           58%
+10   compare_multi_year                  多年数据对比           60%
+11   calculate_comprehensive_score       综合风险评分           68%
+12   generate_risk_heatmap               生成风险热力图         76%
+13   generate_radar_chart                生成财务雷达图         84%
+14   generate_trend_chart                生成趋势折线图         87%
+15   investment_advisor                  生成投资参考卡         90%
+16   export_pdf_report                   导出 PDF 报告          92%
+17   export_excel_report                 导出 Excel 底稿       95%
+
+注意：该表为"进度展示口径"（17 项）。export_pdf_report / export_excel_report
+      不交给 LLM 调用，由系统后处理统一兜底导出。
+
+----------------------------------------------------------------------------
+【四】16 个 LLM 可调用工具
+----------------------------------------------------------------------------
+源文件：config/agent_llm_config.json 的 tools 数组
+
+ 1. parse_pdf_report                 解析年报文件（PDF/Excel/Word/CSV/HTML/PPT/TXT）
+ 2. validate_financial_data          三大勾稽校验
+ 3. calculate_financial_indicators   核心财务指标计算
+ 4. calculate_risk_models            Altman Z-Score + Beneish M-Score
+ 5. check_disclosure_compliance      披露合规检查
+ 6. identify_audit_opinion           审计意见类型识别
+ 7. search_regulations               法规条文语义检索（RAG）
+ 8. search_regulatory_inquiries      监管问询/处罚检索
+ 9. industry_outlook                 行业风向研判
+10. compare_multi_year               多年指标时序对比
+11. calculate_comprehensive_score    三维加权综合评分
+12. generate_risk_heatmap            风险热力图
+13. generate_radar_chart             财务五维雷达图
+14. generate_trend_chart             多年趋势折线图
+15. investment_advisor               投资参考卡（轻量路径）
+16. batch_analyze_companies          多公司批量分析
+
+调用约定：
+- 入参为 JSON 字符串（模型生成文本而非结构化对象），工具内部先 json.loads；
+- 出参为字符串，通常为 JSON（含 status/data/warnings），便于模型再推理；
+- 失败不抛异常，返回 {"status":"error", ...}，避免整链中断；
+- 数值结果带 source/evidence/calculation_version 等可追溯字段。
+
+----------------------------------------------------------------------------
+【五】模块路由与工具裁剪
+----------------------------------------------------------------------------
+标记（src/main.py::MODULE_MARKERS，扫描全部消息）：
+    【模块:财务健康度诊断】    -> financial
+    【模块:合规与经营风险扫描】 -> compliance
+    【模块:综合研判】          -> synthesis
+    【模块:行业风向研判】      -> outlook
+
+轻量标记（src/main.py::LIGHT_MARKERS，只扫最后一条消息）：
+    【工具:投资参考】          -> advisor
+    【工具:行业风向】          -> industry
+
+模块 -> 工具集（src/agents/agent.py::MODULE_TOOLS / LIGHT_MODULE_TOOLS）：
+    financial : parse / validate / calculate / compare_multi_year /
+                risk_models / heatmap? (radar+tred) -> 7 项
+    compliance: parse / disclosure / audit_opinion / search_regulations -> 4 项
+    synthesis : comprehensive_score / risk_models / search_regulations /
+                risk_heatmap -> 4 项
+    outlook   : industry_outlook / search_regulations /
+                search_regulatory_inquiries -> 3 项
+    advisor   : parse / validate / calculate / comprehensive_score /
+                investment_advisor / regulatory_inquiries / industry_outlook -> 7 项
+    industry  : industry_outlook / search_regulations -> 2 项
+
+综合研判三段串跑（src/agents/pipeline.py::SYNTHESIS_STAGES）：
+    第一阶段 财务健康度诊断（5%~35%）  ┐
+    第二阶段 合规与经营风险扫描（35%~65%）├ 前两阶段 asyncio.gather 并行
+    第三阶段 综合研判与交叉验证（65%~95%）┘ 第三阶段依赖前两段结论
+
+综合研判预处理接入（实测修复）：
+    进入三段串跑前，先执行一次 P1 预处理（parse_pdf_report + 摘录选页 +
+    字段回填 + 报告身份确定性兜底），产出 pre_msgs / pre_entries /
+    pre_tool_results；随后 yield("tool_results", pre_entries) 推送预跑台账
+    并推进进度至 8/42。财务阶段将预跑轨迹追加到 build_stage_payload 之后
+    （保证 messages[-1] 仍是人类问题），汇合处以 setdefault 保证预跑结果优先。
+    该修复消除了综合研判模式下成片"未检测出/未获取"。
+
+----------------------------------------------------------------------------
+【六】鉴权与保护范围
+----------------------------------------------------------------------------
+api_key_guard 保护的 6 个写操作前缀（src/main.py::_PROTECTED_PREFIXES）：
+
+    /run
+    /stream_run
+    /v1/chat/completions
+    /upload
+    /api/upload_kb
+    /api/evaluate/run
+
+配置项：APP_API_KEY（为空则全部放行，便于本地演示）。
+前端配套：localStorage.setItem('audit_api_key', '与服务端相同的值')，
+          window.fetch 包装器自动附加 X-API-Key。
+
+用户级接口（4 个，需 X-Auth-Token）：
+    POST /api/auth/logout
+    GET  /api/auth/me
+    GET  /api/history
+    GET  /api/history/{record_id}
+
+----------------------------------------------------------------------------
+【七】LLM 调用配置
+----------------------------------------------------------------------------
+协议      : OpenAI 兼容（LangChain ChatOpenAI）
+地址      : OPENAI_BASE_URL（默认 https://api.deepseek.com）
+主模型    : config/agent_llm_config.json -> config.model
+快速模式  : FAST_MODEL（默认 deepseek-v4-flash）
+辩论复核  : REVIEW_MODEL（默认 deepseek-v4-flash）
+参数      : temperature / top_p / max_tokens（默认 16000）
+            timeout（默认 600 秒）/ max_retries = LLM_MAX_RETRIES（默认 2）
+            streaming = True
+上下文    : _windowed_messages 配对安全滑窗（MAX_MESSAGES = 40）
+            + _merge_tool_ledger 工具台账（与 messages 解耦）
+
+----------------------------------------------------------------------------
+【八】错误码约定
+----------------------------------------------------------------------------
+HTTP 400  入参非法（缺字段、格式不支持、mode 非法）
+HTTP 401  缺少或错误的 X-API-Key / X-Auth-Token
+HTTP 404  资源不存在；历史记录他人访问与不存在统一 404（防探测）
+HTTP 413  上传文件超过 100MB 上限
+HTTP 200  业务失败也可能返回 200 + {"status":"error", ...}（如 /api/reload_kb）
+
+对外错误一律脱敏：只回通用提示，路径/密钥/堆栈只写服务端日志。
+==============================================================================
+文档版本：v5.3 GA    生成日期：见交付包内 package 时间戳
+==============================================================================

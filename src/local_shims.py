@@ -115,7 +115,16 @@ def setup_logging(log_file=None, max_bytes=100*1024*1024, backup_count=5,
     fmt = "%(asctime)s [%(levelname)s] [run=%(run_id)s] %(name)s - %(message)s"
     formatter = logging.Formatter(fmt)
     if console_output:
-        ch = logging.StreamHandler()
+        # Windows 控制台默认代码页常为 GBK/CP936；显式让输出流使用 UTF-8，
+        # 避免中文日志在部署/排查时显示为乱码（仅影响控制台，不改文件日志）。
+        import sys
+        stream = sys.stdout
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        ch = logging.StreamHandler(stream)
         ch.setFormatter(formatter)
         handlers.append(ch)
     if log_file:

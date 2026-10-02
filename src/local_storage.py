@@ -7,17 +7,27 @@
 - 替代云端 S3 对象存储，实现完全离线运行
 - 通过 FastAPI StaticFiles 挂载 /local_storage 路由提供文件下载
 - 文件名自动清洗非法字符，兼容 Windows 路径限制
+- 产物按批次隔离：同一次分析的所有文件（PDF/Excel/图表）统一落在
+  local_storage/<YYYYMMDD_HHMMSS>/ 时间戳子目录（精确到秒），旧批次文件
+  永不删除、也不与新批次混入同一下载列表，杜绝旧报告冒充新结果。
 """
 import os
 import re
 import shutil
 import logging
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # 本地存储根目录：项目根目录下的 local_storage/ 文件夹
 LOCAL_STORAGE_DIR = os.path.join(os.getcwd(), "local_storage")
+
+# 当前批次时间戳（%Y%m%d_%H%M%S，精确到秒）。同一次分析的所有上传共享同一
+# 子目录；begin_batch 开启新批次，未显式开启时首次上传自动按当前时间初始化
+# （兼容离线脚本直调场景）。线程安全：导出兜底在 ThreadPoolExecutor 内并发
+# 执行，所有线程读取同一全局值，天然共享同一批次目录。
+_BATCH_STAMP: str | None = None
 
 
 def ensure_storage_dir():
@@ -34,6 +44,32 @@ def _safe_path(file_name: str) -> str:
         safe = re.sub(r'_{2,}', '_', safe).strip(' ._')
         cleaned.append(safe or "_")
     return "/".join(cleaned)
+
+
+def begin_batch(stamp: str | None = None) -> str:
+    """开启一个新产物批次：重置批次时间戳并返回（格式 YYYYMMDD_HHMMSS，精确到秒）。
+
+    每次分析运行开始时调用一次；同一次运行内多次上传共享该时间戳子目录，
+    下一次 begin_batch 生成全新目录，实现「每次生成一个确切到秒的文件夹」。
+    未显式传入 stamp 时按当前时间生成（可注入固定值用于测试）。
+    """
+    global _BATCH_STAMP
+    _BATCH_STAMP = stamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+    return _BATCH_STAMP
+
+
+def current_batch_stamp() -> str:
+    """返回当前批次时间戳；尚未初始化时自动按当前时间初始化。"""
+    global _BATCH_STAMP
+    if _BATCH_STAMP is None:
+        _BATCH_STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return _BATCH_STAMP
+
+
+def reset_batch() -> None:
+    """清空当前批次时间戳（测试隔离用；下次上传自动重新初始化）。"""
+    global _BATCH_STAMP
+    _BATCH_STAMP = None
 
 
 def upload_file_to_storage(local_path: str, file_name: str, content_type: str, expire_seconds: int = 86400) -> str:
@@ -53,16 +89,20 @@ def upload_file_to_storage(local_path: str, file_name: str, content_type: str, e
     ensure_storage_dir()
     # 清洗文件名中的非法字符（Windows 不允许 <>:"|?* 等）
     file_name = _safe_path(file_name)
-    # 创建子目录（如 reports/ 或 charts/）
-    dest_dir = os.path.join(LOCAL_STORAGE_DIR, os.path.dirname(file_name))
+    # 批次子目录：local_storage/<批次时间戳>/<file_name>（file_name 含 reports/ 或
+    # charts/ 前缀）。pdf_export / excel_export / visualizer 三处调用零改动，
+    # 仅在此统一改写存储相对路径，前端 /local_storage/ 前缀与斜杠子路径天然兼容。
+    dest_rel = os.path.join(current_batch_stamp(), file_name)
+    dest_dir = os.path.join(LOCAL_STORAGE_DIR, os.path.dirname(dest_rel))
     os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(LOCAL_STORAGE_DIR, file_name)
+    dest = os.path.join(LOCAL_STORAGE_DIR, dest_rel)
     try:
         # 复制文件到存储目录（保留元数据）
         shutil.copy2(local_path, dest)
         logger.info(f"文件已保存到本地存储: {dest}")
-        # 返回相对 HTTP 路径，匹配 FastAPI StaticFiles 挂载点
-        return f"/local_storage/{file_name}"
+        # 返回相对 HTTP 路径，匹配 FastAPI StaticFiles 挂载点；Windows 下统一转正斜杠
+        url_rel = dest_rel.replace(os.sep, "/")
+        return f"/local_storage/{url_rel}"
     except Exception as e:
         logger.error(f"本地存储失败: {e}")
         return f"保存失败: {e}"

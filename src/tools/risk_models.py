@@ -13,6 +13,10 @@
    八变量完整模型，TATA（权重最高）缺失时仅在五个简化模型因子完整的情况下
    降级；任何必要因子缺失都不以中性值代入。
 
+3. 中期口径处理
+   半年度/季度报告仍照常出具 Z/M 分值，但结果附带 interim_basis、interim_note、
+   limitation 字段，说明年度阈值仅为近似套用、仅作交叉印证，不单独支撑风险定级。
+
 公式、判定阈值与降级策略均与 knowledge_base/风险评分模型库.txt 一致，
 便于报告引用时溯源。所有结论仅表示"风险嫌疑"，不构成定性认定。
 """
@@ -21,6 +25,7 @@ import logging
 
 from core.result_contract import Evidence, MetricResult, RESULT_SCHEMA_VERSION, RULE_VERSION, make_fact
 from langchain_core.tools import tool
+from tools.financial_calculator import financial_period, is_interim_period
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +55,7 @@ def _model_facts(d: dict) -> tuple[list[dict], dict[str, dict]]:
     meta = _metadata(d)
     unit = str(d.get("amount_unit") or meta.get("amount_unit") or "")
     currency = str(d.get("currency") or meta.get("currency") or "人民币")
-    period = _context_value(d, "period", "report_period", "current_period", "year", "report_year")
+    period = financial_period(d)
     scope = str(d.get("scope") or meta.get("scope") or "")
     source_document = str(meta.get("source_document") or d.get("source_document") or "")
     source_hash = str(meta.get("source_hash") or d.get("source_hash") or "")
@@ -59,18 +64,26 @@ def _model_facts(d: dict) -> tuple[list[dict], dict[str, dict]]:
     excerpt = str(meta.get("excerpt") or d.get("excerpt") or "")
     facts = []
     by_field = {}
+    fields = d.get('_field_metadata') or meta.get('fields') or {}
     for field, raw in d.items():
         if str(field).startswith("_") or field in {"metadata", "amount_unit", "currency", "scope"}:
             continue
         value = _num(raw)
         if value is None:
             continue
+        field_meta = fields.get(field, {}) if isinstance(fields, dict) else {}
+        field_meta = field_meta if isinstance(field_meta, dict) else {}
+        field_period = (str(d.get('previous_period') or '上期（具体期间未提供）')
+                        if field.endswith('_previous') else period)
         fact = make_fact(
             field, raw, fact_id=f"F-RM-{field}",
-            unit=("分" if field == "market_cap" else unit), currency=currency,
-            period=period, scope=scope, source_document=source_document,
-            source_hash=source_hash, page=page, locator=locator, excerpt=excerpt,
-            extraction_method=str(meta.get("extraction_method") or "structured_input"),
+            unit=str(field_meta.get('unit') or unit), currency=currency,
+            period=str(field_meta.get('period') or field_period), scope=str(field_meta.get('scope') or scope),
+            source_document=str(field_meta.get('source_document') or source_document),
+            source_hash=str(field_meta.get('source_hash') or source_hash),
+            page=str(field_meta.get('page') or page), locator=str(field_meta.get('locator') or locator),
+            excerpt=str(field_meta.get('excerpt') or excerpt),
+            extraction_method=str(field_meta.get('extraction_method') or meta.get("extraction_method") or "structured_input"),
         ).to_dict()
         facts.append(fact)
         by_field[field] = fact
@@ -119,7 +132,7 @@ def _model_records(model_key: str, result: dict, d: dict, facts_by_field: dict[s
         name="Altman Z-Score" if model_key == "altman_z_score" else "Beneish M-Score",
         formula=str(result.get("formula") or "模型适用性与必要因子检查"),
         inputs=inputs,
-        period=_context_value(d, "period", "report_period", "current_period", "year", "report_year"),
+        period=financial_period(d),
         scope=str(d.get("scope") or _metadata(d).get("scope") or ""),
         unit="分",
         value=result.get("score"),
@@ -190,13 +203,16 @@ def _context_value(d: dict, *keys):
     meta = d.get("_metadata") or d.get("metadata") or {}
     if not isinstance(meta, dict):
         meta = {}
+    # company_info 子字典：LLM/预处理常把行业与报告期放在该节点下，
+    # 只看顶层会误判「缺少行业/本期期间」而错杀 Altman/Beneish 适用性。
+    company = d.get("company_info") if isinstance(d, dict) else None
+    if not isinstance(company, dict):
+        company = {}
     for key in keys:
-        value = d.get(key)
-        if value not in (None, ""):
-            return str(value).strip()
-        value = meta.get(key)
-        if value not in (None, ""):
-            return str(value).strip()
+        for source in (d, company, meta):
+            value = source.get(key)
+            if value not in (None, ""):
+                return str(value).strip()
     return ""
 
 
@@ -252,7 +268,7 @@ def _calc_altman(d: dict) -> dict:
     total_liabilities = _pick(d, "total_liabilities", "total_liabilities_current")
     revenue = _pick(d, "revenue_current", "revenue")
     market_cap = _pick(d, "market_cap")
-    equity = _pick(d, "net_assets", "owners_equity")
+    equity = _pick(d, "net_assets", "net_assets_current", "equity_total", "owners_equity")
     variant = _pick_z_variant(_context_value(d, "industry", "industry_name"), market_cap, equity)
     variant_names = {
         "original": "原始 Z-Score（上市制造业）",
@@ -344,6 +360,27 @@ def _calc_altman(d: dict) -> dict:
         "missing_factors": [],
         "confidence": "高",
         "note": "Z-Score 低仅表示财务困境概率上升，须表述为存在财务困境风险嫌疑，不等于必然破产。",
+        **_interim_caveat(d, "Altman Z-Score"),
+    }
+
+
+def _interim_caveat(d: dict, name: str) -> dict:
+    """中期报告照常出具分值，但必须随附口径局限，避免按年度阈值误读。
+
+    年度模型（如 Z-Score 阈值 2.99/1.81）由年度资产负债表与年度损益校准，
+    半年度数据直接代入属近似套用，因此分值只作交叉印证，不单独支撑风险定级。
+    """
+    if not is_interim_period(financial_period(d)):
+        return {}
+    period = financial_period(d)
+    return {
+        "interim_basis": True,
+        "interim_note": (
+            f"{name} 的原始模型与判定阈值基于年度财务数据；本次为{period}中期口径，"
+            "属年度模型的近似套用。分值仅供交叉印证参考，不单独作为风险定级依据，"
+            "也不对中期数据做机械年化处理。"
+        ),
+        "limitation": "模型对重资产、强周期能源企业的判别力需另行验证；中期口径下仅供交叉核查。",
     }
 
 
@@ -477,11 +514,15 @@ def _calc_beneish(d: dict) -> dict:
         "confidence": confidence,
         "note": "M-Score 超阈值仅表示财务特征与历史操纵样本相似，不能作为造假证据，"
                 "须结合审计意见与关联交易情况进一步核查。",
+        **_interim_caveat(d, "Beneish M-Score"),
     }
 
 
 def _combine(z: dict, m: dict) -> dict:
     """交叉解读：Z 低 + M 高是最高风险的信号组合。"""
+    if not z.get("available") and not m.get("available"):
+        return {"signal": "模型均未计算", "level_floor": None,
+                "interpretation": "两项量化模型均未形成有效分值，不能据此判断为未触发预警或排除风险。"}
     z_distress = z.get("available") and z.get("zone") == "财务困境区"
     m_suspect = m.get("available") and m.get("judgement", "").startswith("存在")
     if z_distress and m_suspect:
@@ -500,7 +541,7 @@ def _combine(z: dict, m: dict) -> dict:
                 "interpretation": "Beneish M-Score 超过阈值，存在盈余操纵风险嫌疑，"
                                   "建议核查收入确认与应计项目。"}
     return {"signal": "未触发模型预警", "level_floor": "一般",
-            "interpretation": "两项量化模型均未触发预警，但不排除模型未覆盖的风险，"
+            "interpretation": "已计算的量化模型未触发预警，但不排除未计算模型及模型未覆盖的风险，"
                               "仍须结合勾稽校验与披露信息综合判断。"}
 
 
@@ -525,7 +566,10 @@ def calculate_risk_models(financial_data_json: str) -> str:
 
     Returns:
         JSON 字符串，含 altman_z_score、beneish_m_score、cross_interpretation 三部分；
-        每部分含分值、判定区间/阈值、逐项因子、缺失因子与置信度。
+
+        每部分含分值、判定区间/阈值、逐项因子、缺失因子与置信度；
+        中期报告（半年度/季度）照常返回分值，但另附 interim_basis/interim_note/limitation，
+        明确年度阈值属近似套用、仅作交叉印证，不单独作为风险定级依据。
     """
     try:
         data = json.loads(financial_data_json) if isinstance(financial_data_json, str) else financial_data_json
@@ -538,6 +582,14 @@ def calculate_risk_models(financial_data_json: str) -> str:
     z, z_metric, z_evidence = _model_records("altman_z_score", _calc_altman(data), data, facts_by_field)
     m, m_metric, m_evidence = _model_records("beneish_m_score", _calc_beneish(data), data, facts_by_field)
     cross = _combine(z, m)
+    if is_interim_period(financial_period(data)):
+        cross = dict(
+            cross,
+            interim_basis=True,
+            interpretation=str(cross.get("interpretation", ""))
+            + "本次为中期口径，Z/M 分值由半年度数据按年度模型近似套用，仅作交叉印证参考，"
+              "不单独支撑风险定级，也不做机械年化。",
+        )
     risk_findings = []
     if z.get("available") and z.get("zone") == "财务困境区":
         risk_findings.append({
@@ -556,10 +608,10 @@ def calculate_risk_models(financial_data_json: str) -> str:
     output = {
         "result_schema_version": RESULT_SCHEMA_VERSION,
         "rule_version": RULE_VERSION,
-        "calculation_version": "2026-09-v4",
+        "calculation_version": "2026-09-v5",
         "status": "calculated" if z.get("available") or m.get("available") else "partially_calculated",
         "industry": _context_value(data, "industry", "industry_name"),
-        "period": _context_value(data, "period", "report_period", "current_period", "year", "report_year"),
+        "period": financial_period(data),
         "risk_models": {
             "altman_z_score": z,
             "beneish_m_score": m,

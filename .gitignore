@@ -16,8 +16,6 @@ __pycache__/
 # 部署打包产物
 audit-ai_v*.tar.gz
 
-# Docker
-.dockerignore
 
 # 视频文件
 *.mp4
@@ -109,6 +107,11 @@ _gen_watermark.py
 _tmp_*
 .codex_write_probe.txt
 .codex_probe_dir/
+
+# Local QA and generated scratch files
+/tmp/
+/.docx_qa/
+/unused.png
 
 # 第三方 Agent Skill 插件包（本地工具，非本项目代码，不纳入版本库）
 # 均为外部下载的 skill 插件包，含各自 LICENSE 与作者署名，不随本项目分发；

@@ -338,12 +338,22 @@ def main():
     # 转首页预览图（可选）
     import fitz
     import re
-    links = re.findall(r"/local_storage/reports/([^\s)]+\.pdf)", result)
-    preview_dir = os.path.join(os.path.dirname(__file__), "..", "local_storage", "charts")
+    # 兼容两种链接形态：旧平铺 /local_storage/reports/xxx.pdf 与新批次
+    # /local_storage/<YYYYMMDD_HHMMSS>/reports/xxx.pdf
+    links = re.findall(r"/local_storage/(?:\d{8}_\d{6}/)?reports/([^\s)]+\.pdf)", result)
+    # 预览图也进入当前批次子目录（与 PDF 同批隔离），避免平铺 charts/ 混入旧批次
+    from local_storage import current_batch_stamp
+    _stamp = current_batch_stamp()
+    preview_dir = os.path.join(os.path.dirname(__file__), "..", "local_storage", _stamp, "charts")
     for name in links:
-        path = os.path.join(os.path.dirname(__file__), "..", "local_storage", "reports", name)
+        path = os.path.join(os.path.dirname(__file__), "..", "local_storage", _stamp, "reports", name)
         if not os.path.exists(path):
-            continue
+            # 旧平铺结构兜底（未走批次隔离的历史产物）
+            legacy = os.path.join(os.path.dirname(__file__), "..", "local_storage", "reports", name)
+            if os.path.exists(legacy):
+                path = legacy
+            else:
+                continue
         doc = fitz.open(path)
         png = os.path.join(preview_dir, f"样张预览_{os.path.splitext(name)[0][-12:]}.png")
         page = doc[0]

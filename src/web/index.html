@@ -266,7 +266,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 
 /* 入场动画只给新增消息（.msg-new 由 addMessage 添加）：
    历史恢复/会话切换时几十条旧消息同时飞入既卡顿又吵闹，恢复路径不加此类 */
-.msg { max-width: 80%; }
+.msg { max-width: 80%; min-width: 0; flex-shrink: 0; }
 .msg.msg-new { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
 /* 助手气泡恒定宽度：块级占满到上限，展开/收起思维链不再引起气泡宽度跳变 */
 .msg.assistant { width: 100%; max-width: 960px; }
@@ -278,7 +278,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 
 .bubble {
   padding: 16px 20px; border-radius: var(--radius-lg); font-size: 14px; line-height: 1.7;
-  word-break: break-word; position: relative;
+  word-break: break-word; overflow-wrap: anywhere; min-width: 0; max-width: 100%; position: relative;
 }
 .msg.user .bubble {
   background: var(--accent); color: #fff;
@@ -515,8 +515,8 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 .file-download-card .file-icon { font-size: 28px; }
-.file-download-card .file-info { flex: 1; }
-.file-download-card .file-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.file-download-card .file-info { flex: 1; min-width: 0; }
+.file-download-card .file-name { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; word-break: break-word; }
 .file-download-card .file-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .file-download-card .file-action { font-size: 12px; color: var(--accent); font-weight: 500; }
 
@@ -587,10 +587,11 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .btn-stop { background: var(--danger); color: #fff; }
 
 /* ── Markdown ──────────────────────────────────────── */
-.bubble h1, .bubble h2, .bubble h3 { margin: 16px 0 8px; font-weight: 600; color: #fff; }
+.bubble h1, .bubble h2, .bubble h3, .bubble h4 { margin: 16px 0 8px; font-weight: 600; color: #fff; }
 .bubble h1 { font-size: 20px; }
 .bubble h2 { font-size: 18px; }
 .bubble h3 { font-size: 16px; }
+.bubble h4 { font-size: 14px; }
 .bubble p { margin: 8px 0; }
 .bubble ul, .bubble ol { margin: 8px 0; padding-left: 24px; }
 .bubble li { margin: 4px 0; }
@@ -600,9 +601,10 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 }
 .bubble pre {
   background: #0f172a; border: 1px solid var(--glass-border);
-  padding: 16px; border-radius: var(--radius-sm); overflow-x: auto; margin: 12px 0;
+  padding: 16px; border-radius: var(--radius-sm); overflow: auto; margin: 12px 0;
+  min-width: 0; max-width: 100%; max-height: 480px; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.bubble pre code { background: none; padding: 0; color: #e2e8f0; font-size: 13px; }
+.bubble pre code { display: block; background: none; padding: 0; color: #e2e8f0; font-size: 13px; white-space: inherit; overflow-wrap: inherit; }
 /* 报表类表格常有 6-7 列（时序表 / 交叉验证矩阵）。窄屏下不能无限挤列，
    否则每列只剩 ~50px、中文表头逐字折行变不可读；也不能让表格自己撑破气泡。
    方案：外层 .table-scroll 负责横滚，表格本体用 min-width 守住可读下限，
@@ -610,8 +612,15 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .bubble .table-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; }
 .bubble table { border-collapse: collapse; margin: 12px 0; width: 100%; min-width: 480px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .bubble .table-scroll > table { margin: 0; }
-.bubble th, .bubble td { border: 1px solid var(--glass-border); padding: 10px; text-align: left; }
+.bubble th, .bubble td { border: 1px solid var(--glass-border); padding: 10px; text-align: left; vertical-align: top; }
 .bubble th { background: rgba(255,255,255,0.05); font-weight: 600; }
+.bubble th.risk-level-cell, .bubble td.risk-level-cell { width: 88px; min-width: 88px; white-space: nowrap; }
+.bubble .module-summary-group { margin: 20px 0; min-width: 0; }
+.bubble .module-summary-group > h3 { padding-bottom: 8px; border-bottom: 2px solid var(--glass-border); letter-spacing: 0; }
+.bubble .module-summary-table { table-layout: fixed; min-width: 540px; }
+.module-summary-table .finding-col { width: 38%; }
+.module-summary-table .level-col { width: 88px; }
+.risk-level-cell > span { display: inline-block; white-space: nowrap; }
 .bubble a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--accent); }
 .bubble a:hover { border-bottom-style: solid; }
 .bubble blockquote { border-left: 3px solid var(--accent); padding-left: 16px; margin: 12px 0; color: var(--text-secondary); }
@@ -622,9 +631,10 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 /* 有益/有害着色：低风险绿、高/极高风险红 */
 .risk-good { color: #fff; background: var(--success); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
 .risk-bad { color: #fff; background: var(--danger); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin: 0 2px; }
+.risk-provisional { color: var(--text-secondary); font-size: 11px; font-weight: 500; margin-left: 2px; white-space: nowrap; }
 
 /* ── 长代码块折叠 ── */
-.code-fold { margin: 12px 0; }
+.code-fold { margin: 12px 0; min-width: 0; max-width: 100%; }
 .code-fold > summary {
   cursor: pointer; user-select: none;
   padding: 10px 14px; border-radius: var(--radius-sm);
@@ -633,6 +643,10 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
   list-style: none;
   display: flex; align-items: center; gap: 8px;
 }
+.code-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.code-fold > summary .code-label { min-width: 0; overflow-wrap: anywhere; }
+.code-fold > summary .code-size { margin-left: auto; flex-shrink: 0; font-weight: 400; color: var(--text-muted); }
+.code-fold > summary > svg { flex-shrink: 0; }
 .code-fold > summary::-webkit-details-marker { display: none; }
 /* 折叠箭头：border 绘制三角（替代 ▶/▼ OS 字形，笔触随图标系统一） */
 .code-fold > summary::before {
@@ -644,6 +658,11 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .code-fold[open] > summary::before { transform: rotate(90deg); }
 .code-fold[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .code-fold > pre { margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0; }
+/* 折叠面板内的长 JSON / 宽表只允许内部滚动：
+   实测问题——结构化风险台账 JSON 单行极长、指标表 10 列，曾把气泡横向撑破。 */
+.bubble .code-fold { display: block; max-width: 100%; min-width: 0; overflow: hidden; }
+.bubble .code-fold > pre { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.bubble .code-fold > .table-scroll { max-width: 100%; overflow-x: auto; }
 
 /* ── 多智能体辩论复核意见卡片 ─────────────────────── */
 .review-card {
@@ -727,6 +746,9 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .review-gate-count, .review-gate-meta, .review-gate-note { color:var(--text-muted); font-size:12px; }
 .review-gate-meta { margin-top:10px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle); }
 .review-gate-card .table-scroll { margin-top:10px; }
+/* 卡片内宽表（数据源完整性 / 指标计算过程 / 待处理事项）统一横滚，禁止撑破卡片 */
+.table-scroll { max-width: 100%; overflow-x: auto; }
+.score-card .table-scroll > table { margin: 0; }
 .c1-status-block { margin-top:10px; padding-top:2px; }
 .c1-status-title { color:var(--text-secondary); font-size:12px; font-weight:700; margin-bottom:7px; }
 .score-card.artifact-manifest-card { display:block; margin-top:12px; }
@@ -740,7 +762,7 @@ button .ico, .quick-btn .ico { margin-right: 2px; }
 .report-meta-details summary { cursor:pointer; color:var(--text-secondary); font-size:12px; font-weight:700; margin-bottom:6px; }
 /* 指标计算过程表：列多且含长算式，等宽小字 + 横向滚动，避免挤压变形 */
 .score-card.metric-view-card { display:block; }
-.metric-table { font-size:11px; }
+.metric-table { font-size:11px; min-width:920px; }
 .metric-table td, .metric-table th { white-space:normal; vertical-align:top; }
 .metric-table .metric-group { color:var(--text-muted); font-weight:700; white-space:nowrap; }
 .metric-table .metric-formula { font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:var(--text-secondary); }
@@ -1433,7 +1455,7 @@ body.splash-active .main {
     <div class="splash-loading">
       <span></span><span></span><span></span>
     </div>
-    <div class="splash-version">v5.0 GA · 载入中…</div>
+    <div class="splash-version">v5.3 GA · 载入中…</div>
   </div>
 </div>
 
@@ -1498,8 +1520,8 @@ body.splash-active .main {
   </div>
 
     <div class="sidebar-footer">
-    <div>本地模式 · LangGraph + DeepSeek</div>
-    <div style="margin-top:4px">v5.0 GA · © 2026</div>
+    <div>本地模式 · LangGraph 多智能体协同</div>
+    <div style="margin-top:4px">v5.3 GA · © 2026</div>
     <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
       <button onclick="triggerKBUpload()" class="kb-btn" title="上传文件到知识库（支持 PDF/Word/Excel/PPT/TXT 等）" data-ico="paperclip"> 添加知识库</button>
       <button onclick="reloadKB(this)" class="kb-btn" title="重新加载知识库文件" data-ico="refresh"> 重载知识库</button>
@@ -1740,10 +1762,89 @@ let _completedSteps = [];
 let _thinkCardId = 0;
 const _streamProgress = {}; // { [sessionId]: { start: ts, steps: [{step,percent}] } }
 
+// 服务器为节省时间会并行执行前两阶段，事件到达顺序不等于业务展示顺序。
+// 前端只展示一套固定步骤，并按 key 去重；同一工具再次调用只更新次数/状态，
+// 不再把并行事件直接堆成重复的长列表。
+const THINKING_STEP_ORDER = [
+  { key: 'init', label: '初始化分析环境', rank: 0 },
+  { key: 'preprocess', label: '预提取财务数据并行预跑工具', rank: 10 },
+  { key: 'preprocess_done', label: '预处理完成（校验/指标/披露）', rank: 20 },
+  { key: 'parallel_prepare', label: '并行运行财务诊断与合规扫描', rank: 30 },
+  { key: 'financial_stage', label: '第一阶段 · 财务健康度诊断', rank: 40 },
+  { key: 'parse_pdf_report', label: '解析年报文件', rank: 50 },
+  { key: 'validate_financial_data', label: '校验财务数据', rank: 60 },
+  { key: 'calculate_financial_indicators', label: '计算财务指标', rank: 70 },
+  { key: 'calculate_risk_models', label: '量化风险模型预警', rank: 80 },
+  { key: 'compliance_stage', label: '第二阶段 · 合规与经营风险扫描', rank: 90 },
+  { key: 'check_disclosure_compliance', label: '检查披露合规', rank: 100 },
+  { key: 'identify_audit_opinion', label: '识别审计意见', rank: 110 },
+  { key: 'search_regulations', label: '检索法规条文', rank: 120 },
+  { key: 'search_regulatory_inquiries', label: '查询监管问询', rank: 130 },
+  { key: 'industry_outlook', label: '研判行业风向', rank: 140 },
+  { key: 'compare_multi_year', label: '多年数据对比', rank: 150 },
+  { key: 'synthesis_stage', label: '第三阶段 · 综合研判与交叉验证', rank: 160 },
+  { key: 'calculate_comprehensive_score', label: '综合风险评分', rank: 170 },
+  { key: 'generate_risk_heatmap', label: '生成风险热力图', rank: 180 },
+  { key: 'generate_radar_chart', label: '生成财务雷达图', rank: 190 },
+  { key: 'generate_trend_chart', label: '生成趋势折线图', rank: 200 },
+  { key: 'review_export', label: '辩论复核与报告导出中', rank: 210 },
+  { key: 'summary', label: '汇总分析结论', rank: 220 },
+];
+const THINKING_STEP_BY_KEY = Object.fromEntries(THINKING_STEP_ORDER.map(item => [item.key, item]));
+const THINKING_STEP_BY_LABEL = Object.fromEntries(THINKING_STEP_ORDER.map(item => [item.label, item]));
+
+function _progressSpec(step) {
+  const text = String(step || '').trim();
+  if (THINKING_STEP_BY_LABEL[text]) return THINKING_STEP_BY_LABEL[text];
+  if (text.includes('初始化')) return THINKING_STEP_BY_KEY.init;
+  if (text.includes('预处理完成')) return THINKING_STEP_BY_KEY.preprocess_done;
+  if (text.includes('预提取') || text.includes('预跑工具')) return THINKING_STEP_BY_KEY.preprocess;
+  if (text.includes('第一阶段')) return THINKING_STEP_BY_KEY.financial_stage;
+  if (text.includes('第二阶段')) return THINKING_STEP_BY_KEY.compliance_stage;
+  if (text.includes('第三阶段')) return THINKING_STEP_BY_KEY.synthesis_stage;
+  if (text.includes('并行运行财务诊断')) return THINKING_STEP_BY_KEY.parallel_prepare;
+  if (text.includes('辩论复核') || text.includes('报告导出')) return THINKING_STEP_BY_KEY.review_export;
+  if (text.includes('汇总分析')) return THINKING_STEP_BY_KEY.summary;
+  return THINKING_STEP_BY_LABEL[text] || { key: `other:${text}`, label: text || '分析处理中', rank: 1000 };
+}
+
+function _orderedProgressSteps(steps) {
+  const merged = new Map();
+  (steps || []).forEach(item => {
+    const spec = _progressSpec(item.step);
+    const old = merged.get(spec.key);
+    const rawPercent = Number(item.percent);
+    const percent = Number.isFinite(rawPercent) ? Math.max(0, rawPercent) : 0;
+    merged.set(spec.key, {
+      key: spec.key,
+      step: spec.label,
+      percent: Math.max(percent, old ? old.percent : 0),
+      count: (old ? old.count : 0) + Number(item.count || 1),
+      rank: spec.rank,
+    });
+  });
+  let maxPercent = 0;
+  return [...merged.values()]
+    .sort((a, b) => a.rank - b.rank)
+    .map(item => {
+      maxPercent = Math.max(maxPercent, item.percent);
+      return { ...item, percent: maxPercent };
+    });
+}
+
+function _storeProgress(sessionId, step, percent) {
+  if (!_streamProgress[sessionId]) _streamProgress[sessionId] = { start: Date.now(), steps: [] };
+  _streamProgress[sessionId].steps = _orderedProgressSteps([
+    ...(_streamProgress[sessionId].steps || []),
+    { step, percent },
+  ]);
+  return _streamProgress[sessionId].steps;
+}
+
 function showThinkingCard(sessionId) {
   // 支持从缓存恢复：中途切走再切回时，步骤与计时从缓存继续而非重置
   const cached = sessionId && _streamProgress[sessionId];
-  _completedSteps = cached ? cached.steps.map(s => s.step) : [];
+  _completedSteps = cached ? _orderedProgressSteps(cached.steps).map(s => s.step) : [];
   _thinkStart = cached ? cached.start : Date.now();
   _thinkCardId++;
   const cardId = `thinkingWrapper_${_thinkCardId}`;
@@ -1781,7 +1882,8 @@ function showThinkingCard(sessionId) {
   if (cached && cached.steps.length > 0) {
     const card = div.querySelector('.thinking-card');
     const container = card.querySelector('.thinking-steps-vertical');
-    const lastStep = cached.steps[cached.steps.length - 1];
+    const orderedSteps = _orderedProgressSteps(cached.steps);
+    const lastStep = orderedSteps[orderedSteps.length - 1];
     // 更新当前步骤文本
     const stepText = card.querySelector('.thinking-step-text');
     if (stepText) stepText.textContent = lastStep.step;
@@ -1792,9 +1894,9 @@ function showThinkingCard(sessionId) {
     // 不再变化——即「生成途中切到别的界面再切回，进度条不动」的根因。
     // 渲染已完成的步骤列表
     if (container) {
-      cached.steps.forEach((s, i) => {
+      orderedSteps.forEach((s, i) => {
         const item = document.createElement('div');
-        const isLast = (i === cached.steps.length - 1);
+        const isLast = (i === orderedSteps.length - 1);
         item.className = isLast ? 'vstep active' : 'vstep done';
         item.innerHTML = `<span class="vstep-icon">${isLast ? icon('loader', '11') : icon('check', '11')}</span><span class="vstep-label">${escapeHtml(s.step)}</span>`;
         container.appendChild(item);
@@ -1816,32 +1918,30 @@ function _updateThinkTimer() {
   el.textContent = `${m}:${s}`;
 }
 
-function updateProgress(step, percent) {
+function updateProgress(step, percent, sessionId, storedSteps) {
   // 更新当前思考卡片的步骤文本和竖向步骤列表
   const cards = document.querySelectorAll('.thinking-card');
   const card = cards[cards.length - 1];
   if (!card) return;
 
+  const ordered = storedSteps || (sessionId ? _storeProgress(sessionId, step, percent) : _orderedProgressSteps([{ step, percent }]));
+  const current = ordered[ordered.length - 1] || _progressSpec(step);
   const stepEl = card.querySelector('.thinking-step-text');
-  if (stepEl) stepEl.textContent = step;
+  if (stepEl) stepEl.textContent = current.step;
 
   const container = card.querySelector('.thinking-steps-vertical');
   if (!container) return;
 
-  // 将上一个 active 步骤标记为完成
-  const lastActive = container.querySelector('.vstep.active');
-  if (lastActive) {
-    lastActive.classList.remove('active');
-    lastActive.classList.add('done');
-    lastActive.querySelector('.vstep-icon').innerHTML = icon('check', '11');
-  }
-
-  // 添加新步骤（竖向排列；状态点/对勾走图标系 SVG，替代 ◉/✓ OS 字形）
-  const item = document.createElement('div');
-  item.className = 'vstep active';
-  item.innerHTML = `<span class="vstep-icon">${icon('dot', '11')}</span><span class="vstep-label">${escapeHtml(step)}</span>`;
-  container.appendChild(item);
-  _completedSteps.push(step);
+  // 每次从缓存重绘固定顺序，避免并行事件把阶段插入错误位置或重复追加。
+  container.innerHTML = '';
+  ordered.forEach((itemData, index) => {
+    const item = document.createElement('div');
+    const active = index === ordered.length - 1;
+    item.className = active ? 'vstep active' : 'vstep done';
+    item.innerHTML = `<span class="vstep-icon">${active ? icon('dot', '11') : icon('check', '11')}</span><span class="vstep-label">${escapeHtml(itemData.step)}</span>`;
+    container.appendChild(item);
+  });
+  _completedSteps = ordered.map(itemData => itemData.step);
   scrollToBottom();
 }
 
@@ -1914,6 +2014,106 @@ function extractMarkerJson(text, marker) {
   return null;
 }
 
+// 兼容发布层回写的「裸 JSON」台账：新快照可能直接嵌入正文，旧前端只会
+// 识别 ```json 围栏，导致整份台账按普通文本展开。仅识别同时含 company_info
+// 与 risk_details 的根对象，普通正文中的 JSON 不受影响；已在代码围栏内的对象
+// 交给后面的代码块解析，避免重复套围栏。
+function _structuredLedgerSpan(text, fromIndex = 0) {
+  const raw = String(text || '');
+  const openBrace = String.fromCharCode(123), closeBrace = String.fromCharCode(125);
+  for (let start = raw.indexOf(openBrace, fromIndex); start !== -1; start = raw.indexOf(openBrace, start + 1)) {
+    const fenceCount = (raw.slice(0, start).match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) continue;
+
+    let depth = 0, inString = false, escaped = false, end = -1;
+    for (let i = start; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === openBrace) depth++;
+      else if (ch === closeBrace) {
+        depth--;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+    if (end === -1) continue;
+
+    const candidate = raw.slice(start, end);
+    const looksLikeLedger = /"company_info"\s*:/.test(candidate)
+      && /"risk_details"\s*:/.test(candidate);
+    if (!looksLikeLedger) continue;
+    try {
+      const value = JSON.parse(candidate);
+      if (value && typeof value === 'object' && !Array.isArray(value)
+          && Object.prototype.hasOwnProperty.call(value, 'company_info')
+          && Object.prototype.hasOwnProperty.call(value, 'risk_details')) {
+        return { start, end, source: JSON.stringify(value, null, 2), valid: true };
+      }
+    } catch (e) {
+      // 保留可读的原始片段；后续仍会放进 JSON 折叠面板，不把解析失败内容
+      // 重新交给 Markdown/链接/风险徽章处理。
+      return { start, end, source: candidate, valid: false };
+    }
+  }
+  return null;
+}
+
+function _normalizeStructuredLedgerBlocks(text) {
+  const raw = String(text || '').replace(/\r\n?/g, '\n');
+  let cursor = 0, output = '';
+  while (cursor < raw.length) {
+    const span = _structuredLedgerSpan(raw, cursor);
+    if (!span) break;
+    output += raw.slice(cursor, span.start);
+    output += '\n\n```json\n' + span.source + '\n```\n\n';
+    cursor = span.end;
+  }
+  return output + raw.slice(cursor);
+}
+
+// 新报告把结构化台账作为独立 TXT 产物发布。正文只保留可读分析，避免
+// 大对象再次进入 Markdown 正则链、气泡布局和浏览器存储。
+function _removeStructuredLedgerBlocks(text) {
+  let raw = String(text || '').replace(/\r\n?/g, '\n');
+  let removed = false;
+  raw = raw.replace(/```json[ \t]*\n([\s\S]*?)```/gi, (full, source) => {
+    const ledgerLike = /"(?:company_info|risk_details|report_snapshot|risk_summary)"\s*:/.test(source);
+    if (ledgerLike) removed = true;
+    try {
+      const value = JSON.parse(source.trim());
+      return value && typeof value === 'object' && !Array.isArray(value)
+        && Object.prototype.hasOwnProperty.call(value, 'company_info')
+        && Object.prototype.hasOwnProperty.call(value, 'risk_details') ? '' : (ledgerLike ? '' : full);
+    } catch (e) {
+      // JSON 已经残缺时也隐藏机器片段，避免把半截对象送进 Markdown 渲染。
+      return ledgerLike ? '' : full;
+    }
+  });
+  let cursor = 0, output = '';
+  while (cursor < raw.length) {
+    const span = _structuredLedgerSpan(raw, cursor);
+    if (!span || !span.valid) break;
+    output += raw.slice(cursor, span.start);
+    cursor = span.end;
+    removed = true;
+  }
+  raw = output + raw.slice(cursor);
+  // 处理模型输出了未闭合 JSON 围栏的情况：正文保留在 JSON 之前，
+  // 结构化内容以 TXT 台账为准，不让异常输出撑破报告卡片。
+  const ledgerStart = raw.search(/\{\s*"(?:company_info|report_snapshot|risk_details)"\s*:/);
+  if (ledgerStart >= 0 && /"risk_details"\s*:/.test(raw.slice(ledgerStart))) {
+    raw = raw.slice(0, ledgerStart);
+    removed = true;
+  }
+  if (removed) raw += '\n\n> 结构化风险台账已收纳至 TXT 下载文件，正文仅展示可读分析。';
+  return raw;
+}
+
 // ── 历史存储截断：先剥离冗余 JSON，再按安全边界截断 ────────────
 // 无差别硬截断可能正好切在表格中间/echarts 块之前，切会话恢复视图时
 // 残缺表格不渲染、正文断在半句（实测症状：图表丢失/输出残缺/格式每次不同）。
@@ -1922,12 +2122,12 @@ function extractMarkerJson(text, marker) {
 const STORAGE_TEXT_LIMIT = 20000;
 function _truncateForStorage(text) {
   if (!text) return '';
-  let t = text.replace(/```json[\s\S]*?```/g, '');   // 台账 JSON 已存于 PDF/附件，历史不留
+  let t = _removeStructuredLedgerBlocks(text);   // 完整台账已存于 JSON 产物，历史正文不重复存
   if (t.length <= STORAGE_TEXT_LIMIT) return t;
   let cut = t.lastIndexOf('\n\n', STORAGE_TEXT_LIMIT);   // 段落边界优先（切点落在段间而非段内）
   if (cut < STORAGE_TEXT_LIMIT * 0.5) cut = t.lastIndexOf('\n', STORAGE_TEXT_LIMIT);  // 次选行边界
   if (cut < STORAGE_TEXT_LIMIT * 0.5) cut = STORAGE_TEXT_LIMIT;   // 都找不到才硬切
-  return t.slice(0, cut) + '\n\n（正文已截断，完整内容见 PDF 报告）';
+  return t.slice(0, cut) + '\n\n（正文已截断，完整内容见 PDF/JSON 产物）';
 }
 
 // 工具结果存储压缩：截断至 2000 字符而非清空。完整清空会永久丢失旧会话的工具
@@ -1941,6 +2141,75 @@ function _compactToolResults(toolResults) {
   });
 }
 
+function renderReportMetaHeader(rmeta) {
+  if (!rmeta) return '';
+  const srcList = Array.isArray(rmeta.data_sources) ? rmeta.data_sources : [];
+  const sourceLabels = { verified: '已核验', incomplete: '数据源不完整，仅供参考', unverified: '来源未核验，仅供人工复核', demo_placeholder: '演示占位数据，不代表公司实际数据' };
+  const srcRows = srcList.map(s => {
+    const status = String(s.data_status || s.source_status || (s.used ? 'verified' : 'unverified'));
+    const note = s.note || (status === 'verified' ? '' : '需人工复核');
+    return `<tr><td>${escapeHtml(String(s.name || ''))}</td><td>${escapeHtml(sourceLabels[status] || status)}</td><td>${escapeHtml(String(note))}</td></tr>`;
+  }).join('');
+  const gateNames = { passed: '已通过结构化门禁', not_passed: '未通过，需人工复核', not_run: '未执行审查' };
+  const metaBits = [
+    ['公司', rmeta.company_name], ['股票代码', rmeta.stock_code],
+     ['报告年度', rmeta.report_year], ['报告期', rmeta.report_period], ['行业', rmeta.industry],
+     ['会计准则', rmeta.accounting_standard], ['审计意见', rmeta.audit_opinion], ['分析编号', rmeta.analysis_id],
+    ['数据版本', rmeta.data_version], ['规则版本', rmeta.rule_version],
+    ['结果契约版本', rmeta.result_schema_version], ['快照ID', rmeta.snapshot_id],
+    ['校验状态', rmeta.validation_status], ['源文件哈希', rmeta.source_hash],
+  ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '');
+  const metaRows = metaBits.map(([k, v]) => `<div class="report-meta-item"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
+  const usedText = (rmeta.source_total ? `数据源 ${rmeta.source_used_count}/${rmeta.source_total} 已获取` : '');
+  const completeness = rmeta.data_status && rmeta.data_status !== 'verified'
+    ? `<div class="review-gate-note">${escapeHtml(String(rmeta.warning || '数据源不完整，仅供参考'))}</div>` : '';
+  return `<div class="score-card report-meta-card">
+      <div class="c1-status-title">报告元数据与完整性</div>
+      <div class="report-meta-grid">${metaRows}</div>
+      <div class="review-gate-meta"><span>审查门禁：${escapeHtml(gateNames[rmeta.review_gate_status] || rmeta.review_gate_status || '未记录')}</span><span>${escapeHtml(usedText)}</span></div>
+      ${completeness}
+      ${srcRows ? `<details class="report-meta-details"><summary>数据来源与完整性说明（默认收起，点击展开）</summary><div class="table-scroll"><table><thead><tr><th>数据源</th><th>状态</th><th>未获取原因</th></tr></thead><tbody>${srcRows}</tbody></table></div></details>` : ''}
+    </div>`;
+}
+
+
+function renderIndicatorView(iview) {
+  if (!iview || !iview.available || !Array.isArray(iview.groups) || !iview.groups.length) return '';
+  let metricRows = '';
+  for (const g of iview.groups) {
+    const items = Array.isArray(g.metrics) ? g.metrics : [];
+    items.forEach((m, i) => {
+      const thr = (m.threshold === null || m.threshold === undefined || m.threshold === '') ? '—' : String(m.threshold);
+      metricRows += `<tr>
+          <td class="metric-group">${i === 0 ? escapeHtml(String(g.label || '')) : ''}</td>
+          <td>${escapeHtml(String(m.name || ''))}</td>
+          <td>${escapeHtml(String(m.display_value || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.formula || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.inputs_text || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.period_scope || ''))}</td>
+          <td class="metric-subst">${escapeHtml(String(m.substitution || ''))}</td>
+          <td>${escapeHtml(thr)}${m.threshold_source ? `<span class="metric-thr-src">（${escapeHtml(String(m.threshold_source))}）</span>` : ''}</td>
+          <td>${escapeHtml(String(m.status || ''))}</td>
+          <td class="metric-formula">${escapeHtml(String(m.source_ref || ''))}</td>
+        </tr>`;
+    });
+  }
+  const uncalc = Array.isArray(iview.uncalculated) ? iview.uncalculated : [];
+  const uncalcHtml = uncalc.length ? `<div class="review-gate-note">未计算指标（不以中性值补齐）：${uncalc.map(u => `${escapeHtml(String(u.name || ''))}（${escapeHtml(String(u.status || ''))}：${escapeHtml(String(u.reason || '未说明原因'))}）`).join('；')}</div>` : '';
+  const metricTotal = Number(iview.metric_count) || 0;
+  const metricLabel = `指标计算过程与依据（${metricTotal ? metricTotal + ' 项' : (metricRows ? '明细' : '暂无')}）`;
+  return `<div class="score-card metric-view-card">
+      <div class="c1-status-title">财务指标与审计关注分析（指标计算过程与依据）</div>
+      <div class="review-gate-meta"><span>期间与口径：${escapeHtml([iview.period, iview.scope].filter(Boolean).join(' · ') || '未标注')}</span><span>金额单位：${escapeHtml(String(iview.amount_unit || '未声明'))}</span><span>已计算 ${escapeHtml(String(iview.metric_count || 0))} 项</span></div>
+      ${uncalcHtml}
+      ${iview.note ? `<div class="review-gate-note">${escapeHtml(String(iview.note))}</div>` : ''}
+      <details class="code-fold metric-fold"><summary>${icon('file-text')}<span class="code-label">${escapeHtml(metricLabel)}</span><span class="code-size">默认收起 · 点击展开</span></summary>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="指标计算过程与依据表格"><table class="metric-table"><thead><tr><th>能力</th><th>指标</th><th>结果</th><th>公式</th><th>输入值及单位</th><th>期间/口径</th><th>代入过程（含结果）</th><th>阈值及来源</th><th>状态</th><th>原文定位</th></tr></thead><tbody>${metricRows}</tbody></table></div>
+      </details>
+    </div>`;
+}
+
+
 function renderFinalReport(report, originSessionId, _historyReplay) {
   const origin = originSessionId || currentSessionId;
   if (origin !== currentSessionId) {
@@ -1950,12 +2219,13 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
     if (s) {
       if (!Array.isArray(s.messages)) s.messages = [];
       const _bgStored = _truncateForStorage(report.ai_text || '');
-      s.messages.push({ role: 'assistant', content: report.ai_text || '（分析报告已生成）',
+      s.messages.push({ role: 'assistant', content: _bgStored || '（分析报告已生成）',
         meta: { report: { tool_results: _compactToolResults(report.tool_results), images: report.images, files: report.files, ai_text: _bgStored,
           risk_ledger: report.risk_ledger, accepted_risk_details: report.accepted_risk_details,
           pending_items: report.pending_items, review_gate: report.review_gate,
           semantic_review: report.semantic_review, c1_review: report.c1_review,
           artifact_manifest: report.artifact_manifest,
+          report_snapshot: report.report_snapshot, final_snapshot: report.final_snapshot,
           report_metadata: report.report_metadata, indicator_view: report.indicator_view,
           task_status: report.task_status } },
         time: new Date() });
@@ -1979,60 +2249,17 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
   // ── 分区一：报告元数据与完整性（核心分析之前先交代本次运行的数据边界）──
   // 版本号/分析编号用于区分同名历史产物（旧报告不得靠改名冒充新结果）；
   // 数据源逐项标注已使用或未获取原因，避免前端从模型散文推断覆盖率。
-  const rmeta = report.report_metadata;
+    const rmeta = report.report_metadata;
   if (rmeta) {
-    const srcList = Array.isArray(rmeta.data_sources) ? rmeta.data_sources : [];
-    const srcRows = srcList.map(s => `<tr><td>${escapeHtml(String(s.name || ''))}</td><td>${s.used ? '已使用' : '未获取'}</td><td>${escapeHtml(String(s.note || ''))}</td></tr>`).join('');
-    const gateNames = { passed: '已通过结构化门禁', not_passed: '未通过，需人工复核', not_run: '未执行审查' };
-    const metaBits = [
-      ['公司', rmeta.company_name], ['股票代码', rmeta.stock_code],
-      ['报告年度', rmeta.report_year], ['行业', rmeta.industry],
-      ['审计意见', rmeta.audit_opinion], ['分析编号', rmeta.analysis_id],
-      ['数据版本', rmeta.data_version], ['规则版本', rmeta.rule_version],
-    ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '');
-    const metaRows = metaBits.map(([k, v]) => `<div class="report-meta-item"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
-    const usedText = (rmeta.source_total ? `数据源 ${rmeta.source_used_count}/${rmeta.source_total} 已获取` : '');
-    headHtml += `<div class="score-card report-meta-card">
-      <div class="c1-status-title">报告元数据与完整性</div>
-      <div class="report-meta-grid">${metaRows}</div>
-      <div class="review-gate-meta"><span>审查门禁：${escapeHtml(gateNames[rmeta.review_gate_status] || rmeta.review_gate_status || '未记录')}</span><span>${escapeHtml(usedText)}</span></div>
-      ${srcRows ? `<details class="report-meta-details" open><summary>数据来源与完整性说明</summary><div class="table-scroll"><table><thead><tr><th>数据源</th><th>状态</th><th>未获取原因</th></tr></thead><tbody>${srcRows}</tbody></table></div></details>` : ''}
-    </div>`;
+    headHtml += renderReportMetaHeader(rmeta);
   }
 
-  // ── 分区二：四项能力及补充分析（指标计算过程，与 PDF/Excel 同源）──
+  // ── 分区二：财务指标与审计关注分析（指标计算过程，与 PDF/Excel 同源）──
   // 每个指标展示公式→输入值及单位→期间与口径→代入过程→结果→阈值及来源→状态
   // →原文定位；未计算指标单列原因，不以中性值补齐。
-  const iview = report.indicator_view;
+    const iview = report.indicator_view;
   if (iview && iview.available && Array.isArray(iview.groups) && iview.groups.length) {
-    let metricRows = '';
-    for (const g of iview.groups) {
-      const items = Array.isArray(g.metrics) ? g.metrics : [];
-      items.forEach((m, i) => {
-        const thr = (m.threshold === null || m.threshold === undefined || m.threshold === '') ? '—' : String(m.threshold);
-        metricRows += `<tr>
-          <td class="metric-group">${i === 0 ? escapeHtml(String(g.label || '')) : ''}</td>
-          <td>${escapeHtml(String(m.name || ''))}</td>
-          <td>${escapeHtml(String(m.display_value || ''))}</td>
-          <td class="metric-formula">${escapeHtml(String(m.formula || ''))}</td>
-          <td class="metric-formula">${escapeHtml(String(m.inputs_text || ''))}</td>
-          <td class="metric-formula">${escapeHtml(String(m.period_scope || ''))}</td>
-          <td class="metric-subst">${escapeHtml(String(m.substitution || ''))}</td>
-          <td>${escapeHtml(thr)}${m.threshold_source ? `<span class="metric-thr-src">（${escapeHtml(String(m.threshold_source))}）</span>` : ''}</td>
-          <td>${escapeHtml(String(m.status || ''))}</td>
-          <td class="metric-formula">${escapeHtml(String(m.source_ref || ''))}</td>
-        </tr>`;
-      });
-    }
-    const uncalc = Array.isArray(iview.uncalculated) ? iview.uncalculated : [];
-    const uncalcHtml = uncalc.length ? `<div class="review-gate-note">未计算指标（不以中性值补齐）：${uncalc.map(u => `${escapeHtml(String(u.name || ''))}（${escapeHtml(String(u.status || ''))}：${escapeHtml(String(u.reason || '未说明原因'))}）`).join('；')}</div>` : '';
-    headHtml += `<div class="score-card metric-view-card">
-      <div class="c1-status-title">四项能力及补充分析（指标计算过程与依据）</div>
-      <div class="review-gate-meta"><span>期间与口径：${escapeHtml([iview.period, iview.scope].filter(Boolean).join(' · ') || '未标注')}</span><span>金额单位：${escapeHtml(String(iview.amount_unit || '未声明'))}</span><span>已计算 ${escapeHtml(String(iview.metric_count || 0))} 项</span></div>
-      <div class="table-scroll"><table class="metric-table"><thead><tr><th>能力</th><th>指标</th><th>结果</th><th>公式</th><th>输入值及单位</th><th>期间/口径</th><th>代入过程（含结果）</th><th>阈值及来源</th><th>状态</th><th>原文定位</th></tr></thead><tbody>${metricRows}</tbody></table></div>
-      ${uncalcHtml}
-      ${iview.note ? `<div class="review-gate-note">${escapeHtml(String(iview.note))}</div>` : ''}
-    </div>`;
+    headHtml += renderIndicatorView(iview);
   }
 
   // 工具调用链可视化：序号胶囊 + 连续重复合并（如 法规检索 ×3）+ 总调用计数
@@ -2071,11 +2298,20 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
     headHtml += `<div class="tool-chain-bar">${icon('branch')} <span class="tc-title">工具调用链</span>${chips}<span class="tc-count">共 ${toolNames.length} 次调用</span></div>`;
   }
 
-  // 综合评分卡片：检测 AI 回复中的 comprehensive_score JSON
+  // 综合评分卡片：新报告优先读取终局快照；旧历史没有快照时才解析正文 marker。
   // 50d：兼容维度未获取（"未获取"字符串）与 score:null（全维度未获取）——
   // 否则部分维度缺失时评分卡静默消失（实测 18:37 版披露维度未获取场景）
-  if (report.ai_text) {
-    const scoreMatch = report.ai_text.match(/"score"\s*:\s*([\d.]+|null)[\s\S]*?"level"\s*:\s*"([^"]+)"[\s\S]*?"level_key"\s*:\s*"([^"]+)"[\s\S]*?"breakdown"\s*:\s*\{[^}]*"financial"\s*:\s*([\d.]+|"未获取")[^}]*"disclosure"\s*:\s*([\d.]+|"未获取")[^}]*"validation"\s*:\s*([\d.]+|"未获取")/);
+  const structuredScore = report.report_snapshot?.score || report.risk_ledger?.comprehensive_score || null;
+  let scoreMatch = null;
+  if (structuredScore && typeof structuredScore === 'object') {
+    const breakdown = structuredScore.breakdown || {};
+    scoreMatch = [null, structuredScore.score ?? null, String(structuredScore.level || '未获取/无法判定'),
+      String(structuredScore.level_key || 'unknown'), breakdown.financial ?? '未获取',
+      breakdown.disclosure ?? '未获取', breakdown.validation ?? '未获取'];
+  } else if (report.ai_text) {
+    scoreMatch = report.ai_text.match(/"score"\s*:\s*([\d.]+|null)[\s\S]*?"level"\s*:\s*"([^"]+)"[\s\S]*?"level_key"\s*:\s*"([^"]+)"[\s\S]*?"breakdown"\s*:\s*\{[^}]*"financial"\s*:\s*([\d.]+|"未获取")[^}]*"disclosure"\s*:\s*([\d.]+|"未获取")[^}]*"validation"\s*:\s*([\d.]+|"未获取")/);
+  }
+  if (scoreMatch) {
     if (scoreMatch) {
       const [, score, level, levelKey, fin, disc, val] = scoreMatch;
       const s = parseFloat(score);
@@ -2106,7 +2342,7 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
           </div>
         </div>
       </div>`;
-    } else if (/"score"\s*:\s*null/.test(report.ai_text)) {
+    } else if (!structuredScore && report.ai_text && /"score"\s*:\s*null/.test(report.ai_text)) {
       // 50d：全维度未获取（score:null）时渲染降级提示卡，而非静默消失
       headHtml += `<div class="score-card">
         <div class="score-info">
@@ -2115,6 +2351,12 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
         </div>
       </div>`;
     }
+  }
+
+  const finalScore = report.report_snapshot?.score || report.risk_ledger?.comprehensive_score || extractMarkerJson(report.ai_text || '', '<!--COMPREHENSIVE_SCORE-->');
+  const scoreReviewNote = finalScore?.assessment_note || finalScore?.score_note;
+  if (scoreReviewNote) {
+    headHtml += `<div class="review-gate-note">${escapeHtml(String(scoreReviewNote))}</div>`;
   }
 
   // ── C 端轻量工具专属卡片：服务端在 ai_text 确定性注入 marker + 工具 JSON
@@ -2176,13 +2418,27 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
   // 风险等级分布饼图：优先从 risk_summary 提取重大/重要/一般计数，缺失或为 0 时
   // 回退解析 risk_details 台账逐条统计（与后端 PDF 环形图同源逻辑），保证卡片恒渲染。
   function extractRiskLevelCounts(text, reportData) {
+    const snapshot = reportData && reportData.report_snapshot && typeof reportData.report_snapshot === 'object'
+      ? reportData.report_snapshot : null;
+    const summary = (snapshot && snapshot.risk_summary) || (reportData && reportData.risk_summary) || null;
+    if (summary && typeof summary === 'object') {
+      const formal = summary.formal || {};
+      const all = summary.all_identified || {};
+      const pendingBlock = summary.pending || {};
+      const major = Number(formal.major ?? summary.major_risks ?? 0) || 0;
+      const important = Number(formal.important ?? summary.important_risks ?? 0) || 0;
+      const general = Number(formal.general ?? summary.general_risks ?? 0) || 0;
+      const pending = Number(summary.pending_risks ?? pendingBlock.total ?? 0) || 0;
+      const identified = Number(all.total ?? (major + important + general + pending)) || 0;
+      return { major, important, general, total: major + important + general, pending, identified };
+    }
     const mMajor = text.match(/"major_risks"\s*:\s*(\d+)/);
     const mImportant = text.match(/"important_risks"\s*:\s*(\d+)/);
     const mGeneral = text.match(/"general_risks"\s*:\s*(\d+)/);
     let major = mMajor ? parseInt(mMajor[1]) : 0;
     let important = mImportant ? parseInt(mImportant[1]) : 0;
     let general = mGeneral ? parseInt(mGeneral[1]) : 0;
-    if (major + important + general > 0) return { major, important, general, total: major + important + general };
+    if (major + important + general > 0) return { major, important, general, total: major + important + general, pending: 0, identified: major + important + general };
     const aliases = { '重大': '重大', '高风险': '重大', '极高风险': '重大', '严重': '重大', '高': '重大',
       '重要': '重要', '中等风险': '重要', '中': '重要',
       '一般': '一般', '低风险': '一般', '轻微': '一般', '低': '一般' };
@@ -2202,7 +2458,7 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
           else if (lv === '一般') general++;
         }
       }
-      return { major, important, general, total: major + important + general };
+      return { major, important, general, total: major + important + general, pending: 0, identified: major + important + general };
     }
     // 回退：从 ```json 代码块逐条统计（兼容旧历史记录）
     try {
@@ -2217,16 +2473,18 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
           if (lv) c[lv]++;
         }
         major = c['重大']; important = c['重要']; general = c['一般'];
-        return { major, important, general, total: major + important + general };
+        return { major, important, general, total: major + important + general, pending: 0, identified: major + important + general };
       }
     } catch (e) { /* 台账解析失败则保持 0，走占位渲染 */ }
-    return { major: 0, important: 0, general: 0, total: 0 };
+    return { major: 0, important: 0, general: 0, total: 0, pending: 0, identified: 0 };
   }
 
-  if (report.ai_text && /"risk_details"|"risk_summary"|"major_risks"/.test(report.ai_text)) {
+  if (report.report_snapshot || report.risk_summary || (report.ai_text && /"risk_details"|"risk_summary"|"major_risks"/.test(report.ai_text))) {
     const counts = extractRiskLevelCounts(report.ai_text, report);
     const major = counts.major, important = counts.important, general = counts.general;
     const total = counts.total;
+    const pending = counts.pending || 0;
+    const identified = counts.identified || (total + pending);
     if (total > 0) {
       const C = 2 * Math.PI * 30;
       const segs = [
@@ -2249,7 +2507,8 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
           <circle cx="40" cy="40" r="30" fill="none" stroke="rgb(30,41,59)" stroke-width="12"/>${arcs}
         </svg>
         <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">风险等级分布（共 ${total} 条）</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">正式采信风险 ${total} 项 · 待复核提示 ${pending} 项 · 识别事项合计 ${identified} 项</div>
+          <div style="font-size:12px;color:var(--text-secondary)">正式风险等级分布（共 ${total} 项）</div>
           ${legend}
         </div>
       </div>`;
@@ -2259,7 +2518,7 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
         <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg);flex-shrink:0">
           <circle cx="40" cy="40" r="30" fill="none" stroke="rgb(30,41,59)" stroke-width="12"/>
         </svg>
-        <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">风险等级分布（未识别风险事项）</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">正式采信风险 0 项 · 待复核提示 ${pending} 项 · 识别事项合计 ${identified} 项</div>
       </div>`;
     }
   }
@@ -2286,18 +2545,17 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
       return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(c1StatusNames[phase.status] || phase.status || '未记录')}</td><td>${phase.output_available ? '已生成' : '无可用输出'}</td><td>${escapeHtml(`${phase.output_chars || 0} 字${verdict}`)}</td></tr>`;
     }).join('');
     const c1Html = c1 && (c1.status || Object.keys(c1Phases).length) ? `<div class="c1-status-block"><div class="c1-status-title">C1 串行复核：${escapeHtml(c1StatusNames[c1.status] || c1.status || '未记录')} · 仲裁调整 ${escapeHtml(String(c1.adjustment_count || 0))} 条</div><div class="table-scroll"><table><thead><tr><th>阶段</th><th>状态</th><th>输出</th><th>记录</th></tr></thead><tbody>${c1PhaseRows || '<tr><td colspan="4">暂无阶段记录</td></tr>'}</tbody></table></div></div>` : '';
-    const pendingRows = pending.slice(0, 12).map(r => `<tr><td>${escapeHtml(String(r.risk_id || ''))}</td><td>${escapeHtml(String(r.verification_status || r.status || '待处理'))}</td><td>${escapeHtml(String(r.c2_status || 'not_run'))}</td><td>${escapeHtml(String((r.evidence_ids || r.evidence_id || []).toString() || '未引用'))}</td><td>${escapeHtml(String(r.pending_reason || r.title || ''))}</td></tr>`).join('');
     // 审查预算：次数/限时/补证轮次与用量逐项可见；耗尽即转人工，不冒充复核通过
     const rbudget = gate.review_budget || {};
     const budgetText = rbudget.max_calls ? `审查预算 ${rbudget.calls_used || 0}/${rbudget.max_calls} 次 · 阶段限时 ${rbudget.stage_timeout_seconds || 0}s · 补证 ${rbudget.supplement_rounds_used || 0}/${rbudget.supplement_round_limit || 0} 轮 · 单次超时 ${rbudget.call_timeout_seconds || 0}s` : '';
     const humanNote = gate.human_review_required ? `<div class="review-gate-note">转人工复核：${escapeHtml(String(gate.pending_reason || '审查异常或预算耗尽'))}</div>` : '';
     headHtml += `<div class="score-card review-gate-card">
-      <div class="review-gate-head"><span class="${gateClass}">${icon(gate.status === 'passed' ? 'check-circle' : 'alert')} ${escapeHtml(gateText)}</span><span class="review-gate-count">正式风险 ${accepted} 条 · 待处理 ${pending.length} 条</span></div>
+      <div class="review-gate-head"><span class="${gateClass}">${icon(gate.status === 'passed' ? 'check-circle' : 'alert')} ${escapeHtml(gateText)}</span><span class="review-gate-count">系统采信风险 ${accepted} 条 · 待复核提示 ${pending.length} 条</span></div>
       <div class="review-gate-meta"><span>C2 关键语义：${escapeHtml(c2Text)}</span><span>C1：${escapeHtml(gate.c1_status || '未测试')}（正方 → 反方 → 仲裁）</span></div>
       ${budgetText ? `<div class="review-gate-meta"><span>${escapeHtml(budgetText)}</span></div>` : ''}
       ${humanNote}
       ${c1Html}
-      ${pendingRows ? `<div class="table-scroll"><table><thead><tr><th>风险ID</th><th>处理状态</th><th>C2</th><th>证据引用</th><th>分歧/待处理原因</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : (allRisks.length ? '<div class="review-gate-note">所有已列风险均有结构化记录；详细证据见风险台账与下载底稿。</div>' : '')}
+      ${pending.length ? `<div class="review-gate-note">${pending.length} 项待复核提示仅作人工关注提醒，不计入正式风险评分或正式风险总数；完整依据请查看 Excel 审计底稿和 TXT 风险台账。</div>` : (allRisks.length ? '<div class="review-gate-note">所有已列风险均有结构化记录；详细证据见风险台账与下载底稿。</div>' : '')}
     </div>`;
   }
 
@@ -2307,28 +2565,31 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
     // 下载入口只对「实际存在且可访问」的产物开放。
     const artifactStatus = { success: '已生成', failed: '生成失败', generating: '生成中', running: '生成中' };
     const taskNames = { completed: '全部完成', partial: '部分完成', failed: '生成失败', running: '生成中', not_run: '未生成产物' };
+    const artifactKindNames = { json: 'TXT格式结构化风险台账（JSON内容）', pdf: 'PDF报告', xlsx: 'Excel审计底稿', chart: '图表' };
     const taskStatus = report.task_status || '';
     const okCount = report.artifact_manifest.filter(a => a.status === 'success' && a.accessible !== false && a.url).length;
     const artifactRows = report.artifact_manifest.map(a => {
       const ok = a.status === 'success' && a.accessible !== false && a.url;
-      const name = a.name || a.label || a.kind || '产物';
+      const name = artifactKindNames[a.kind] || a.name || a.label || a.kind || '产物';
       const action = ok ? `<a href="${escapeHtml(a.url)}" download>${icon('download')} 下载</a>` : '不可下载';
       return `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(artifactStatus[a.status] || a.status || '未记录')}</td><td>${action}</td><td>${escapeHtml(a.error || '')}</td></tr>`;
     }).join('');
-    headHtml += `<div class="score-card artifact-manifest-card"><div class="c1-status-title">产物生成状态${taskStatus ? `：${escapeHtml(taskNames[taskStatus] || taskStatus)}` : ''}</div>${taskStatus ? `<div class="review-gate-meta"><span>可下载 ${okCount} / ${report.artifact_manifest.length} 项</span><span>版本：${escapeHtml(report.report_metadata?.data_version || '未记录')} · ${escapeHtml(report.report_metadata?.rule_version || '未记录')}</span></div>` : ''}<div class="table-scroll"><table><thead><tr><th>产物</th><th>状态</th><th>操作</th><th>说明</th></tr></thead><tbody>${artifactRows}</tbody></table></div></div>`;
+     const artifactWarning = report.data_status && report.data_status !== 'verified'
+       ? `<div class="review-gate-note">${escapeHtml(String(report.warning || '数据源不完整，仅供参考'))}</div>` : '';
+     headHtml += `<div class="score-card artifact-manifest-card"><div class="c1-status-title">产物生成状态${taskStatus ? `：${escapeHtml(taskNames[taskStatus] || taskStatus)}` : ''}</div>${taskStatus ? `<div class="review-gate-meta"><span>可下载 ${okCount} / ${report.artifact_manifest.length} 项</span><span>版本：${escapeHtml(report.report_metadata?.data_version || '未记录')} · ${escapeHtml(report.report_metadata?.rule_version || '未记录')}</span></div>` : ''}${artifactWarning}<div class="table-scroll"><table><thead><tr><th>产物</th><th>状态</th><th>操作</th><th>说明</th></tr></thead><tbody>${artifactRows}</tbody></table></div></div>`;
   }
 
   if (report.ai_text) {
     // 兜底追加的产物链接行（📊/📎 前缀）与下方附件卡片重复：卡片已完整呈现，
     // 从正文移除对应行（仅当该路径确实已进 files/images，否则保留兜险入口）
     const knownPaths = new Set([...(report.files || []), ...(report.images || [])].map(f => f.path));
-    const cleaned = report.ai_text.split('\n').filter(line => {
+    const cleaned = _removeStructuredLedgerBlocks(report.ai_text).split('\n').filter(line => {
       const t = line.trim();
       if (!/^(📊|📎)/.test(t)) return true;
-      const m = t.match(/(\/local_storage\/[^\s）)\]，,]+\.(?:pdf|xlsx|png))/);
+      const m = t.match(/(\/local_storage\/[^\s）)\]，,]+\.(?:pdf|xlsx|png|txt))/);
       return !(m && knownPaths.has(m[1]));
     }).join('\n');
-    mdHtml = renderMarkdownSafe(cleaned);
+    mdHtml = renderMarkdownSafe(publicRiskText(cleaned));
   }
 
   if (report.images && report.images.length > 0) {
@@ -2353,13 +2614,13 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
       const relPath = f.path.replace(/^.*?local_storage[\/\\]?/, '');
       const fileUrl = `/local_storage/${relPath}`;
       const fileName = f.path.split(/[\/\\]/).pop();
-      const fIcon = icon(fileName.endsWith('.pdf') ? 'file-text' : 'chart', '26');
+      const fIcon = icon(fileName.endsWith('.pdf') || fileName.endsWith('.json') || fileName.endsWith('.txt') ? 'file-text' : 'chart', '26');
       const ext = fileName.split('.').pop().toUpperCase();
       attachHtml += `<div class="file-download-card" tabindex="0" role="button" onkeydown="if(event.key==='Enter')this.click()" data-url="${escapeHtml(fileUrl)}" data-name="${escapeHtml(fileName)}">
         <span class="file-icon" style="color:var(--accent)">${fIcon}</span>
         <div class="file-info">
           <div class="file-name">${escapeHtml(fileName)}</div>
-          <div class="file-meta">${ext} 文件 · 点击下载</div>
+          <div class="file-meta">${(ext === 'JSON' || (ext === 'TXT' && /风险台账|JSON/i.test(fileName))) ? '完整结构化风险台账（TXT）' : ext + ' 文件'} · 点击下载</div>
         </div>
         <span class="file-action">下载 ↓</span>
       </div>`;
@@ -2397,22 +2658,23 @@ function renderFinalReport(report, originSessionId, _historyReplay) {
   mountPendingCharts();
   scrollToBottom();
 
-  const textForHistory = report.ai_text || '（分析报告已生成）';
+  const textForHistory = _truncateForStorage(report.ai_text || '') || '（分析报告已生成）';
   // _historyReplay=true 时是从 switchSession 历史恢复路径调用，消息已在 messages 中，
   // 不可再次 push（否则每次切换会话消息指数级增殖）
   if (!_historyReplay) {
     // 精简存储：tool_results 截断至 TOOL_CONTENT_LIMIT（防 localStorage 膨胀，
     // 同时保留工具原文前缀供工具链/参考卡渲染；不完整清空以免旧数据永久丢失）
     const compactResults = _compactToolResults(report.tool_results);
-    // ai_text 超长截断防 localStorage 溢出（先剥离 JSON 台账再按段落边界安全截断）
-    const storedText = _truncateForStorage(report.ai_text || '');
+    // 正文只保存可读分析；完整结构化台账由独立 JSON 产物承载。
+    const storedText = textForHistory;
     messages.push({ role: 'assistant', content: textForHistory,
       meta: { report: { tool_results: compactResults, images: report.images, files: report.files, ai_text: storedText,
-        risk_ledger: report.risk_ledger, accepted_risk_details: report.accepted_risk_details,
-        pending_items: report.pending_items, review_gate: report.review_gate,
-        semantic_review: report.semantic_review, c1_review: report.c1_review,
-        artifact_manifest: report.artifact_manifest,
-        report_metadata: report.report_metadata, indicator_view: report.indicator_view,
+          risk_ledger: report.risk_ledger, accepted_risk_details: report.accepted_risk_details,
+          pending_items: report.pending_items, review_gate: report.review_gate,
+          semantic_review: report.semantic_review, c1_review: report.c1_review,
+          artifact_manifest: report.artifact_manifest,
+          report_snapshot: report.report_snapshot, final_snapshot: report.final_snapshot,
+          report_metadata: report.report_metadata, indicator_view: report.indicator_view,
         task_status: report.task_status } },
       time: new Date() });
     toolCallCount += (report.tool_results || []).length;
@@ -2479,9 +2741,8 @@ async function _doStreamRequest(payload, originSessionId, threadId) {
           // 消息产出则始终写回源会话（已切走时不污染当前视图）
           if (data.type === 'progress') {
             // 始终缓存进度步骤（无论前后台），仅前台时更新 DOM
-            if (!_streamProgress[origin]) _streamProgress[origin] = { start: Date.now(), steps: [] };
-            _streamProgress[origin].steps.push({ step: data.step || '', percent: data.percent || 0 });
-            if (origin === currentSessionId) updateProgress(data.step || '', data.percent || 0);
+            const orderedSteps = _storeProgress(origin, data.step || '', data.percent || 0);
+            if (origin === currentSessionId) updateProgress(data.step || '', data.percent || 0, null, orderedSteps);
           } else if (data.type === 'final_report') {
             if (origin === currentSessionId) removeThinkingCard();
             delete _streamProgress[origin]; // 分析完成，清除进度缓存
@@ -2608,14 +2869,24 @@ async function sendMessage(presetPrompt) {
 
       // 历史上下文取自源会话（全局 messages 切会话后属于别的会话，不可直接用）
       const payload = {
-        messages: [
-          ..._sessionMessages(originSessionId).filter(m => m.role !== 'system').map(m => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
-          })),
-          { role: 'user', content: fileUserContent }
-        ]
-      };
+          messages: [
+            ..._sessionMessages(originSessionId).filter(m => m.role !== 'system').map(m => ({
+              role: m.role === 'assistant' ? 'assistant' : 'user',
+              content: m.content
+            })),
+            { role: 'user', content: fileUserContent }
+          ],
+          // 上传接口已计算源文件哈希和页数；作为结构化元数据传递，
+          // 不混进原文，供终局快照和所有导出产物统一回指。
+          source_metadata: {
+            files: [{
+              document_name: fileInfo.filename || '',
+              source_hash: fileInfo.source_hash || '',
+              page_count: fileInfo.page_count,
+              file_size: fileInfo.file_size,
+            }]
+          }
+        };
 
       currentController = new AbortController();
       try {
@@ -3504,6 +3775,17 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function publicRiskText(value) {
+  return String(value ?? '')
+    .replaceAll('财务报表错报风险', '财务风险')
+    .replaceAll('财务错报风险', '财务风险')
+    .replaceAll('财务错报', '财务风险')
+    .replaceAll('待核查事项', '待复核提示')
+    .replaceAll('待核实事项', '待复核提示')
+    .replaceAll('待核查', '待复核')
+    .replaceAll('待核实', '待复核');
+}
+
 // ── 三模块标记（必须与后端 main.py 的 MODULE_MARKERS 严格一致）──
 // 前端把标记注入消息首部，后端 _detect_module 据此选择工具子集与固定骨架。
 const MODULE_MARKERS = {
@@ -3525,13 +3807,35 @@ let _echartsInstances = [];
 window.addEventListener('resize', () => { _echartsInstances.forEach(c => { try { c.resize(); } catch(e) {} }); });
 function _disposeCharts() { _echartsInstances.forEach(c => { try { c.dispose(); } catch(e) {} }); _echartsInstances = []; }
 
+// 图表数据兼容：模型既可能输出 [1,2,3] + xAxis 类别，也可能输出 [{name,value}] 对象数组。
+// 实测事故：饼图只按下标把对象当数值取，图例与扇区全空（「交叉验证状态分布」空白）。
+function _chartPoints(series, xs) {
+  const list = Array.isArray(series) ? series : [];
+  const names = Array.isArray(xs) ? xs : [];
+  return list.map((item, i) => {
+    if (item && typeof item === 'object') {
+      const value = Number(item.value);
+      const name = item.name == null ? names[i] : item.name;
+      return { name: String(name == null ? i : name), value: Number.isFinite(value) ? value : 0 };
+    }
+    const value = Number(item);
+    const name = names[i];
+    return { name: String(name == null ? i : name), value: Number.isFinite(value) ? value : 0 };
+  });
+}
+
 function _chartFallbackTable(spec) {
-  // 无 echarts 库时的降级展现：把 series 渲染成可读表格
+  // 无 echarts 库时的降级展现：普通图按 系列×类别；饼图逐项列出「系列/类别/数值」
   const xs = Array.isArray(spec.xAxis) ? spec.xAxis : [];
-  const head = ['类别'].concat(xs.map(x => escapeHtml(String(x))));
+  const isPie = (spec.type || '') === 'pie';
+  const head = isPie ? ['系列', '类别', '数值'] : ['类别'].concat(xs.map(x => escapeHtml(String(x))));
   const rows = (spec.series || []).map(s => {
-    const cells = (s.data || []).map(v => `<td>${escapeHtml(String(v))}</td>`).join('');
-    return `<tr><td><b>${escapeHtml(String(s.name || ''))}</b></td>${cells}</tr>`;
+    if (isPie) {
+      return _chartPoints(s && s.data, xs).map(p => `<tr><td><b>${escapeHtml(String(s && s.name || ''))}</b></td>`
+        + `<td>${escapeHtml(String(p.name))}</td><td>${escapeHtml(String(p.value))}</td></tr>`).join('');
+    }
+    const cells = (s && s.data || []).map(v => `<td>${escapeHtml(String(v))}</td>`).join('');
+    return `<tr><td><b>${escapeHtml(String(s && s.name || ''))}</b></td>${cells}</tr>`;
   }).join('');
   return `<div class="table-scroll"><table class="echart-fallback"><thead><tr>`
     + head.map(h => `<th>${h}</th>`).join('')
@@ -3563,11 +3867,10 @@ function mountPendingCharts() {
       if (type === 'pie') {
         const first = (spec.series || [])[0] || {};
         option = Object.assign({}, common, {
+          tooltip: { trigger: 'item', formatter: '{b}: {c}（{d}%）' },
           series: [{
             type: 'pie', radius: ['40%', '68%'],
-            data: (first.data || []).map((v, i) => ({
-              value: v, name: String((spec.xAxis || [])[i] ?? i),
-            })),
+            data: _chartPoints(first.data, spec.xAxis),
             label: { color: '#c9d4e6' },
           }],
         });
@@ -3604,7 +3907,30 @@ function renderMarkdown(text) {
     reviewHtml = renderReviewCard(reviewText);
   }
 
-  let html = escapeHtml(mainText);
+  // 终局快照发布层可能把兼容台账写成裸 JSON；先转成代码围栏，再进入
+  // 普通 Markdown 管线，确保它始终落入现有默认收起的次级文本框。
+  mainText = _normalizeStructuredLedgerBlocks(mainText);
+  let html = escapeHtml(mainText.replace(/\r\n?/g, '\n'));
+  // Code and generated blocks must not pass through prose formatting again.
+  const blocks = [], inlines = [];
+  const keepBlock = (content) => `<div data-md-block="${blocks.push(content) - 1}"></div>`;
+  const keepInline = (content) => `<span data-md-inline="${inlines.push(content) - 1}"></span>`;
+  const decode = (value) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const attr = (value) => escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // 风险等级徽章：只认「裸等级词（+可选暂定后缀）」。台账里的候选等级会带
+  // 「（暂定关注）」后缀，必须在此一并解析——否则该单元格拿不到徽章，且后端粗体只包
+  // 裸等级时残留样式会失配（实测渲染事故：游离 </strong>）。
+  const _RISK_LEVEL_CLASSES = { '重大': 'major', '重要': 'important', '一般': 'general',
+    '极高风险': 'bad', '高风险': 'bad', '中等风险': 'general', '低风险': 'good' };
+  const _RISK_LEVEL_RE = /^(极高风险|高风险|中等风险|低风险|重大|重要|一般)(（暂定关注）)?$/;
+  const riskBadge = (value) => {
+    const text = String(value == null ? '' : value).replace(/<\/?(?:strong|em)>/g, '').trim();
+    const matched = text.match(_RISK_LEVEL_RE);
+    if (!matched) return value;
+    const suffix = matched[2] ? `<span class="risk-provisional">${matched[2]}</span>` : '';
+    return `<span class="risk-${_RISK_LEVEL_CLASSES[matched[1]]}">${matched[1]}</span>${suffix}`;
+  };
 
   // 隐藏综合评分原始 JSON 段（评分已由独立评分卡可视化，避免重复展示原文）
   html = html.replace(/&lt;!--COMPREHENSIVE_SCORE--&gt;[\s\S]*?(?=\n\n|$)/, '');
@@ -3613,47 +3939,48 @@ function renderMarkdown(text) {
   html = html.replace(/&lt;!--INVESTMENT_CARD--&gt;[\s\S]*?(?=\n\n|$)/, '');
   html = html.replace(/&lt;!--INDUSTRY_OUTLOOK--&gt;[\s\S]*?(?=\n\n|$)/, '');
 
-  // ── ECharts 图表块：```echarts + 固定 schema JSON → 交互图表容器 ──
-  // 必须放在通用代码块处理之前，否则会被当成普通代码块吞掉。
-  // 此时 html 已过 escapeHtml，需先反转义再 JSON.parse。
-  // 降级策略：JSON 非法 → 原样代码块；echarts 库缺失 → 渲染为数据表格（均不白屏）。
-  html = html.replace(/```echarts\n([\s\S]*?)```/g, (_, raw) => {
-    const jsonText = raw.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
-    try {
-      const spec = JSON.parse(jsonText);
-      if (!spec || !Array.isArray(spec.series)) throw new Error('缺少 series');
-      const id = 'ec_' + Math.random().toString(36).slice(2, 10);
-      _pendingCharts.push({ id, spec });
-      return `<div class="echart-block">`
-        + `<div class="echart-head">${icon('chart')} <span>ECHARTS</span>`
-        + `<span class="echart-title">${escapeHtml(String(spec.title || ''))}</span></div>`
-        + `<div class="echart-canvas" id="${id}"></div></div>`;
-    } catch (err) {
-      return `<pre><code class="language-json">${jsonText}</code></pre>`;
+  html = html.replace(/```([\w-]*)[ \t]*\n([\s\S]*?)```/g, (_, language, code) => {
+    let lang = language.toLowerCase(), source = decode(code.trim()), ledger = false, invalidChart = false;
+    if (lang === 'echarts') {
+      try {
+        const spec = JSON.parse(source);
+        if (!spec || !Array.isArray(spec.series)) throw new Error('缺少 series');
+        const id = 'ec_' + Math.random().toString(36).slice(2, 10);
+        _pendingCharts.push({ id, spec });
+        return keepBlock(`<div class="echart-block">`
+          + `<div class="echart-head">${icon('chart')} <span>ECHARTS</span>`
+          + `<span class="echart-title">${escapeHtml(String(spec.title || ''))}</span></div>`
+          + `<div class="echart-canvas" id="${id}"></div></div>`);
+      } catch (err) { lang = 'json'; invalidChart = true; }
     }
-  });
-
-  // Code blocks：超过 12 行的长代码块（如风险台账 JSON）自动折叠，点击展开
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const trimmed = code.trim();
-    const lineCount = trimmed.split('\n').length;
-    const pre = `<pre><code class="language-${lang}">${trimmed}</code></pre>`;
-    if (lineCount > 12) {
-      const label = lang === 'json' ? '结构化风险台账 JSON' : '代码';
-      return `<details class="code-fold"><summary>${icon('file-text')} ${label}（${lineCount} 行，点击展开/收起）</summary>${pre}</details>`;
+    if (lang === 'json' && !invalidChart) {
+      try {
+        const data = JSON.parse(source);
+        ledger = !!data && typeof data === 'object' && !Array.isArray(data)
+          && Object.prototype.hasOwnProperty.call(data, 'company_info')
+          && Object.prototype.hasOwnProperty.call(data, 'risk_details');
+        source = JSON.stringify(data, null, 2);
+      } catch (err) { /* Keep incomplete or invalid JSON visible as escaped text. */ }
     }
-    return pre;
+    const lineCount = source.split('\n').length;
+    const pre = `<pre tabindex="0" aria-label="${lang === 'json' ? 'JSON' : '代码'}"><code class="language-${lang}">${escapeHtml(source)}</code></pre>`;
+    if (lang === 'json' || lineCount > 12 || source.length > 1000) {
+      const label = ledger ? '结构化风险台账 JSON' : (lang === 'json' ? 'JSON' : '代码');
+      return keepBlock(`<details class="code-fold"><summary>${icon('file-text')}`
+        + `<span class="code-label">${label}</span><span class="code-size">${lineCount} 行</span></summary>${pre}</details>`);
+    }
+    return keepBlock(pre);
   });
 
   // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/`([^`]+)`/g, (_, code) => keepInline(`<code>${code}</code>`));
 
   // Bold & Italic
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
 
   // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
@@ -3666,54 +3993,55 @@ function renderMarkdown(text) {
   html = html.replace(/((<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
 
   // Links — 本地文件链接触发下载，外部链接新窗口打开（协议白名单防 XSS）
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
+  const makeLink = (text, href) => {
     // 协议安全检查：仅允许 http(s) 和站内路径，javascript: 等不安全协议退化为纯文本
-    const trimHref = href.trim();
-    const isSafe = /^https?:\/\//i.test(trimHref) || trimHref.startsWith('/');
+    const trimHref = decode(href.trim());
+    const isSafe = /^https?:\/\//i.test(trimHref) || /^\/(?!\/)/.test(trimHref);
     if (!isSafe) return text; // 不安全协议不生成链接
-    if (trimHref.includes('/local_storage/') || trimHref.match(/\.(pdf|xlsx|png|jpg|csv)$/i)) {
+    if (trimHref.includes('/local_storage/') || trimHref.match(/\.(pdf|xlsx|png|jpg|csv|txt)$/i)) {
       const fname = trimHref.split('/').pop();
-      return `<a href="javascript:void(0)" class="download-link" data-url="${escapeHtml(trimHref)}" data-name="${escapeHtml(fname)}" style="cursor:pointer">${text} ${icon('download')}</a>`;
+      return keepInline(`<a href="javascript:void(0)" class="download-link" data-url="${attr(trimHref)}" data-name="${attr(fname)}" style="cursor:pointer">${text} ${icon('download')}</a>`);
     }
-    return `<a href="${escapeHtml(trimHref)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-  });
+    return keepInline(`<a href="${attr(trimHref)}" target="_blank" rel="noopener noreferrer">${text}</a>`);
+  };
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => makeLink(text, href));
   // 裸露的 URL（兼容方案：不用 lookbehind，在回调中检查前缀排除已在属性中的）
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, (url, _m, offset, full) => {
-    const prefix = full.slice(Math.max(0, offset - 12), offset);
-    if (/href="$/i.test(prefix) || /data-url="$/i.test(prefix)) return url;
-    if (url.includes('/local_storage/')) {
-      const fname = url.split('/').pop();
-      return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
-    }
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-  });
+  html = html.replace(/https?:\/\/[^\s<>"']+/g, (url) => makeLink(url, url));
   // 裸露的 /local_storage/ 相对路径
-  html = html.replace(/(\/local_storage\/[^\s<>"]+)/g, (url, _m, offset, full) => {
-    const prefix = full.slice(Math.max(0, offset - 12), offset);
-    if (/href="$/i.test(prefix) || /data-url="$/i.test(prefix)) return url;
-    const fname = url.split('/').pop();
-    return `<a href="javascript:void(0)" class="download-link" data-url="${url}" data-name="${fname}" style="cursor:pointer">${url} ${icon('download')}</a>`;
-  });
+  html = html.replace(/\/local_storage\/[^\s<>"']+/g, (url) => makeLink(url, url));
 
   // Tables
   html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, (_, header, sep, body) => {
-    const thCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
-    const rows = body.trim().split('\n').map(row => {
-      const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
-      return `<tr>${cells}</tr>`;
-    }).join('');
-    return `<div class="table-scroll"><table><thead><tr>${thCells}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    const splitRow = (row) => row.trim().slice(1, -1).split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+    const headers = splitRow(header);
+    const plain = (value) => value.replace(/<[^>]*>/g, '').trim();
+    const rows = body.trim() ? body.trim().split('\n').map(splitRow) : [];
+    const levelColumn = (value) => /^(?:风险等级|风险级别|关注等级|等级|最终等级|初始等级|综合等级)$/.test(plain(value));
+    const renderTable = (heads, data, summary = false) => {
+      const thCells = heads.map(c => `<th${levelColumn(c) ? ' class="risk-level-cell"' : ''}>${c}</th>`).join('');
+      const renderedRows = data.map(row => '<tr>' + heads.map((head, i) => {
+        const value = row[i] || '';
+        return levelColumn(head) ? `<td class="risk-level-cell">${riskBadge(value)}</td>` : `<td>${value}</td>`;
+      }).join('') + '</tr>').join('');
+      const cols = summary ? '<colgroup><col class="finding-col"><col class="level-col"><col></colgroup>' : '';
+      return `<div class="table-scroll" tabindex="0" role="region" aria-label="${summary ? '模块结论' : '报告'}表格"><table${summary ? ' class="module-summary-table"' : ''}>${cols}<thead><tr>${thCells}</tr></thead><tbody>${renderedRows}</tbody></table></div>`;
+    };
+    if (headers.map(plain).join('|') === '模块|核心发现|风险等级|关键指标' && rows.length) {
+      const groups = new Map();
+      let moduleName = '未标注模块';
+      for (const row of rows) {
+        if (plain(row[0] || '')) moduleName = row[0];
+        if (!groups.has(moduleName)) groups.set(moduleName, []);
+        groups.get(moduleName).push(row.slice(1));
+      }
+      return Array.from(groups, ([name, data]) => `<section class="module-summary-group"><h3>${name}</h3>${renderTable(headers.slice(1), data, true)}</section>`).join('');
+    }
+    return renderTable(headers, rows);
   });
 
-  // Risk badges (use negative lookahead to avoid replacing inside HTML tags)
-  // 风险等级影响度着色：有害标红（重大/极高/高风险），中性橙/蓝，有益标绿（低风险）
-  html = html.replace(/重大(?![^<]*>)/g, '<span class="risk-major">重大</span>');
-  html = html.replace(/重要(?![^<]*>)/g, '<span class="risk-important">重要</span>');
-  html = html.replace(/一般(?![^<]*>)/g, '<span class="risk-general">一般</span>');
-  html = html.replace(/极高风险(?![^<]*>)/g, '<span class="risk-bad">极高风险</span>');
-  html = html.replace(/([^极]|^)高风险(?![^<]*>)/g, '$1<span class="risk-bad">高风险</span>');
-  html = html.replace(/中等风险(?![^<]*>)/g, '<span class="risk-general">中等风险</span>');
-  html = html.replace(/低风险(?![^<]*>)/g, '<span class="risk-good">低风险</span>');
+  // Only explicit level fields are badges; negated findings remain ordinary prose.
+  html = html.replace(/((?:【风险判定】|风险等级|风险级别|综合等级)(?:<\/strong>)?\s*[:：]\s*)(?:<strong>)?(极高风险|重大|重要|一般|高风险|中等风险|低风险)(?:<\/strong>)?(?=$|[\s，。；：、（(<])/g,
+    (_, label, level) => label + riskBadge(level));
 
   // 思维链五步卡片：检测【数据发现】...【风险判定】模式并渲染为可折叠组件。
   // 注意：此时 html 已经过 escapeHtml + 粗体/风险着色替换，捕获段里的 <strong>/<span>
@@ -3793,9 +4121,14 @@ function renderMarkdown(text) {
   html = '<p>' + html + '</p>';
 
   // Cleanup
-  html = html.replace(/<p><(h[1-3]|ul|ol|pre|table|blockquote)/g, '<$1');
-  html = html.replace(/<\/(h[1-3]|ul|ol|pre|table|blockquote)><\/p>/g, '</$1>');
+  html = html.replace(/<p><(h[1-4]|ul|ol|pre|table|blockquote|div|section|details)/g, '<$1');
+  html = html.replace(/<\/(h[1-4]|ul|ol|pre|table|blockquote|div|section|details)><\/p>/g, '</$1>');
   html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<div data-md-block="(\d+)"><\/div>/g, (_, i) => blocks[Number(i)]);
+  // Link labels may contain inline-code placeholders, so restore outer inlines first.
+  for (let i = inlines.length - 1; i >= 0; i--) {
+    html = html.split(`<span data-md-inline="${i}"></span>`).join(inlines[i]);
+  }
 
   return html + reviewHtml;
 }
@@ -4433,7 +4766,7 @@ function renderDimensionRadar(dims) {
   if (!container) return;
 
   const dimNames = {
-    financial_misstatement: '财务错报',
+    financial_misstatement: '财务风险',
     related_party: '关联交易',
     disclosure_compliance: '信披合规',
     going_concern: '持续经营',
@@ -4627,7 +4960,7 @@ function renderEvalResults(data) {
 
   // ── 分维度指标表格 ──
   const dimNames = {
-    financial_misstatement: '财务错报风险',
+    financial_misstatement: '财务风险',
     related_party: '关联交易风险',
     disclosure_compliance: '信息披露合规风险',
     going_concern: '持续经营风险',

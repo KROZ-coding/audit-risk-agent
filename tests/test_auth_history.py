@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import create_engine, inspect, text
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -129,6 +130,73 @@ class TestHistoryIsolation:
         assert records[0]["company_name"] == "公司2"
 
 
+class TestHistorySnapshotPersistence:
+    """新快照字段在存量库升级、落库和详情读取时保持结构化完整。"""
+
+    def test_init_tables_adds_snapshot_columns_to_existing_database(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "legacy.db"
+        legacy_engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+        with legacy_engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE analysis_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    run_id VARCHAR(64) NOT NULL,
+                    company_name VARCHAR(128) NOT NULL DEFAULT '',
+                    report_year VARCHAR(16) NOT NULL DEFAULT '',
+                    score FLOAT,
+                    risk_level VARCHAR(16) NOT NULL DEFAULT '',
+                    mode VARCHAR(8) NOT NULL DEFAULT 'pro',
+                    files_json TEXT NOT NULL DEFAULT '[]',
+                    summary TEXT NOT NULL DEFAULT '',
+                    created_at DATETIME NOT NULL
+                )
+            """))
+        legacy_engine.dispose()
+
+        monkeypatch.setenv("PGDATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+        monkeypatch.setattr(db_mod, "_engine", None)
+        monkeypatch.setattr(db_mod, "_SessionLocal", None)
+        db_mod.init_tables()
+
+        columns = {column["name"] for column in inspect(db_mod.get_engine()).get_columns("analysis_history")}
+        assert {
+            "report_snapshot_json", "artifact_manifest_json", "report_metadata_json",
+            "ai_text", "data_status", "task_status",
+        } <= columns
+
+    def test_snapshot_manifest_metadata_and_text_round_trip(self, isolated_db):
+        from storage.database.user_service import get_history_detail, register_user, save_history
+
+        user = register_user("快照审计员", "secret123")
+        snapshot = {
+            "snapshot_id": "snap-roundtrip",
+            "analysis_id": "run-roundtrip",
+            "source_hash": "sha-roundtrip",
+            "risks": {"formal": [{"risk_id": "R001"}], "pending": []},
+        }
+        manifest = [{"artifact_id": "artifact-001", "status": "success",
+                     "path": "/local_storage/20260913/reports/r.pdf",
+                     "snapshot_id": "snap-roundtrip"}]
+        metadata = {"analysis_id": "run-roundtrip", "snapshot_id": "snap-roundtrip",
+                    "source_hash": "sha-roundtrip", "review_gate_status": "not_passed"}
+        record_id = save_history(
+            user["user_id"], "run-roundtrip", company_name="快照公司", report_year="2025",
+            score=4.0, risk_level="低风险", files=[manifest[0]["path"]],
+            report_snapshot=snapshot, artifact_manifest=manifest, report_metadata=metadata,
+            ai_text="最终摘要", data_status="incomplete", task_status="partial",
+        )
+
+        detail = get_history_detail(user["user_id"], record_id)
+        assert detail["report_snapshot"] == snapshot
+        assert detail["artifact_manifest"] == manifest
+        assert detail["report_metadata"] == metadata
+        assert detail["snapshot_id"] == "snap-roundtrip"
+        assert detail["ai_text"] == "最终摘要"
+        assert detail["data_status"] == "incomplete"
+        assert detail["task_status"] == "partial"
+
+
 class TestHistoryFieldExtraction:
     """main._extract_history_fields 从最终报告抽取结构化字段"""
 
@@ -189,3 +257,35 @@ class TestAuthHistoryApi:
         assert client.post("/api/auth/login", json={"username": "api_user", "password": "bad"}).status_code == 401
         client.post("/api/auth/logout", headers=headers)
         assert client.get("/api/auth/me", headers=headers).json()["status"] == "anonymous"
+
+    def test_history_detail_returns_structured_snapshot_bundle(self, isolated_db):
+        from fastapi.testclient import TestClient
+        import main as main_mod
+        from storage.database.user_service import save_history
+
+        client = TestClient(main_mod.app)
+        auth = client.post("/api/auth/register", json={
+            "username": "detail_user", "password": "secret123",
+        }).json()
+        headers = {"X-Auth-Token": auth["token"]}
+        snapshot = {"snapshot_id": "snap-api", "analysis_id": "run-api-detail",
+                    "source_hash": "sha-api", "risks": {"formal": [], "pending": []}}
+        manifest = [{"artifact_id": "artifact-api", "status": "success",
+                     "path": "/local_storage/reports/api.pdf"}]
+        metadata = {"snapshot_id": "snap-api", "analysis_id": "run-api-detail",
+                    "source_hash": "sha-api"}
+        record_id = save_history(
+            auth["user_id"], "run-api-detail", company_name="API快照公司", report_year="2025",
+            report_snapshot=snapshot, artifact_manifest=manifest, report_metadata=metadata,
+            ai_text="API最终摘要", data_status="incomplete", task_status="partial",
+        )
+
+        response = client.get(f"/api/history/{record_id}", headers=headers)
+        assert response.status_code == 200
+        record = response.json()["record"]
+        assert record["report_snapshot"] == snapshot
+        assert record["artifact_manifest"] == manifest
+        assert record["report_metadata"] == metadata
+        assert record["ai_text"] == "API最终摘要"
+        assert record["data_status"] == "incomplete"
+        assert record["task_status"] == "partial"

@@ -131,7 +131,9 @@ def resolve_user(token: str) -> dict | None:
 # ─── 分析历史 ────────────────────────────────────────────
 
 def save_history(user_id: int, run_id: str, *, company_name="", report_year="",
-                 score=None, risk_level="", mode="pro", files=None, summary="") -> int | None:
+                 score=None, risk_level="", mode="pro", files=None, summary="",
+                 report_snapshot=None, artifact_manifest=None, report_metadata=None,
+                 ai_text="", data_status="", task_status="") -> int | None:
     """写入一条分析历史记录（仅登录用户调用；任何异常只记日志不阻断主流程）。
 
     Returns:
@@ -149,6 +151,12 @@ def save_history(user_id: int, run_id: str, *, company_name="", report_year="",
                 mode=mode if mode in ("pro", "flash") else "pro",
                 files_json=json.dumps(files or [], ensure_ascii=False),
                 summary=(summary or "")[:1000],
+                report_snapshot_json=json.dumps(report_snapshot or {}, ensure_ascii=False, default=str),
+                artifact_manifest_json=json.dumps(artifact_manifest or [], ensure_ascii=False, default=str),
+                report_metadata_json=json.dumps(report_metadata or {}, ensure_ascii=False, default=str),
+                ai_text=(ai_text or "")[:100000],
+                data_status=(data_status or "")[:32],
+                task_status=(task_status or "")[:32],
             )
             session.add(record)
             session.commit()
@@ -186,6 +194,16 @@ def _history_to_dict(r: AnalysisHistory) -> dict:
         files = json.loads(r.files_json or "[]")
     except json.JSONDecodeError:
         files = []
+    def _json_object(raw, fallback):
+        try:
+            value = json.loads(raw or "")
+            return value if isinstance(value, type(fallback)) else fallback
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return fallback
+
+    snapshot = _json_object(getattr(r, "report_snapshot_json", ""), {})
+    manifest = _json_object(getattr(r, "artifact_manifest_json", ""), [])
+    metadata = _json_object(getattr(r, "report_metadata_json", ""), {})
     return {
         "id": r.id,
         "run_id": r.run_id,
@@ -196,5 +214,13 @@ def _history_to_dict(r: AnalysisHistory) -> dict:
         "mode": r.mode,
         "files": files,
         "summary": r.summary,
+        "snapshot_id": str(metadata.get("snapshot_id", "") or snapshot.get("snapshot_id", ""))
+            if isinstance(metadata, dict) and isinstance(snapshot, dict) else "",
+        "artifact_manifest": manifest,
+        "report_metadata": metadata,
+        "report_snapshot": snapshot,
+        "ai_text": getattr(r, "ai_text", "") or "",
+        "data_status": getattr(r, "data_status", "") or "",
+        "task_status": getattr(r, "task_status", "") or "",
         "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
     }

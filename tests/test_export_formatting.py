@@ -201,6 +201,61 @@ class TestPdfSplitExport:
         # 原测试：维度表漏计（LLM 静态 risk_dimensions 为 {} 时按明细重算）
         assert any("risk_dimensions" in w for w in warnings)
 
+    def test_reconcile_summary_rewrites_assessment_layer_counts(self):
+        """整体结论中的门禁前计数必须与正式/待核查分层同步。"""
+        from tools.pdf_export import _reconcile_summary
+        report = {
+            "risk_summary": {},
+            "risk_details": [
+                {"risk_id": "R001", "level": "重要", "formal_status": "unaccepted"},
+                {"risk_id": "R002", "level": "重要", "formal_status": "accepted"},
+            ],
+            "accepted_risk_details": [
+                {"risk_id": "R002", "level": "重要", "formal_status": "accepted"},
+            ],
+            "overall_assessment": (
+                "识别1项风险，系统采信风险0项，所有风险均为建议关注等级，"
+                "需结合人工专业判断复核确认。"
+            ),
+        }
+        _reconcile_summary(report)
+        assert "识别2项风险" in report["overall_assessment"]
+        assert "系统采信风险1项" in report["overall_assessment"]
+        assert "另有1项为待复核提示" in report["overall_assessment"]
+
+    def test_reconcile_summary_ignores_stale_intermediate_snapshot(self):
+        """终局前的旧快照不得覆盖刚完成门禁的正式风险计数。"""
+        from tools.pdf_export import _reconcile_summary
+        report = {
+            "report_snapshot": {"risks": {"formal": [], "pending": []}},
+            "risk_summary": {},
+            "risk_details": [
+                {"risk_id": "R001", "level": "重要", "formal_status": "accepted"},
+                {"risk_id": "R002", "level": "一般", "formal_status": "unaccepted"},
+            ],
+            "accepted_risk_details": [
+                {"risk_id": "R001", "level": "重要", "formal_status": "accepted"},
+            ],
+            "overall_assessment": "系统采信风险0项，需人工复核。",
+        }
+        _reconcile_summary(report)
+        assert "系统采信风险1项" in report["overall_assessment"]
+
+    def test_reconcile_summary_rewrites_stale_pending_item_count(self):
+        from tools.pdf_export import _reconcile_summary
+        report = {
+            "risk_summary": {},
+            "risk_details": [
+                {"risk_id": f"R{i}", "level": "一般", "formal_status": "unaccepted"}
+                for i in range(1, 5)
+            ],
+            "accepted_risk_details": [],
+            "overall_assessment": "识别出3项待核实事项，需结合人工专业判断复核确认。",
+        }
+        _reconcile_summary(report)
+        assert "识别出4项待复核提示" in report["overall_assessment"]
+        assert "3项待核实事项" not in report["overall_assessment"]
+
     def test_sub_conclusion_counts_matched_to_subset(self, monkeypatch):
         """拆分报告结论章：KPI 与环形图同口径（均基于过滤后子集）。
 
@@ -215,8 +270,9 @@ class TestPdfSplitExport:
         ]
         sub_json = json.dumps({"risk_details": risks}, ensure_ascii=False)
         body = pe._sub_conclusion_body("财务健康", risks, st, pe._register_chinese_font(), sub_json)
-        assert "共识别相关风险 2 项" in body[-1].text
-        assert "重大 1 项" in body[-1].text and "一般 1 项" in body[-1].text
+        assert any("系统采信相关风险 2 项" in getattr(part, "text", "") for part in body)
+        conclusion = ' '.join(getattr(part, 'text', '') for part in body)
+        assert "重大 1 项" in conclusion and "一般 1 项" in conclusion
 
     def test_contradictory_ledger_export_consistent(self, monkeypatch):
         """矛盾台账完整导出端到端：三份报告数字与明细一致（截图 bug 全链路回归）。"""
@@ -253,10 +309,10 @@ class TestPdfSplitExport:
         assert "已按明细重算" not in text
         fin_path = [p for k, p in uploaded.items() if k.endswith("_财务健康诊断报告.pdf")][0]
         fin_text = "".join((pg.extract_text() or "") for pg in pypdf.PdfReader(fin_path).pages)
-        assert "共识别相关风险 4 项" in fin_text       # 财务子集（错报2+持续经营2）
+        assert "系统采信相关风险 4 项" in fin_text       # 财务子集（错报2+持续经营2）
         comp_path = [p for k, p in uploaded.items() if k.endswith("_合规与信息披露报告.pdf")][0]
         comp_text = "".join((pg.extract_text() or "") for pg in pypdf.PdfReader(comp_path).pages)
-        assert "共识别相关风险 1 项" in comp_text      # 合规子集（信披合规1）
+        assert "系统采信相关风险 1 项" in comp_text      # 合规子集（信披合规1）
 
     def test_company_profile_placeholder_when_missing(self):
         """公司简介缺失时渲染占位说明，不崩溃；提供时正常渲染。"""
@@ -401,6 +457,7 @@ class TestPdfProfessionalUpgrade:
         """财务章：四维判读表渲染且调用对比柱状图/雷达图/热力图。"""
         from tools import pdf_export as pe
         calls = []
+        monkeypatch.setattr(pe, '_load_benchmarks', lambda industry: {'gross_margin':25, 'current_ratio':1.5})
         monkeypatch.setattr(pe, "_embed_chart",
                             lambda fn, payload, width_cm=14.0: calls.append(fn) or None)
         st = pe._build_styles(pe._register_chinese_font())
@@ -602,9 +659,9 @@ class TestExcelExportFormatting:
         ws = load_workbook(str(out))["报告概览"]
         summary = {}
         for row in ws.iter_rows(values_only=True):
-            if row[0] in ("风险总数", "重大风险", "重要风险", "一般风险"):
+            if row[0] in ("系统采信风险", "重大风险", "重要风险", "一般风险"):
                 summary[row[0]] = row[1]
-        assert summary == {"风险总数": 9, "重大风险": 0, "重要风险": 6, "一般风险": 3}, (
+        assert summary == {"系统采信风险": 9, "重大风险": 0, "重要风险": 6, "一般风险": 3}, (
             "摘要须按明细实时聚合，不得残留仲裁前静态缓存")
 
 
@@ -709,11 +766,11 @@ class TestFmtScore:
         assert "建议人工确认披露完整性" not in joined
 
 
-class TestExcelDimensionEnglish:
-    """L 补丁：Excel 风险明细维度列全英文（J1 仲裁新增归一后自动生效）。"""
+class TestExcelDimensionChinese:
+    """L 补丁：Excel 风险明细维度列统一规范中文展示名（A4 展示层收敛）。"""
 
-    def test_dimension_column_all_english(self, tmp_path):
-        """归一后台账导出：维度列无中文残留（v28 实证 R005"资产质量"混用）。"""
+    def test_dimension_column_normalized_chinese(self, tmp_path):
+        """归一后台账导出：维度列展示为规范中文「财务风险」，且无非法英文键残留。"""
         from tools.excel_export import _export_excel_impl
         from openpyxl import load_workbook
         report = {"company_info": {"company_name": "测试公司"},
@@ -728,8 +785,8 @@ class TestExcelDimensionEnglish:
         wb = load_workbook(str(out))
         ws = wb["风险台账"]
         dims = [str(row[1]) for row in ws.iter_rows(min_row=2, values_only=True) if row[0]]
-        assert all(d == "financial_misstatement" for d in dims), dims
-        assert not any(any('\u4e00' <= ch <= '\u9fff' for ch in d) for d in dims), dims
+        # 展示层统一为规范中文名，避免混入英文键或 LLM 自由文本
+        assert dims == ["财务风险", "财务风险"], dims
 
 
 class TestStatementsAnalysis:
@@ -766,7 +823,7 @@ class TestStatementsAnalysis:
         assert rev_row[1] == 145e8 and rev_row[2] == 155e8
         assert abs(rev_row[3] - (-6.4516)) < 0.01, rev_row[3]
         # 净利润同比 = (84-99)/99 = -15.1515 → -15.15
-        np_row = next(r for r in inc[2] if r[0] == "净利润")
+        np_row = next(r for r in inc[2] if r[0] == "净利润（合并）")
         assert abs(np_row[3] - (-15.1515)) < 0.01, np_row[3]
         # 毛利率 = (145-115)/145 = 20.69
         assert abs((145 - 115) / 145 * 100 - 20.6897) < 0.01
@@ -836,6 +893,29 @@ class TestStatementsAnalysis:
         assert "半年度累计" in joined
         assert "亿元" in joined  # _fmt_num 自动换算
         assert "判读要点" in joined
+
+    def test_declared_million_unit_is_converted_before_pdf_display(self):
+        """报表原值为百万元时，PDF金额应先换算为人民币元再显示亿元。"""
+        from tools import pdf_export as pe
+        assert pe._fmt_num(1450099, input_unit="人民币百万元") == "14,500.99 亿元"
+        assert pe._fmt_num(840.07, input_unit="亿元") == "840.07 亿元"
+
+        data = {"amount_unit": "人民币百万元", "statement_items": {
+            "income_statement": {"revenue_current": 1450099,
+                                  "revenue_previous": 1554973},
+        }}
+        st = pe._build_styles(pe._register_chinese_font())
+        body = pe._statements_section_body(json.dumps(data, ensure_ascii=False), st,
+                                           pe._register_chinese_font())
+        texts = []
+        for el in body:
+            for row in (getattr(el, "_cellvalues", None) or []):
+                for cell in row:
+                    if isinstance(cell, str):
+                        texts.append(cell)
+                    elif hasattr(cell, "text"):
+                        texts.append(str(cell.text))
+        assert "14,500.99 亿元" in " ".join(texts)
 
 
 class TestAuditOpinionSource:

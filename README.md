@@ -1,5 +1,6 @@
 # 上市公司年报风险智能识别系统
 
+> **版本：v5.3 GA（`pyproject.toml` version = 5.3.0）｜ 865 个单元测试**
 > 2026年北京市大学生数智会计创新应用竞赛 · 智能审计赛道参赛项目
 
 ## 📌 项目简介
@@ -32,17 +33,19 @@ flowchart LR
 
 ## 🚀 核心功能
 1. **PDF 年报解析**：自动提取上市公司年报全文文本。
-2. **16 项财务指标计算**：毛利率、资产负债率、存贷双高等核心指标。
+2. **财务指标计算**：16 项核心指标 + 3 项扩展 + 2 项条件（单次最多 21 条），含毛利率、资产负债率、存贷双高等。
 3. **三大勾稽校验**：资产负债表平衡、现金流勾稽、未分配利润一致性。
 4. **法规知识库检索**：ChromaDB 向量语义检索审计准则和处罚案例（RAG，TF-IDF 自动回退）。
-5. **五大风险维度识别**：财务错报、关联交易、信披合规、持续经营、监管处罚。
+5. **五大风险维度识别**：财务风险、关联交易、信披合规、持续经营、监管处罚。
 6. **思维链推理（CoT）**：每条风险识别前输出「观察→推理→验证→结论」推理过程。
 7. **三方辩论复核**：风险关注方 → 风险否定方 → 裁判仲裁三方制衡；仲裁【裁定JSON】自动回写风险等级（白名单校验，保留 original_level 可追溯）。
 8. **可视化图表**：自动生成风险热力图、财务雷达图、多年趋势图。
 9. **报告一键导出**：PDF 风险报告 + Excel 审计底稿（均含 AI 生成免责声明）。
 10. **多公司批量分析**：支持线程池并行处理与行业横向对比。
-11. **量化效果评估**：80+ 单元测试 + 合成集/盲测集双轨 Precision/Recall/F1 评估报告。
+11. **量化效果评估**：22 个合成用例 + 5 个盲测用例，分别输出 Precision/Recall/F1 与基线对比。
 12. **多用户登录与分析历史**：PBKDF2 加盐口令 + 会话令牌，每个用户拥有独立的分析历史（公司/评分/报告文件可回溯）；游客模式不影响分析，仅不保存历史。
+13. **报告身份确定性兜底**：封面公司名、股票代码、报告期、行业、审计意见由正则确定性识别（`src/utils/report_identity.py`），后端三处互补兜底（已有非空值优先、绝不覆盖），避免产物名退化为「未知公司」与中期模型误判。
+14. **现金流与报表字段回填**：按资产/负债/利润/现金流四段做表内上下文回填（实测 63 个字段），并处理 `59(f)` 式附注引用，消除现金流数据“未获取”。
 
 ## 🛠️ 快速启动
 
@@ -95,9 +98,9 @@ powershell -File start.ps1 -Mode web
 ## 📂 项目结构
 projects/
 ├── src/
-│   ├── agents/agent.py            # Agent 构建 + 兜底导出 + 三方辩论复核（仲裁回写）
+│   ├── agents/agent.py            # Agent 构建 + 预处理预跑 + 报告身份兜底 + 三方辩论复核（仲裁回写）
 │   ├── tools/                     # 16 个核心分析工具
-│   │   ├── financial_calculator.py   # 16 项财务指标计算
+│   │   ├── financial_calculator.py   # 16 项核心指标（+3 扩展 / +2 条件，单次最多 21 条）
 │   │   ├── data_validator.py         # 三大勾稽校验
 │   │   ├── knowledge_search.py       # 法规知识库检索（RAG）
 │   │   ├── pdf_parser.py             # PDF 年报解析
@@ -107,13 +110,20 @@ projects/
 │   │   ├── multi_year_comparison.py  # 多年财务对比分析
 │   │   └── batch_processor.py        # 多公司批量分析
 │   ├── storage/                   # 存储层（SQLite/S3/内存；含用户认证与分析历史 user_service）
+│   ├── utils/（含 report_identity.py）   # 报告身份确定性识别（公司名/股票代码/报告期/行业/审计意见）
 │   ├── web/index.html             # Web 可视化交互界面
+│   ├── maintenance.py             # 运行时资源定期回收（检查点/产物/日志/临时文件）
 │   └── main.py                    # FastAPI 服务入口
-├── tests/                         # 测试与效果评估
-│   ├── test_financial_calculator.py  # 财务指标计算工具测试（10 用例）
-│   ├── test_data_validator.py        # 数据校验工具测试（7 用例）
+├── tests/                         # 测试与效果评估（56 个 test_*.py，865 个用例）
+│   ├── test_financial_calculator.py  # 财务指标计算工具测试
+│   ├── test_data_validator.py        # 数据校验工具测试
 │   ├── evaluation_report.py          # 量化效果评估脚本（F1/Precision/Recall）
 │   └── evaluation_results.json       # 评估结果数据
+├── scripts/                       # 打包 / 验收 / 评估 / 运维脚本
+│   ├── maintenance_cli.py         # 运行时资源回收 CLI（默认 dry-run）
+│   ├── pack_source.py             # 源码交付包打包
+│   └── check_audit_release.py     # 发布前离线验收
+├── docs/                          # 技术报告 / 项目计划书 / 源代码与 API 文档
 ├── config/
 │   └── agent_llm_config.json      # LLM 配置 + 系统提示词（含思维链推理）
 ├── knowledge_base/                # 审计法规知识库（txt，来源见 DATA_SOURCES.md）
@@ -136,9 +146,12 @@ uv run python tests/evaluation_report.py
 ```
 
 评估结果摘要（数据来源 `tests/evaluation_results.json`，重跑评估后以该文件为准）：
-- 合成集（22 用例，验证规则正确性）：Precision / Recall / F1 均 **100%**，正常用例误报 **0/2**
-- 盲测集（5 真实处罚案例公开数据，未参与阈值设计，验证泛化）：F1 **100%**，正常对照误报 **0/1**
-- vs 基线方案（单规则引擎）召回率提升: **+92.3pp**
+- 工具评估集（22 个合成用例）：Precision **1.000**，Recall **0.975**，F1 **0.983**；正常用例误报 **0/2**
+- 盲测集（5 个公开处罚案例/对照用例）：Precision **1.000**，Recall **0.875**，F1 **0.917**；正常对照正确 **1/1**
+- 相对简单规则基线的召回率提升：**+89.8 个百分点**
+
+> 以上是本地确定性工具评估，不代表真实公司的审计结论。零样本 LLM 基线默认不执行，
+> 只有命令行显式追加 `--include-zero-shot` 时才会发起外部模型请求。
 
 > Precision 与 Recall 分别从误报/漏报两个方向独立统计（Precision 分母为系统实际告警数，
 > Recall 分母为标注风险数），盲测集与合成集分开报告，避免循环验证。
@@ -148,6 +161,112 @@ uv run python tests/evaluation_report.py
 uv run pytest tests/ -v
 ```
 
+
+## 🧹 运行时资源定期回收
+
+系统长期运行或反复演示后，Agent 检查点、历史产物、轮转日志与临时文件会持续膨胀。
+`src/maintenance.py` 提供**默认开启、默认保守、可关闭**的定期回收，覆盖四类对象：
+
+| 对象 | 策略 |
+|---|---|
+| `checkpoints.sqlite` | **仅当体积超过阈值（默认 512MB）**才回收；保留最近 N 个线程（默认 50）；可选 `VACUUM` |
+| `local_storage/<批次>/` | 按批次目录时间与保留天数回收；**至少保留 10 个批次** |
+| `app.log.*` | 删除超过保留天数的轮转备份，**不删除当前 `app.log`** |
+| 项目根 `.tmp_*` | 删除超过保留天数的临时文件/目录；`.tmp_pytest` 在保护名单 |
+
+> 服务启动后后台协程先等待 5~60 秒再执行首次回收，避免与首屏请求争抢 IO；
+> 任意单节失败只记录到报告 `errors`，**不阻断服务**。
+
+### 手动执行（默认 dry-run，只预览不删除）
+
+```bash
+# 预览（默认即 dry-run）
+python scripts/maintenance_cli.py --dry-run
+
+# 真正执行：四个分区全部回收
+python scripts/maintenance_cli.py --apply
+
+# 只回收指定分区
+python scripts/maintenance_cli.py --apply --sections checkpoints,artifacts,logs,temp
+
+# 机器可读输出（便于接入监控）
+python scripts/maintenance_cli.py --json
+
+# 指定项目根目录
+python scripts/maintenance_cli.py --project-dir /path/to/project
+```
+
+退出码：正常 `0`；报告中存在 `errors` → `1`；未知分区名 → `2`。
+
+### 只读状态查询
+
+```bash
+curl http://localhost:5000/api/maintenance/status
+```
+
+该接口**只读**返回最近一次回收报告副本（`GET /api/maintenance/status`），不会触发回收。
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `MAINTENANCE_ENABLED` | `true` | 是否开启后台定期回收；`false` 完全停用 |
+| `MAINTENANCE_INTERVAL_HOURS` | `24` | 回收周期（小时） |
+| `MAINTENANCE_DRY_RUN` | `false` | 只预览不删除（上线初期建议先设 `true` 观察） |
+| `MAINTENANCE_CHECKPOINT_MAX_MB` | `512` | 检查点库超过该体积才回收 |
+| `MAINTENANCE_CHECKPOINT_KEEP_THREADS` | `50` | 保留最近 N 个线程 |
+| `MAINTENANCE_CHECKPOINT_VACUUM` | `true` | 回收后是否 `VACUUM` 收缩文件 |
+| `MAINTENANCE_ARTIFACT_RETENTION_DAYS` | `30` | 产物批次保留天数 |
+| `MAINTENANCE_ARTIFACT_MIN_BATCHES` | `10` | 产物批次最少保留个数 |
+| `MAINTENANCE_LOG_RETENTION_DAYS` | `14` | 轮转日志保留天数 |
+| `MAINTENANCE_TEMP_RETENTION_DAYS` | `7` | `.tmp_*` 临时文件保留天数 |
+
+## 📚 文档索引
+
+| 文档 | 路径 | 内容 |
+|---|---|---|
+| 技术报告 | `docs/技术报告.md` | 代码实现原理与框架、前后端实现、API 调用、非平凡逻辑、算法与部署 |
+| 项目计划书 | `docs/项目计划书.md` | 项目框架、预期目标、拟解决的问题、落地可行性与效果评估 |
+| Python 源代码文档 | `docs/Python源代码文档.md` | 按模块的公开类/函数用途、入参、出参 |
+| 源代码清单 | `docs/源代码清单.txt` | `src/` `scripts/` `tests/` 全部 Python 文件、行数与职责 |
+| API 接口清单 | `docs/API接口清单.txt` | 21 个路由 + 17 项工具链 + 16 个 LLM 工具 + SSE 事件 |
+| 环境变量与常量 | `docs/环境变量与常量.txt` | 全部环境变量与关键算法常量（阈值、权重、模型参数） |
+| 快速上手 | `快速上手.txt` | 面向评委的零门槛操作说明 |
+| 数据来源 | `DATA_SOURCES.md` | 知识库语料来源与授权说明 |
+| 财务公式 | `docs/financial_formulas.md` | 指标公式与口径细节 |
+
+## 📦 部署包与校验
+
+源码交付包和服务器部署包均位于 `dist/`；服务器部署包由 `scripts/pack.sh` 按历史方式生成。命名规则为 `audit-ai_v5.3GA_<kind>_<时间戳>.<扩展名>`：
+
+| 包 | 文件 | 用途 | SHA-256 |
+|---|---|---|---|
+| 源码交付包（v5.3） | `dist/audit-ai_v5.3GA_src_20260919_153457.zip` | 竞赛提交与审阅（白名单打包，已排除密钥与运行产物） | `C0765B8916139BC4F1A3C75A39DFF252CABC5853BB465B35AF44C8208D912FD2` |
+| 服务器部署包（v5.3） | `dist/audit-ai_v5.3GA_20260919_153457.tar.gz` | Linux 服务器 / 容器部署（解包后 `bash scripts/setup.sh`） | `B4459D2B82F37C89FC8DDA03C64A6E6380FCB1B841E425F7B565CFF1A02769DD` |
+| 源码交付包 | `dist/audit-ai_v5.0GA_src_20260912_161342.zip` | 竞赛提交与审阅（白名单打包，已排除密钥与运行产物） | `9A6D695F8DD29B9661238EF3C5DD6F2B28C9C152539DCC515C3AB5BDBF9B13E3` |
+| 服务器部署包 | `dist/audit-ai_v5.0GA_server_20260912_161344.tar.gz` | Linux 服务器 / 容器部署（解包后 `bash scripts/setup.sh`） | `592600D4B2B96EC61EB6618315A91CD437FABA47A92C8FAC16AC52DF79826233` |
+
+> `dist/` 下历史包仅供演进对比。**历史解包目录内可能存在带真实 API Key 的 `.env`**，不得整目录打包或上传；若曾暴露请立即在服务商后台吊销该 Key。
+> 表格中的 `v5.0GA` 文件为历史包，保留原文件名与哈希，不代表当前发布版本。
+> 两份新包均已断言不含 `.env` / `*.db` / `checkpoints.sqlite` / `.tmp_*` / 运行产物（reports、charts）。
+> 由于交付包内也有一份 README，包内记录的哈希必然滞后一次打包；**权威校验值以 `dist/SHA256SUMS.txt` 为准**（`sha256sum -c` 可直接核对）。
+
+### 重新打包
+
+```bash
+# 源码交付包
+python scripts/pack_source.py
+
+# 服务器部署包（Linux / Git Bash）
+bash scripts/pack.sh
+```
+
+### 运行时资源归零（演示前建议）
+
+```bash
+python scripts/maintenance_cli.py --dry-run   # 预览将被回收的检查点/产物/日志/临时文件
+python scripts/maintenance_cli.py --apply     # 真正执行
+```
 
 ## ⚠️ 免责声明
 本系统分析结果由 AI 辅助生成，仅供审计参考与风险提示，不构成最终审计意见或投资建议。

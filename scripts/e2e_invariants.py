@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""端到端不变量校验脚本（v5.0GA 收口）。
+"""端到端不变量校验脚本（v5.3GA 收口）。
 
 对一次真实链路分析的产物运行，把"一致性"从 LLM 的涌现属性变成工程不变量：
 1. 四点评分对齐：综合报告封面 == 结论章 == ledger 评分 == 底稿整体评估
@@ -9,7 +9,7 @@
    且与 ledger 一致；跨表同指标 ±10% 软断言（仅记录差异日志，不判红）
 
 用法:
-    python scripts/e2e_invariants.py <结果JSON> [--reports-dir local_storage/reports]
+    python scripts/e2e_invariants.py <结果JSON> [<local_storage 根目录>]
 """
 import json
 import re
@@ -24,7 +24,7 @@ ISSUER_EXEMPT = ("内部控制", "内部交易", "内部审批", "集团内部",
 
 
 def latest_report(reports_dir: str, suffix: str) -> str:
-    cands = sorted(glob.glob(os.path.join(reports_dir, f"*{suffix}")), key=os.path.getmtime)
+    cands = sorted(glob.glob(os.path.join(reports_dir, "**", f"*{suffix}"), recursive=True), key=os.path.getmtime)
     assert cands, f"未找到 {suffix} 产物"
     return cands[-1]
 
@@ -34,12 +34,37 @@ def check(name, ok, detail=""):
     return ok
 
 
+def _tool_entries(result: dict) -> list[dict]:
+    """兼容流式结果的 messages 与 HTTP 结果的 tool_results 两种结构。"""
+    entries = []
+    for item in result.get("messages", []) or []:
+        if isinstance(item, dict) and item.get("type") == "tool":
+            entries.append(item)
+    for item in result.get("tool_results", []) or []:
+        if isinstance(item, dict) and item.get("name"):
+            entries.append(item)
+    return entries
+
+
+def _sheet(wb, *names):
+    """按当前名称优先、历史名称兼容地获取工作表。"""
+    for name in names:
+        if name in wb.sheetnames:
+            return wb[name]
+    raise KeyError(f"未找到工作表：{names}，实际工作表={wb.sheetnames}")
+
+
+def _risk_id(value) -> str:
+    match = re.match(r"\s*([A-Z]\d{3})", str(value or ""))
+    return match.group(1) if match else ""
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(2)
     result_path = sys.argv[1]
-    reports_dir = sys.argv[2] if len(sys.argv) > 2 else str(ROOT / "local_storage" / "reports")
+    reports_dir = sys.argv[2] if len(sys.argv) > 2 else str(ROOT / "local_storage")
     result = json.load(open(result_path, encoding="utf-8"))
     from pypdf import PdfReader
     from openpyxl import load_workbook
@@ -61,7 +86,7 @@ def main():
     i8 = t3.find("整体风险评估结论")
     seg8 = t3[i8:i8 + 400] if i8 >= 0 else ""
     m8 = re.search(r"综合风险评分\s*(\d+\.?\d*)\s*分", seg8)
-    ov = str(wb["整体评估"]["A3"].value or "")
+    ov = str(_sheet(wb, "规则口径", "整体评估")["A3"].value or "")
     m_ov = re.search(r"综合风险评分\s*(\d+\.?\d*)\s*分", ov)
 
     if m_cover:
@@ -83,23 +108,32 @@ def main():
     end = t3.find("四、交叉验证分析", j)
     seg_list = t3[j:end] if end > j else t3[j:j + 800]
     pdf_ids = re.findall(r"[RV]\d{3}", seg_list)
-    ws2 = wb["风险明细"]
-    xl_ids = [r[0] for r in ws2.iter_rows(min_row=2, values_only=True) if r[0]]
+    ws2 = _sheet(wb, "风险台账", "风险明细")
+    xl_ids = []
+    for row in ws2.iter_rows(min_row=2, values_only=True):
+        if str(row[0] or "").startswith("风险状态索引"):
+            break
+        risk_id = _risk_id(row[0])
+        if risk_id:
+            xl_ids.append(risk_id)
     ok_all &= check("I2 综合清单=底稿明细", set(pdf_ids) == set(xl_ids),
                     f"{sorted(set(pdf_ids))} vs {sorted(xl_ids)}")
 
-    ws = wb["风险总览"]
+    ws = _sheet(wb, "报告概览", "风险总览")
     summ = {row[0]: row[1] for row in ws.iter_rows(values_only=True)
-            if row[0] in ("风险总数", "重大风险", "重要风险", "一般风险")}
-    ok_all &= check("I2 底稿摘要=明细", summ.get("风险总数") == len(xl_ids), str(summ))
+            if row[0] in ("系统采信风险", "风险总数", "重大风险", "重要风险", "一般风险")}
+    formal_total = summ.get("系统采信风险", summ.get("风险总数"))
+    ok_all &= check("I2 底稿摘要=明细", formal_total == len(xl_ids), str(summ))
 
     issuer_self_ref = [r[0] for r in ws2.iter_rows(min_row=2, values_only=True) if r[0]
-                       and any(w in str(r[2]) + str(r[4]) for w in SELF_REF_WORDS)
-                       and not any(e in str(r[2]) + str(r[4]) for e in ISSUER_EXEMPT)]
+                       and _risk_id(r[0])
+                       and any(w in str(r[2]) + str(r[5] or "") for w in SELF_REF_WORDS)
+                       and not any(e in str(r[2]) + str(r[5] or "") for e in ISSUER_EXEMPT)]
     ok_all &= check("I2 issuer 无系统自指词", len(issuer_self_ref) == 0, str(issuer_self_ref))
 
-    for m in result.get("messages", []):
-        if m.get("type") == "tool" and "comprehensive_score" in str(m.get("name", "")):
+    entries = _tool_entries(result)
+    for m in entries:
+        if "comprehensive_score" in str(m.get("name", "")):
             try:
                 bd = json.loads(str(m.get("content", ""))).get("breakdown", {})
                 bad = [k for k, v in bd.items()
@@ -110,8 +144,8 @@ def main():
             break
 
     # ── 不变量 3：黄金事实层（确定性层）──
-    for m in result.get("messages", []):
-        if m.get("type") == "tool" and "validate" in str(m.get("name", "")):
+    for m in entries:
+        if "validate" in str(m.get("name", "")):
             try:
                 dv = json.loads(str(m.get("content", ""))).get("data_validation", {})
                 re_chk = next((c for c in dv.get("all_checks", [])
@@ -130,8 +164,8 @@ def main():
             break
 
     # 评分算术自洽（系统兜底评分）
-    for m in result.get("messages", []):
-        if m.get("type") == "tool" and "comprehensive_score" in str(m.get("name", "")):
+    for m in entries:
+        if "comprehensive_score" in str(m.get("name", "")):
             try:
                 s = json.loads(str(m.get("content", "")))
                 if s.get("score") is not None:

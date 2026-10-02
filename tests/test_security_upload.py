@@ -91,3 +91,15 @@ class TestApiKeyGuard:
         # /health 不在保护前缀内，无需鉴权
         resp = client.get("/health")
         assert resp.status_code == 200
+
+    def test_openai_compat_route_requires_key(self, monkeypatch):
+        """/v1/chat/completions must be protected like /run."""
+        monkeypatch.setenv("APP_API_KEY", "test-key-123")
+        resp = client.post("/v1/chat/completions", json={"messages": []})
+        assert resp.status_code == 401
+        resp = client.post(
+            "/v1/chat/completions",
+            json={"messages": []},
+            headers={"X-API-Key": "wrong"},
+        )
+        assert resp.status_code == 401

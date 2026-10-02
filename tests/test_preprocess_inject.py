@@ -61,6 +61,20 @@ class TestPreprocessInject:
         # 校验工具真实执行过（内容含勾稽校验结果结构）
         assert "data_validation" in str(tool_msgs[0].content)
 
+    def test_injected_message_ids_are_unique_across_runs(self, monkeypatch):
+        """同一会话重复分析时，预处理轨迹不能复用上一轮消息 ID。"""
+        svc = _service_with_mock_extract(monkeypatch, _FAKE_DATA)
+        payload = {"messages": [{"role": "user", "content": _LONG_TEXT}]}
+        first = asyncio.run(svc._preprocess_inject(payload))
+        second = asyncio.run(svc._preprocess_inject(payload))
+
+        first_ids = {call["id"] for call in first[0].tool_calls}
+        second_ids = {call["id"] for call in second[0].tool_calls}
+        first_message_ids = {message.id for message in first[1:]}
+        second_message_ids = {message.id for message in second[1:]}
+        assert first_ids.isdisjoint(second_ids)
+        assert first_message_ids.isdisjoint(second_message_ids)
+
     def test_short_text_returns_none(self, monkeypatch):
         """短文本（无数据密度）：不预跑，返回 None 走原链路。"""
         svc = _service_with_mock_extract(monkeypatch, _FAKE_DATA)

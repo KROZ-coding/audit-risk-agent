@@ -162,15 +162,19 @@ class TestProgressAndChunks:
         events = _run(svc, _payload())
         pcts = [e[2] for e in events if e[0] == "progress"]
         assert pcts == sorted(pcts), "进度条不得回退"
-        # 并行模式下：先推前两阶段并行进度(5)，再推第三阶段(65)
-        assert pcts == [5, 65]
+        # 并行模式下先推并行准备锚点，再按财务、合规、综合顺序发布阶段锚点。
+        assert pcts == [5, 5, 35, 65]
 
     def test_progress_step_names_match_stage_names(self, monkeypatch):
         svc, _calls, _ = _wire(monkeypatch)
         events = _run(svc, _payload())
         names = [e[1] for e in events if e[0] == "progress"]
-        # 并行模式下阶段名与串行不同
-        assert names == ["并行运行财务诊断与合规扫描", "第三阶段 · 综合研判与交叉验证"]
+        assert names == [
+            "并行运行财务诊断与合规扫描",
+            "第一阶段 · 财务健康度诊断",
+            "第二阶段 · 合规与经营风险扫描",
+            "第三阶段 · 综合研判与交叉验证",
+        ]
 
     def test_only_final_stage_chunks_are_yielded(self, monkeypatch):
         svc, _calls, _ = _wire(
@@ -513,3 +517,94 @@ class TestToolLedgerHandoff:
         synth_payload = next(p for m, _k, p in calls if m == "synthesis")
         assert [c[0] for c in calls] == [s[0] for s in SYNTHESIS_STAGES]
         assert "tool_ledger" not in synth_payload  # 无可用结果时不种入空台账
+
+class TestSynthesisRunsPreprocess:
+    """综合研判串跑必须先做 P1 预处理（实测缺陷回归）
+
+    根因：synthesis 分支原本完全跳过 _preprocess_inject，财务数据全靠 LLM 从
+    17 万字符原文自行抽取，导致指标/模型/数据源大面积「未获取」。修复后预跑
+    结果必须同时出现在：① 财务阶段载荷尾部（避免重复抽取）；② synthesis 阶段
+    的 tool_ledger（兜底导出/评分/数据源清单的数据来源）。
+    """
+
+    class _PreAgent:
+        def __init__(self, module, calls):
+            self.module = module
+            self._calls = calls
+
+        async def ainvoke(self, payload, config=None, **kw):
+            self._calls.append((self.module, "ainvoke", payload))
+            return {"messages": [_AI("结论")]}
+
+        async def astream(self, payload, config=None, **kw):
+            self._calls.append((self.module, "astream", payload))
+            if False:  # pragma: no cover
+                yield {}
+
+    def _wire_preprocess(self, monkeypatch, pre_msgs):
+        import main as main_mod
+        from langchain_core.messages import AIMessage, ToolMessage
+
+        monkeypatch.setattr(main_mod, "init_agent_config", lambda _a, _c: {})
+        calls = []
+        agents = {module: self._PreAgent(module, calls) for module, *_ in SYNTHESIS_STAGES}
+        svc = GraphService()
+        monkeypatch.setattr(svc, "_get_agent",
+                            lambda ctx=None, fast=False, module=None: agents[module])
+
+        async def _fake_preprocess(self, payload):
+            return pre_msgs
+
+        monkeypatch.setattr(GraphService, "_preprocess_inject", _fake_preprocess)
+        return svc, calls
+
+    def _pre_messages(self):
+        from langchain_core.messages import AIMessage, ToolMessage
+        return [
+            AIMessage(content="", tool_calls=[{"name": "calculate_financial_indicators",
+                                               "args": {}, "id": "pre_c"}]),
+            ToolMessage(content='{"indicators":{"revenue_current":1}}',
+                        name="calculate_financial_indicators",
+                        tool_call_id="pre_c", id="pre_tc"),
+        ]
+
+    def test_financial_stage_absorbs_preprocess_trajectory(self, monkeypatch):
+        svc, calls = self._wire_preprocess(monkeypatch, self._pre_messages())
+        long_payload = {"messages": [{"role": "user", "content": "年报正文" * 300}]}
+        _run(svc, long_payload)
+        fin_payload = next(p for m, _k, p in calls if m == "financial")
+        names = [getattr(m, "name", "") for m in fin_payload["messages"]]
+        assert "calculate_financial_indicators" in names
+
+    def test_synthesis_payload_carries_preprocess_ledger(self, monkeypatch):
+        svc, calls = self._wire_preprocess(monkeypatch, self._pre_messages())
+        long_payload = {"messages": [{"role": "user", "content": "年报正文" * 300}]}
+        _run(svc, long_payload)
+        synth_payload = next(p for m, _k, p in calls if m == "synthesis")
+        entries = synth_payload.get("tool_ledger", {}).get("entries", [])
+        names = [e[1] for e in entries]
+        assert "calculate_financial_indicators" in names
+        # 内容原文保留，兜底导出需要完整 JSON
+        assert any(e[2] == '{"indicators":{"revenue_current":1}}' for e in entries)
+
+    def test_short_text_skips_preprocess_entirely(self, monkeypatch):
+        svc, calls = self._wire_preprocess(monkeypatch, self._pre_messages())
+        _run(svc, _payload())  # 短文本
+        fin_payload = next(p for m, _k, p in calls if m == "financial")
+        names = [getattr(m, "name", "") for m in fin_payload["messages"]]
+        assert "calculate_financial_indicators" not in names
+
+
+def test_direct_stream_sse_binds_request_context_for_batch_identity():
+    """直接调用 stream_sse 时也必须把 ctx 绑定到 request_context。"""
+    from local_shims import new_context, request_context
+
+    async def _probe():
+        ctx = new_context("test")
+        stream = GraphService().stream_sse(
+            {"messages": [{"role": "user", "content": "【模块:综合研判】分析"}]}, ctx=ctx)
+        await stream.__anext__()
+        assert request_context.get() is ctx
+        await stream.aclose()
+
+    asyncio.run(_probe())

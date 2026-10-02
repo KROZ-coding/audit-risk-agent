@@ -5,6 +5,7 @@
 """
 import argparse
 import asyncio
+import copy
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import logging
 import uuid
 import tempfile
 import shutil
+import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -27,6 +29,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage, AIMessage
 
 from agents.pipeline import SYNTHESIS_STAGES, build_stage_payload, extract_stage_summary
+from maintenance import MaintenancePolicy, last_report, maintenance_worker
 
 from local_shims import (
     new_context, Context, request_context,
@@ -133,6 +136,7 @@ def expected_artifacts(module: Optional[str], fast: bool) -> list:
         else:
             items.append({"key": "pdf_compliance", "kind": "pdf", "label": "合规与信息披露报告"})
         items.append({"key": "excel", "kind": "xlsx", "label": "Excel审计底稿"})
+        items.append({"key": "json", "kind": "json", "label": "TXT格式结构化风险台账（JSON内容）"})
     return items
 
 
@@ -214,16 +218,33 @@ def _extract_history_fields(report: dict) -> dict:
     ai_text = str(report.get("ai_text", "") or "")
     fields = {"company_name": "", "report_year": "", "score": None, "risk_level": "", "summary": ""}
     risk_data = {}
+    # 新记录优先使用结构化快照。正文 JSON 仅用于旧历史兼容，避免展示文本
+    # 的截断、改写或模型措辞影响历史列表的身份和评分。
+    snapshot = report.get("report_snapshot") if isinstance(report, dict) else None
+    if isinstance(snapshot, dict) and snapshot.get("snapshot_id"):
+        company_info = snapshot.get("company") if isinstance(snapshot.get("company"), dict) else {}
+        from utils.filename import resolve_company_year
+        company, year = resolve_company_year(company_info)
+        fields["company_name"] = company
+        fields["report_year"] = year
+        score_data = snapshot.get("score") if isinstance(snapshot.get("score"), dict) else {}
+        fields["score"] = score_data.get("score")
+        fields["risk_level"] = str(score_data.get("level", "") or "")
+        rendering = snapshot.get("rendering") if isinstance(snapshot.get("rendering"), dict) else {}
+        fields["summary"] = str(
+            rendering.get("overall_assessment") or score_data.get("summary") or "")
+        risk_data = {"company_info": company_info, "comprehensive_score": score_data}
     try:
-        from agents.agent import _extract_risk_json
-        risk_json = _extract_risk_json(ai_text)
-        if risk_json:
-            risk_data = json.loads(risk_json)
-            # 别名兼容：LLM 可能用 name/report_period 等键名（与导出工具同源逻辑）
-            from utils.filename import resolve_company_year
-            company, year = resolve_company_year(risk_data.get("company_info", {}) or {})
-            fields["company_name"] = company
-            fields["report_year"] = year
+        if not risk_data:
+            from agents.agent import _extract_risk_json
+            risk_json = _extract_risk_json(ai_text)
+            if risk_json:
+                risk_data = json.loads(risk_json)
+                # 别名兼容：LLM 可能用 name/report_period 等键名（与导出工具同源逻辑）
+                from utils.filename import resolve_company_year
+                company, year = resolve_company_year(risk_data.get("company_info", {}) or {})
+                fields["company_name"] = company
+                fields["report_year"] = year
     except Exception:
         pass
     try:
@@ -241,10 +262,17 @@ def _extract_history_fields(report: dict) -> dict:
         fields["score"] = cs.get("score")
         fields["risk_level"] = fields["risk_level"] or str(cs.get("level", "") or "")
         fields["summary"] = fields["summary"] or str(cs.get("summary", "") or cs.get("note", "") or "")
-    fields["files"] = (
-        [f.get("path", "") for f in report.get("files", []) if f.get("path")]
-        + [i.get("path", "") for i in report.get("images", []) if i.get("path")]
-    )
+    manifest = report.get("artifact_manifest") if isinstance(report, dict) else None
+    if isinstance(manifest, list) and manifest:
+        fields["files"] = [
+            item.get("path", "") for item in manifest
+            if isinstance(item, dict) and item.get("status") == "success" and item.get("path")
+        ]
+    else:
+        fields["files"] = (
+            [f.get("path", "") for f in report.get("files", []) if f.get("path")]
+            + [i.get("path", "") for i in report.get("images", []) if i.get("path")]
+        )
     return fields
 
 
@@ -291,6 +319,8 @@ def _artifact_key(path: str) -> str:
         return "chart_unknown"
     if suffix == ".xlsx":
         return "excel"
+    if suffix == ".json" or (suffix == ".txt" and ("json" in name or "风险台账" in name)):
+        return "json"
     if suffix == ".pdf":
         if "财务健康" in name:
             return "pdf_financial"
@@ -300,7 +330,7 @@ def _artifact_key(path: str) -> str:
     return suffix.lstrip(".") or "file"
 
 
-def _build_data_sources(tool_result_index: dict) -> list:
+def _build_data_sources(tool_result_index: dict, snapshot: dict | None = None) -> list:
     """构造「数据来源与完整性说明」清单（网页端）。
 
     未获取时只写原因本身：前端表格另有「状态」列显示「未获取」，原因再带
@@ -324,6 +354,11 @@ def _build_data_sources(tool_result_index: dict) -> list:
     except (TypeError, ValueError, json.JSONDecodeError):
         disclosure_data = {}
     opinion_used = _used_json("identify_audit_opinion") or bool(disclosure_data.get("audit_opinion"))
+    snapshot_multi_year = snapshot.get("multi_year", {}) if isinstance(snapshot, dict) else {}
+    snapshot_multi_year = snapshot_multi_year if isinstance(snapshot_multi_year, dict) else {}
+    trend_used = _used_json("compare_multi_year") or len(
+        snapshot_multi_year.get("years_analyzed", []) or []
+    ) >= 2
     source_specs = (
         ("财务指标数据", _used_json("calculate_financial_indicators"),
          "未上传年报或文本过短（预处理跳过），未产出结构化财务指标"),
@@ -331,8 +366,8 @@ def _build_data_sources(tool_result_index: dict) -> list:
          "未调用披露检查工具或年报文本不足以检查"),
         ("综合风险评分", _used_json("calculate_comprehensive_score"),
          "未调用评分工具且系统兜底评分失败"),
-        ("多年指标趋势", _used_json("compare_multi_year"),
-         "未提供多年财务数据（需至少 2 个年度）"),
+        ("多年指标趋势", trend_used,
+         "未提供两个可比期间或多年财务数据"),
         ("审计意见识别", opinion_used,
          "未识别到审计意见章节或未调用识别工具"),
         ("量化模型预警", _used_json("calculate_risk_models"),
@@ -340,7 +375,29 @@ def _build_data_sources(tool_result_index: dict) -> list:
         ("数据勾稽校验", _used_json("validate_financial_data"),
          "缺少结构化财务数据（勾稽校验需三大报表字段）"),
     )
-    return [{"name": name, "used": bool(used), "note": "" if used else note}
+    quality = snapshot.get("data_quality", {}) if isinstance(snapshot, dict) else {}
+    presentation_mode = str(quality.get("presentation_mode") or "strict")
+
+    def _status(name, used):
+        if presentation_mode in {"demo", "demo_placeholder"}:
+            return "demo_placeholder"
+        if not used:
+            return "unverified"
+        if name == "财务指标数据" and quality.get("incomplete_metrics"):
+            return "incomplete"
+        if name == "多年指标趋势":
+            try:
+                my = json.loads(tool_result_index.get("compare_multi_year", "") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                my = {}
+            if not my:
+                my = snapshot_multi_year
+            if len(my.get("years_analyzed", []) or []) < 2:
+                return "incomplete"
+        return "verified"
+
+    return [{"name": name, "used": bool(used), "data_status": _status(name, used),
+             "source_status": _status(name, used), "note": "" if used else note}
             for name, used, note in source_specs]
 
 
@@ -356,6 +413,12 @@ def _record_history(user, run_id: str, report: dict, fast: bool):
             company_name=fields["company_name"], report_year=fields["report_year"],
             score=fields["score"], risk_level=fields["risk_level"],
             mode="flash" if fast else "pro", files=fields["files"], summary=fields["summary"],
+            report_snapshot=report.get("report_snapshot") or report.get("final_snapshot") or {},
+            artifact_manifest=report.get("artifact_manifest") or [],
+            report_metadata=report.get("report_metadata") or {},
+            ai_text=report.get("ai_text", ""),
+            data_status=report.get("data_status", ""),
+            task_status=report.get("task_status", ""),
         )
         logger.info(f"分析历史已记录: user={user['username']} run_id={run_id}")
     except Exception as e:  # noqa: BLE001
@@ -412,6 +475,521 @@ class GraphService:
             pass
         return ""
 
+    # 报表关键词 -> 命中页必须进入抽取窗口（实测：仅按固定页号截取只覆盖
+    # 17,790/176,691 字符，营业成本、其他应付款、商誉等关键词仅剩 1 处命中，
+    # LLM 抽取随机漏项 → 毛利率/周转率/模型大量「未获取」）。
+    _EXCERPT_KEYWORDS = (
+        "合并资产负债表", "合并及公司资产负债表", "合并利润表", "合并及公司利润表",
+        "合并现金流量表", "合并股东权益变动表",
+        "流动资产合计", "流动负债合计", "非流动资产合计", "非流动负债合计",
+        "资产总计", "负债合计", "股东权益合计",
+        "营业收入", "营业成本", "营业利润", "利润总额", "净利润",
+        "货币资金", "应收账款", "其他应收款", "其他应付款", "存货",
+        "固定资产", "在建工程", "商誉", "未分配利润", "归属于母公司股东的净利润",
+        "利息费用", "利息收入", "经营活动产生的现金流量净额",
+    )
+    _EXCERPT_HEADER_PAGES = {1, 3}
+    _EXCERPT_MAX_CHARS = 80000
+
+    @classmethod
+    def _financial_extraction_excerpt(cls, text: str) -> str:
+        """优先抽取中国准则合并报表所在页，并纳入所有报表关键词命中页。
+
+        PDF 上传文本由 parse_pdf_report 按页加上该标记。中国石油半年报同时
+        包含国际准则和中国准则报表，单纯截取全文前缀会把两套口径交叉拼接；
+        但只用固定页号又会漏掉附注表，故此处：
+
+        1. 固定保留封面/重要提示页（识别期间、单位、报告类型）；
+        2. 固定保留历史 preferred 页（中国准则主表）；
+        3. 追加所有报表关键词命中页（按页号去重、排序）；
+        4. 在字符上限内拼装，超出时优先保留主表与靠前的命中页。
+        """
+        page_chunks = re.findall(
+            r"(---\s*第\s*(\d+)\s*页\s*---[\s\S]*?)(?=---\s*第\s*\d+\s*页\s*---|$)",
+            text,
+        )
+        if not page_chunks:
+            return text[:cls._EXCERPT_MAX_CHARS]
+        preferred_pages = {6, 7, 49, 50, 51, 52, 86, 87, 109, 120, 121, 135}
+        by_page = {}
+        for chunk, page_no in page_chunks:
+            by_page.setdefault(int(page_no), chunk)
+
+        def _rank(page_no: int) -> tuple:
+            # 排序优先级：表头页 > 主表页 > 关键词命中页，同级按页码升序
+            if page_no in cls._EXCERPT_HEADER_PAGES:
+                group = 0
+            elif page_no in preferred_pages:
+                group = 1
+            else:
+                group = 2
+            return (group, page_no)
+
+        selected = set(cls._EXCERPT_HEADER_PAGES) | (preferred_pages & set(by_page))
+        for page_no, chunk in by_page.items():
+            if any(keyword in chunk for keyword in cls._EXCERPT_KEYWORDS):
+                selected.add(page_no)
+        ordered = sorted((p for p in selected if p in by_page), key=_rank)
+
+        parts, used = [], 0
+        for page_no in ordered:
+            chunk = by_page[page_no]
+            if used and used + len(chunk) > cls._EXCERPT_MAX_CHARS:
+                continue
+            parts.append(chunk)
+            used += len(chunk)
+        if not parts:
+            return text[:cls._EXCERPT_MAX_CHARS]
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _backfill_source_facts(text: str, data: dict) -> dict:
+        """补回可由原文表格确定识别的字段，避免 LLM 抽取随机漏项。
+
+        中国石油半年报的应收账款附注和合并权益变动表同时给出净额、账面余额、
+        坏账准备及「其他」变动。这里只补有明确表格锚点的值，不按金额量级猜测。
+        """
+        if not isinstance(data, dict) or not text:
+            return data
+        page_chunks = re.findall(
+            r"---\s*第\s*(\d+)\s*页\s*---([\s\S]*?)(?=---\s*第\s*\d+\s*页\s*---|$)",
+            text,
+        )
+        # Without page markers, retain a single source chunk, but still require
+        # explicit table context below. This avoids making a page locator up.
+        source_chunks = page_chunks or [("", text)]
+
+        def _dates(chunk: str) -> list[str]:
+            found = re.findall(
+                r"(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", chunk)
+            result = []
+            for year, month, day in found:
+                value = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+                if value not in result:
+                    result.append(value)
+            return result
+
+        def _unit(chunk: str) -> str:
+            match = re.search(
+                r"(?:金额单位\s*(?:为|：|:)\s*|单位\s*(?:为|：|:)\s*)"
+                r"(?:人民币\s*)?(万亿|百万元|千万元|亿元|万元|千元|元)", chunk)
+            if not match:
+                match = re.search(
+                    r"除特别注明外[^。]{0,50}?金额单位\s*(?:为|：|:)\s*"
+                    r"(?:人民币\s*)?(万亿|百万元|千万元|亿元|万元|千元|元)", chunk)
+            return f"人民币{match.group(1)}" if match else ""
+
+        def _context(predicate):
+            for page_no, chunk in source_chunks:
+                if not predicate(chunk):
+                    continue
+                dates = _dates(chunk)
+                unit = _unit(chunk)
+                # Numeric backfill is allowed only when the table itself declares
+                # dates and a monetary unit. Scope is recorded separately.
+                if len(dates) < 2 or not unit:
+                    continue
+                scope = "合并" if ("合并" in chunk or "本集团" in chunk) else ""
+                if not scope:
+                    continue
+                return page_no, chunk, dates[:2], unit, scope
+            return None
+
+        def _unit_compatible(source_unit: str) -> bool:
+            declared = str(data.get("amount_unit") or (data.get("_metadata") or {}).get("amount_unit") or "")
+            if not declared:
+                data["amount_unit"] = source_unit
+            # 字段级源表元数据优先于全局单位声明。LLM 可能已经把部分金额
+            # 归一化为人民币元，而原表仍以人民币百万元列示；单位不一致时仍
+            # 必须回写页码、定位和字段单位，不能整组跳过坏账/权益证据。
+            return True
+
+        def _scope_compatible(source_scope: str) -> bool:
+            declared = str(data.get("scope") or "").replace("中国准则", "")
+            if not declared:
+                return True
+            if "母公司" in declared:
+                return source_scope == "母公司"
+            if "合并" in declared:
+                return source_scope == "合并"
+            return True
+
+        def _put_metadata(fields, context, locator, method="source_table_regex"):
+            page_no, excerpt, dates, source_unit, scope = context
+            if not _unit_compatible(source_unit):
+                return
+            if not _scope_compatible(scope):
+                return
+            metadata = data.setdefault("_field_metadata", {})
+            flow_period_fields = {"dividends", "retained_earnings_other_changes"}
+            for key, value in fields.items():
+                if data.get(key) is None:
+                    data[key] = value
+                if key == "retained_earnings_begin":
+                    period = dates[0]
+                elif key == "retained_earnings_end":
+                    period = dates[1]
+                elif key in flow_period_fields:
+                    period = f"{dates[1][:4]}年1-6月"
+                else:
+                    period = dates[0] if key.endswith("_current") else dates[1]
+                source_metadata = {
+                    "period": period,
+                    "scope": scope,
+                    "unit": source_unit,
+                    "page": page_no,
+                    "locator": locator,
+                    "excerpt": excerpt[:800],
+                    "extraction_method": method,
+                }
+                # A prior LLM extraction may have left a stale page or blank unit.
+                # Once the source table is positively identified, its locator and
+                # unit are authoritative for the affected fields.
+                existing = metadata.get(key)
+                if not isinstance(existing, dict):
+                    metadata[key] = source_metadata
+                else:
+                    existing.update(source_metadata)
+
+        ar_context = _context(
+            lambda chunk: "应收账款" in chunk and "坏账准备" in chunk
+            and ("本集团" in chunk or "合并" in chunk))
+        ar_match = None
+        if ar_context:
+            ar_match = re.search(
+                r"应收账款(?:\s+\d+)?\s+([\d,]+)\s+([\d,]+)\s+[\d,]+\s+[\d,]+\s+"
+                r"减：坏账准备\s+\(([\d,]+)\)\s+\(([\d,]+)\)",
+                re.sub(r"\s+", " ", ar_context[1]),
+            )
+        if ar_match and ar_context:
+            fields = {
+                "accounts_receivable_gross_current": int(ar_match.group(1).replace(",", "")),
+                "accounts_receivable_gross_same_period_previous": int(ar_match.group(2).replace(",", "")),
+                "bad_debt_provision_current": int(ar_match.group(3).replace(",", "")),
+                "bad_debt_provision_same_period_previous": int(ar_match.group(4).replace(",", "")),
+            }
+            _put_metadata(fields, ar_context, "附注9 应收账款：账面余额及坏账准备表")
+
+        # 合并资产负债表明确列示其他应收款；这是关联方往来与资金占用筛查的
+        # 输入，若仅依赖 LLM 抽取，容易在多列报表中漏掉。只接受同一行的四列
+        # 数值（合并本期/上期、母公司本期/上期），不按金额量级推断。
+        other_context = _context(
+            lambda chunk: "其他应收款" in chunk
+            and ("合并资产负债表" in chunk or "合并及公司资产负债表" in chunk))
+        other_match = None
+        if other_context:
+            # 资产负债表行名后可能紧跟附注编号（如「其他应收款 12」）。
+            # 按行取数并保留最后四个金额列，避免把附注编号当成本期金额。
+            for line in other_context[1].splitlines():
+                normalized = re.sub(r"\s+", " ", line).strip()
+                if "其他应收款" not in normalized:
+                    continue
+                tail = normalized.split("其他应收款", 1)[1]
+                values = re.findall(r"[\d,]+", tail)
+                if len(values) < 4:
+                    continue
+                values = values[-4:]
+                other_match = re.match(
+                    r"([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)$",
+                    " ".join(values),
+                )
+                if other_match:
+                    break
+        if other_match and other_context:
+            fields = {
+                "other_receivables_current": int(other_match.group(1).replace(",", "")),
+                "other_receivables_previous": int(other_match.group(2).replace(",", "")),
+            }
+            _put_metadata(fields, other_context, "合并资产负债表：其他应收款")
+
+        # 合并资产负债表的非流动资产行同时给出固定资产和在建工程的
+        # 期末/上年末账面价值。两者是周转率和变动率的直接输入；只接受
+        # 明确带附注表头、单位和合并范围的报表行，避免把附注政策说明
+        # 中的数字误当作余额。
+        asset_context = _context(
+            lambda chunk: ("合并资产负债表" in chunk or "合并及公司资产负债表" in chunk)
+            and "固定资产" in chunk
+            and "在建工程" in chunk
+            and "非流动资产" in chunk
+        )
+        if asset_context:
+            asset_fields = {}
+            for raw_line in asset_context[1].splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                fixed_match = re.search(
+                    r"固定资产\s+(?:\d+\s+)?([\d,]+)\s+([\d,]+)", line
+                )
+                cip_match = re.search(
+                    r"在建工程\s+(?:\d+\s+)?([\d,]+)\s+([\d,]+)", line
+                )
+                if fixed_match:
+                    asset_fields.update({
+                        "fixed_assets_current": int(fixed_match.group(1).replace(",", "")),
+                        "fixed_assets_previous": int(fixed_match.group(2).replace(",", "")),
+                    })
+                if cip_match:
+                    asset_fields.update({
+                        "construction_in_progress_current": int(cip_match.group(1).replace(",", "")),
+                        "construction_in_progress_previous": int(cip_match.group(2).replace(",", "")),
+                    })
+            if asset_fields:
+                _put_metadata(asset_fields, asset_context, "合并资产负债表：固定资产/在建工程")
+
+        # ── 合并资产负债表（流动资产/负债与非流动资产）行级回填 ──
+        # 只取「行首标签 + 紧邻两列金额」，列顺序固定为「本期 / 上年末」，
+        # 单位/日期/合并范围仍由 _context 校验；括号表示负值（成本类转正）。
+        def _row_pair(chunk: str, label: str):
+            for raw_line in chunk.splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                # 行首标签（允许「减：」前缀与紧随其后的附注编​号）
+                # 附注引用既可能是纯数字（「货币资金 7」），也可能是
+                # 「59(f)」这种带括号字母的形式（现金流量表），两种都要跳过。
+                m = re.match(
+                    r"^(?:其中：|减：|加：)?" + re.escape(label) + r"\s+(?:\d+(?:\([a-z]\))?\s+)?\(?([\d,]+)\)?\s+\(?([\d,]+)\)?",
+                    line,
+                )
+                if m:
+                    def _val(group):
+                        return int(group.replace(",", ""))
+                    return _val(m.group(1)), _val(m.group(2))
+            return None
+
+        asset_row_context = _context(
+            lambda chunk: ("合并资产负债表" in chunk or "合并及公司资产负债表" in chunk)
+            and "流动资产合计" in chunk and "资产总计" in chunk)
+        if asset_row_context:
+            fields = {}
+            for label, cur_key, prev_key in (
+                    ("货币资金", "monetary_funds_current", "monetary_funds_previous"),
+                    ("应收账款", "accounts_receivable_current", "accounts_receivable_previous"),
+                    ("存货", "inventory_current", "inventory_previous"),
+                    ("流动资产合计", "current_assets_current", "current_assets_previous"),
+                    ("商誉", "goodwill_current", "goodwill_previous"),
+                    ("资产总计", "total_assets_current", "total_assets_previous")):
+                pair = _row_pair(asset_row_context[1], label)
+                if pair:
+                    fields[cur_key], fields[prev_key] = pair
+            if fields:
+                if fields.get("total_assets_current") is not None and data.get("total_assets") is None:
+                    fields["total_assets"] = fields["total_assets_current"]
+                _put_metadata(fields, asset_row_context, "合并资产负债表：主要资产行")
+
+        # ── 合并资产负债表（续）：其他应付款 / 流动负债 / 负债合计 ──
+        liab_row_context = _context(
+            lambda chunk: ("合并资产负债表" in chunk or "合并及公司资产负债表" in chunk)
+            and "流动负债合计" in chunk and "未分配利润" in chunk)
+        if liab_row_context:
+            fields = {}
+            for label, cur_key, prev_key in (
+                    ("其他应付款", "other_payables_current", "other_payables_previous"),
+                    ("流动负债合计", "current_liabilities_current", "current_liabilities_previous"),
+                    ("负债合计", "total_liabilities_current", "total_liabilities_previous")):
+                pair = _row_pair(liab_row_context[1], label)
+                if pair:
+                    fields[cur_key], fields[prev_key] = pair
+            if fields:
+                _put_metadata(fields, liab_row_context, "合并资产负债表（续）：主要负债行")
+            # 未分配利润：期末列(本期) -> end，期初列(上年末) -> begin。
+            # 权益变动表（更权威）在其后覆盖；此处仅在其缺席时补位。
+            pair = _row_pair(liab_row_context[1], "未分配利润")
+            if pair:
+                end_value, begin_value = pair
+                if data.get("retained_earnings_end") is None:
+                    data["retained_earnings_end"] = end_value
+                if data.get("retained_earnings_begin") is None:
+                    data["retained_earnings_begin"] = begin_value
+                meta = data.setdefault("_field_metadata", {})
+                for key, value, period in (("retained_earnings_end", end_value, liab_row_context[2][0]),
+                                           ("retained_earnings_begin", begin_value, liab_row_context[2][1])):
+                    meta.setdefault(key, {})
+                    if isinstance(meta[key], dict):
+                        meta[key].update({
+                            "period": period, "scope": liab_row_context[4],
+                            "unit": liab_row_context[3], "page": liab_row_context[0],
+                            "locator": "合并资产负债表：未分配利润",
+                            "excerpt": liab_row_context[1][:800],
+                            "extraction_method": "source_table_regex"})
+            # 股东权益合计 -> 净资产（所有者权益）
+            pair = _row_pair(liab_row_context[1], "股东权益合计")
+            if pair:
+                _put_metadata({"net_assets_current": pair[0], "net_assets_previous": pair[1]},
+                              liab_row_context, "合并资产负债表：股东权益合计")
+
+        # ── 合并利润表：营收/成本/利润/归母/利息 行级回填 ──
+        # 中国石油半年报利润表为「本期合并 / 上年同期合并 / 本期公司 / 上年同期公司」
+        # 四列，只取前两列（合并口径）；营业成本以括号列示，回填为正数。
+        income_context = _context(
+            lambda chunk: ("合并利润表" in chunk or "合并及公司利润表" in chunk)
+            and "营业收入" in chunk and "营业成本" in chunk)
+        if income_context:
+            fields = {}
+            for label, cur_key, prev_key in (
+                    ("营业收入", "revenue_current", "revenue_previous"),
+                    ("营业成本", "cost_of_goods_current", "cost_of_goods_previous"),
+                    ("营业利润", "operating_profit_current", "operating_profit_previous"),
+                    ("利润总额", "ebit_current", "ebit_previous"),
+                    ("净利润", "net_profit_current", "net_profit_previous"),
+                    ("归属于母公司股东的净利润",
+                     "net_profit_parent_current", "net_profit_parent_previous"),
+                    ("利息费用", "interest_expense_current", "interest_expense_previous"),
+                    ("利息收入", "interest_income_current", "interest_income_previous")):
+                pair = _row_pair(income_context[1], label)
+                if pair:
+                    fields[cur_key], fields[prev_key] = pair
+            if fields:
+                # 营业利润/利润总额别名：计算器与模型按无后缀键读取
+                if fields.get("operating_profit_current") is not None:
+                    fields.setdefault("operating_profit", fields["operating_profit_current"])
+                if fields.get("ebit_current") is not None and data.get("ebit") is None:
+                    fields["ebit"] = fields["ebit_current"]
+                if fields.get("net_profit_current") is not None and data.get("net_profit") is None:
+                    fields["net_profit"] = fields["net_profit_current"]
+                _put_metadata(fields, income_context, "合并利润表：主要损益行")
+
+            # SG&A（销售费用+管理费用）是 Beneish SGAI 的输入：两行取自同一合并利润表，
+            # 只在两行都定位成功时合并，避免用单边数据凑出因子。
+            selling = _row_pair(income_context[1], "销售费用")
+            admin = _row_pair(income_context[1], "管理费用")
+            if selling and admin:
+                _put_metadata({
+                    "sga_expense_current": selling[0] + admin[0],
+                    "sga_expense_previous": selling[1] + admin[1],
+                }, income_context, "合并利润表：销售费用+管理费用（SG&A 口径）")
+
+            # 毛利额＝营业收入-营业成本：仅当两行都是从本表确定识别的数值时派生，
+            # 供 Beneish GMI 使用（与指标层毛利率口径一致）；已有披露值时不覆盖。
+            derived = {}
+            if (fields.get("revenue_current") is not None
+                    and fields.get("cost_of_goods_current") is not None):
+                derived["gross_profit_current"] = (fields["revenue_current"]
+                                                  - fields["cost_of_goods_current"])
+                if data.get("gross_profit") is None:
+                    derived["gross_profit"] = derived["gross_profit_current"]
+            if (fields.get("revenue_previous") is not None
+                    and fields.get("cost_of_goods_previous") is not None):
+                derived["gross_profit_previous"] = (fields["revenue_previous"]
+                                                   - fields["cost_of_goods_previous"])
+            if derived:
+                _put_metadata(derived, income_context,
+                              "合并利润表：毛利额＝营业收入-营业成本（派生）",
+                              method="derived_from_source_table")
+
+        # ── 合并现金流量表：经营活动现金流量净额（OCF/NP 质量比、趋势图直接输入）──
+        # 实测缺陷：原回填只覆盖资产负债表与利润表，现金流量表行（带「59(f)」
+        # 式附注引用）未被识别，导致经营现金流/净利润比、现金流趋势大面积缺口。
+        cashflow_context = _context(
+            lambda chunk: "现金流量表" in chunk and "经营活动产生的现金流量净额" in chunk)
+        if cashflow_context:
+            fields = {}
+            pair = _row_pair(cashflow_context[1], "经营活动产生的现金流量净额")
+            if pair:
+                fields["operating_cashflow_current"] = pair[0]
+                fields["operating_cashflow_previous"] = pair[1]
+                # 计算器/model 同时读带后缀与无后缀键，保持两者一致
+                fields["operating_cashflow"] = pair[0]
+            # 折旧、折耗及摊销是间接法调整项，也是 Beneish DEPI 的输入。中国准则
+            # 主表按直接法列示、不含该行，须单独定位间接法调整表所在页；期间、
+            # 单位与合并范围仍由 _context 校验，避免把附注文字当作表内数据。
+            dep_context = _context(
+                lambda chunk: "现金流量表" in chunk and "折旧、折耗及摊销" in chunk)
+            if dep_context:
+                dep_pair = _row_pair(dep_context[1], "折旧、折耗及摊销")
+                if dep_pair:
+                    _put_metadata({"depreciation_current": dep_pair[0],
+                                   "depreciation_previous": dep_pair[1]},
+                                  dep_context,
+                                  "合并现金流量表：折旧、折耗及摊销（间接法调整项）")
+            if fields:
+                _put_metadata(fields, cashflow_context,
+                              "合并现金流量表：经营活动产生的现金流量净额")
+
+        # 合并股东权益变动表中「其他」行的第六列为未分配利润变动；
+        # 仅接受同时出现未分配利润标题和明确括号数值的表格行。
+        equity_context = _context(
+            lambda chunk: "合并股东权益变动表" in chunk
+            and re.search(r"未分配\s*利润", chunk) is not None)
+        if equity_context:
+            # 页面同时包含 2024 年比较行和 2025 年本期行，不能使用整页
+            # 日期出现顺序。以「本期 6 月 30 日余额」对应年份重建期间。
+            equity_excerpt = equity_context[1]
+            year_matches = re.findall(
+                r"(20\d{2})\s*年\s*6\s*月\s*30\s*日余额", equity_excerpt)
+            current_year = max((int(year) for year in year_matches), default=int(equity_context[2][1][:4]))
+            if year_matches:
+                equity_context = (
+                    equity_context[0], equity_excerpt,
+                    [f"{current_year:04d}-01-01", f"{current_year:04d}-06-30"],
+                    equity_context[3], equity_context[4],
+                )
+            # 必须按原始换行定位「其他」行；整页压成单空格后无法区分
+            # 行边界，容易把前面其他项目的括号数字误当成目标列。
+            candidates = []
+            for raw_line in equity_context[1].splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                if not re.match(r"^其他\s+", line):
+                    continue
+                parens = re.findall(r"\(([\d,]+)\)", line)
+                if len(parens) < 3:
+                    continue
+                candidates.append(parens)
+            if candidates and data.get("retained_earnings_other_changes") is None:
+                # 未分配利润是该行第三个括号值；同页可能有上年比较行，
+                # 取最后一个合格「其他」行对应本期披露。
+                value = -int(candidates[-1][2].replace(",", ""))
+                _put_metadata({"retained_earnings_other_changes": value}, equity_context,
+                              "合并股东权益变动表：其他行、未分配利润列")
+
+            # The same table is the source for the opening/closing retained
+            # earnings and shareholder distributions.  Extract the sixth value
+            # after the date (the 未分配利润 column), preserving parentheses as
+            # negatives.  This also repairs stale LLM locators such as note 39.
+            def _row_value(prefix: str):
+                matches = []
+                for raw_line in equity_context[1].splitlines():
+                    line = re.sub(r"\s+", " ", raw_line).strip()
+                    if not re.search(prefix, line):
+                        continue
+                    tail = re.split(prefix, line, maxsplit=1)[-1]
+                    tokens = re.findall(r"-+|\([\d,]+\)|[\d,]+", tail)
+                    if len(tokens) < 6:
+                        continue
+                    token = tokens[5]
+                    matches.append(
+                        -int(token[1:-1].replace(",", ""))
+                        if token.startswith("(") else int(token.replace(",", "")))
+                return matches[-1] if matches else None
+
+            equity_fields = {}
+            begin = _row_value(fr"{current_year}\s*年\s*1\s*月\s*1\s*日余额")
+            end = _row_value(fr"{current_year}\s*年\s*6\s*月\s*30\s*日余额")
+            dividends = _row_value(r"对股东的分配")
+            # 同一页保留 2024 年比较期间的分配行；_row_value 返回本表
+            # 最后一个匹配行，即当前 2025 年半年度披露。
+            if dividends is not None:
+                # 权益变动表用括号表示分配对留存收益的扣减；字段本身
+                # 表示分红金额，沿用校验器和工具的正数约定。
+                dividends = abs(dividends)
+            if begin is not None:
+                equity_fields["retained_earnings_begin"] = begin
+            if end is not None:
+                equity_fields["retained_earnings_end"] = end
+            if dividends is not None:
+                equity_fields["dividends"] = dividends
+            if equity_fields:
+                _put_metadata(equity_fields, equity_context,
+                              "合并股东权益变动表：未分配利润列")
+        # 报告身份（公司名/股票代码/期间/行业/审计意见）：原文确定性识别，
+        # 供文件命名、期间勾稽与量化模型适用性判定使用；不覆盖已有非空值。
+        try:
+            from utils.report_identity import extract_report_identity
+            identity = extract_report_identity(text)
+            for key, value in identity.items():
+                if value and not str(data.get(key) or "").strip():
+                    data[key] = value
+        except Exception:
+            pass
+        return data
+
     async def _extract_financial_json(self, text: str):
         """用快速模型从年报文本提取结构化财务数据 JSON；失败返回 None。"""
         from langchain_openai import ChatOpenAI
@@ -421,7 +999,7 @@ class GraphService:
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com"),
             temperature=0,
-            max_tokens=1200,
+            max_tokens=3000,
             timeout=self._EXTRACT_TIMEOUT,
             max_retries=0,
             extra_body=thinking_extra_body(),  # 仅 DeepSeek 下发禁用思考模式，其它 provider 保持纯 OpenAI 协议
@@ -437,10 +1015,25 @@ class GraphService:
             "retained_earnings_end, dividends, revenue_current, revenue_previous, "
             "net_profit_current, net_profit_previous, operating_cashflow_current, "
             "operating_cashflow_previous, total_assets_current, total_liabilities_current, "
-             "accounts_receivable_current, accounts_receivable_previous, inventory_current, "
-             "inventory_previous, goodwill, monetary_funds, short_term_loans, industry, period, scope\n"
+             "accounts_receivable_current, accounts_receivable_previous, "
+             "accounts_receivable_gross_current, accounts_receivable_gross_same_period_previous, "
+             "bad_debt_provision_current, bad_debt_provision_same_period_previous, "
+             "other_receivables, other_receivables_current, other_receivables_previous, other_payables, other_payables_current, inventory_current, "
+             "inventory_previous, operating_cost_current, operating_cost_previous, current_assets, current_liabilities, "
+             "fixed_assets_current, fixed_assets_previous, construction_in_progress_current, construction_in_progress_previous, "
+             "net_profit_parent_current, net_profit_parent_previous, net_profit_parent_deducted_current, "
+             "net_profit_parent_deducted_previous, retained_earnings_other_changes, goodwill, monetary_funds, cash_and_equivalents, "
+             "short_term_loans, industry, period, scope, accounting_standard\n"
              "（industry 为字符串，取：制造业/房地产/互联网/医药/金融/零售/能源/农业/军工/传媒 之一；"
-             "period 为本次报告期，例如 2025年度/2025-12-31；scope 取合并或母公司）\n\n"
+             "period 为本次报告期，例如 2025年半年度/2025年度；scope 取合并或母公司）\n"
+             "同一组计算只使用同一会计准则和报表范围。未指定时优先中国企业会计准则合并报表；"
+             "不得将国际准则数值、母公司数据或归母净利润混入合并口径。\n"
+             "资产负债表_previous为期初余额，利润/现金流_previous为上年同期流量，两者不得都标同比。"
+             "为提取字段附_field_metadata对象，逐字段记录period（实际日期或期间）、page、locator和简短excerpt。"
+             "应收上年同期期末仅在原文明确提供时放入accounts_receivable_same_period_previous。\n"
+             "货币资金放monetary_funds；现金及现金等价物只取现金流量表附注的对应合计，不得互换。"
+             "原披露毛利率、按营业收入减营业成本重算毛利率可能定义不同，保留各自名称和公式。"
+             "销管费用等合计字段缺失时不要心算补值，只提取其组成项。\n\n"
             f"文本：\n{text}"
         )
         resp = await asyncio.wait_for(llm.ainvoke(prompt), timeout=self._EXTRACT_TIMEOUT + 5)
@@ -463,7 +1056,7 @@ class GraphService:
             text = self._last_user_text(payload)
             if len(text) < self._PREPROCESS_MIN_CHARS:
                 return None
-            data_json = await self._extract_financial_json(text[:30000])
+            data_json = await self._extract_financial_json(self._financial_extraction_excerpt(text))
             if not data_json:
                 return None
             # P8: 单位口径——只接受年报明确声明的统一单位并原样记录，
@@ -474,6 +1067,18 @@ class GraphService:
             try:
                 _raw = json.loads(data_json)
                 if isinstance(_raw, dict):
+                    _raw = self._backfill_source_facts(text, _raw)
+                    # 报告身份兜底：LLM 常漏掉封面公司名与报告期，导致文件名为
+                    #「未知公司」且 Altman/Beneish 被判「缺少本期期间」。此处用
+                    # 原文确定性识别补齐 period/report_period/industry 等上下文。
+                    try:
+                        from utils.report_identity import extract_report_identity
+                        _identity = extract_report_identity(text)
+                        for _k, _v in _identity.items():
+                            if _v and not str(_raw.get(_k) or "").strip():
+                                _raw[_k] = _v
+                    except Exception:
+                        pass
                     _unit = detect_amount_unit(text)
                     if _unit:
                         _raw["amount_unit"] = _unit
@@ -516,26 +1121,52 @@ class GraphService:
             )
             from langchain_core.messages import AIMessage, ToolMessage
             # args 中的年报全文用占位符替代，避免上下文里同一段长文本出现两遍
+            # 每次预处理必须使用新消息 ID。LangGraph 的 add_messages reducer 会按
+            # 消息 ID 去重；若同一会话重复分析仍使用固定 ID，上一轮的 ToolMessage
+            # 会被复用到新 AIMessage 之前，DeepSeek 就会收到悬空 tool_calls。
+            pre_token = uuid.uuid4().hex
+            call_ids = {
+                "validate_financial_data": f"pre_v_{pre_token}",
+                "calculate_financial_indicators": f"pre_c_{pre_token}",
+                "check_disclosure_compliance": f"pre_d_{pre_token}",
+                "calculate_risk_models": f"pre_m_{pre_token}",
+                "calculate_comprehensive_score": f"pre_s_{pre_token}",
+            }
             calls = [
-                {"name": "validate_financial_data", "args": {"financial_data_json": data_json}, "id": "pre_v"},
-                {"name": "calculate_financial_indicators", "args": {"financial_data_json": data_json}, "id": "pre_c"},
-                {"name": "check_disclosure_compliance", "args": {"report_text": "（见上文年报文本）"}, "id": "pre_d"},
-                {"name": "calculate_risk_models", "args": {"financial_data_json": data_json}, "id": "pre_m"},
+                {"name": "validate_financial_data", "args": {"financial_data_json": data_json},
+                 "id": call_ids["validate_financial_data"]},
+                {"name": "calculate_financial_indicators", "args": {"financial_data_json": data_json},
+                 "id": call_ids["calculate_financial_indicators"]},
+                {"name": "check_disclosure_compliance", "args": {"report_text": "（见上文年报文本）"},
+                 "id": call_ids["check_disclosure_compliance"]},
+                {"name": "calculate_risk_models", "args": {"financial_data_json": data_json},
+                 "id": call_ids["calculate_risk_models"]},
                 {"name": "calculate_comprehensive_score", "args": {"financial_analysis_json": "（见预处理结果）",
                                                                        "disclosure_check_json": "（见预处理结果）",
                                                                        "validation_json": "（见预处理结果）",
-                                                                       "risk_models_json": "（见预处理结果）"}, "id": "pre_s"},
+                                                                       "risk_models_json": "（见预处理结果）"},
+                 "id": call_ids["calculate_comprehensive_score"]},
             ]
             logger.info("预处理注入完成：校验/指标/披露/量化模型/综合评分五工具已预跑")
-            # 显式 id：既保证 tool_calls 应答配对，也供 tool_ledger 种入去重（与
-            # _accumulate_tool_ledger 的 mid 口径一致，避免后续重复记账）
+            # 显式且唯一的消息 id：既保证 tool_calls 应答配对，也供 tool_ledger
+            # 种入去重（与 _accumulate_tool_ledger 的 mid 口径一致）。
             return [
                 AIMessage(content="", tool_calls=calls),
-                ToolMessage(content=str(v_res), name="validate_financial_data", tool_call_id="pre_v", id="pre_tv"),
-                ToolMessage(content=str(c_res), name="calculate_financial_indicators", tool_call_id="pre_c", id="pre_tc"),
-                ToolMessage(content=str(d_res), name="check_disclosure_compliance", tool_call_id="pre_d", id="pre_td"),
-                ToolMessage(content=str(m_res), name="calculate_risk_models", tool_call_id="pre_m", id="pre_tm"),
-                ToolMessage(content=str(s_res), name="calculate_comprehensive_score", tool_call_id="pre_s", id="pre_ts"),
+                ToolMessage(content=str(v_res), name="validate_financial_data",
+                            tool_call_id=call_ids["validate_financial_data"],
+                            id=f"pre_tv_{pre_token}"),
+                ToolMessage(content=str(c_res), name="calculate_financial_indicators",
+                            tool_call_id=call_ids["calculate_financial_indicators"],
+                            id=f"pre_tc_{pre_token}"),
+                ToolMessage(content=str(d_res), name="check_disclosure_compliance",
+                            tool_call_id=call_ids["check_disclosure_compliance"],
+                            id=f"pre_td_{pre_token}"),
+                ToolMessage(content=str(m_res), name="calculate_risk_models",
+                            tool_call_id=call_ids["calculate_risk_models"],
+                            id=f"pre_tm_{pre_token}"),
+                ToolMessage(content=str(s_res), name="calculate_comprehensive_score",
+                            tool_call_id=call_ids["calculate_comprehensive_score"],
+                            id=f"pre_ts_{pre_token}"),
             ]
         except Exception as e:  # noqa: BLE001 — fail-open：预处理失败只意味着回到原速度
             logger.warning(f"预处理注入失败，回退原链路: {e}")
@@ -545,6 +1176,10 @@ class GraphService:
         if ctx is None:
             ctx = new_context("run")
         run_id = ctx.run_id
+        # 开启新产物批次：本次分析的所有产物落 local_storage/<YYYYMMDD_HHMMSS>/，
+        # 与旧批次隔离（精确到秒的独立文件夹），下次运行生成全新目录。
+        from local_storage import begin_batch
+        begin_batch()
         logger.info(f"Starting run with run_id: {run_id}")
         try:
             # 与 stream_sse 同构：轻量模块标记（投资参考/行业风向）优先于历史模块标记，
@@ -588,12 +1223,52 @@ class GraphService:
             "validate_financial_data",
             "check_disclosure_compliance",
             "identify_audit_opinion",
+            "calculate_risk_models",
+            "search_regulations",
+            "calculate_comprehensive_score",
         }
+
+        # ── 综合研判模式同样必须先做 P1 预处理 ──
+        # 实测缺陷：synthesis 分支原本完全跳过 _preprocess_inject，财务数据全靠 LLM
+        # 从 17 万字符原文自行抽取，导致指标/模型/数据源大面积「未获取」。
+        # 预处理只在串跑编排器内部跑一次（stream_sse 的单 Agent 守卫对 synthesis
+        # 为假，不会重复执行）；预跑结果拆分后同时交给：
+        #   ① 财务阶段（消息尾部追加预跑轨迹，避免重复抽取）；
+        #   ② 综合研判阶段（合并进 tool_ledger 与 prior_tool_results）。
+        pre_msgs, pre_entries, pre_tool_results = [], [], {}
+        if isinstance(payload, dict) and len(self._last_user_text(payload)) >= self._PREPROCESS_MIN_CHARS:
+            yield ("progress", "预提取财务数据并行预跑工具", 8)
+            try:
+                pre_msgs = await self._preprocess_inject(payload) or []
+            except Exception as e:  # noqa: BLE001 - fail-open：预处理失败回退原链路
+                logger.warning(f"综合研判预处理失败，回退原链路: {e}")
+                pre_msgs = []
+            from langchain_core.messages import ToolMessage
+            for m in pre_msgs:
+                if not isinstance(m, ToolMessage):
+                    continue
+                content = (m.content if isinstance(m.content, str)
+                           else json.dumps(m.content, ensure_ascii=False))
+                pre_entries.append([getattr(m, "id", None) or "", getattr(m, "name", "") or "", content])
+                pre_tool_results[getattr(m, "name", "") or ""] = content
+            if pre_entries:
+                # 交回 stream_sse 登记进 seed_tool_results：预跑结果位于图输入侧，
+                # 不出现在 astream 增量里，不登记则数据源清单/指标视图读不到。
+                yield ("tool_results", pre_entries)
+                yield ("progress", "预处理完成（校验/指标/披露）", 42)
 
         async def _run_one_stage(module: str, stage_name: str):
             """运行单个前置阶段（financial/compliance），返回摘要、工具结果和工具调用名序列。"""
             stage_payload = build_stage_payload(
                 payload, module, MODULE_MARKERS[module], [])
+            # 财务阶段吸收预跑轨迹：build_stage_payload 已用原始请求重写为末条
+            # user 消息，此处再追加 ToolMessage，形态与单 Agent 预处理注​入一致。
+            if module == "financial" and pre_msgs:
+                stage_payload = {**stage_payload,
+                                 "messages": list(stage_payload.get("messages", [])) + list(pre_msgs)}
+                if pre_entries:
+                    stage_payload = {**stage_payload,
+                                     "tool_ledger": {"entries": pre_entries}}
             agent = self._get_agent(ctx, fast=fast, module=module)
             run_config = self._stage_run_config(agent, ctx, module)
             try:
@@ -641,15 +1316,23 @@ class GraphService:
             _run_one_stage("compliance", "第二阶段 · 合规与经营风险扫描"),
         )
 
+        # 预跑结果先于两阶段结果入账：同名工具以确定性预跑为准（与 stream_sse
+        # 的 seed_tool_results 优先级一致）。
+        stage_ledger_entries.extend(pre_entries)
+        prior_tool_results.update(pre_tool_results)
         # 按固定顺序整理前两阶段结果，保证第三阶段摘要顺序稳定
         for module, stage_name, _pct_start, _pct_end in SYNTHESIS_STAGES:
             if module == "synthesis":
                 continue
             res = next((r for r in stage_results if r["module"] == module), None)
             if res:
+                # 前两阶段后台并行，但对外按业务流程顺序发布阶段锚点。
+                # 前端据此把并行执行结果整理成稳定的财务 → 合规 → 综合顺序。
+                yield ("progress", stage_name, _pct_start)
                 summaries.append((res["stage_name"], res["summary"]))
                 stage_ledger_entries.extend(res["entries"])
-                prior_tool_results.update(res["tool_results"])
+                for _name, _content in res["tool_results"].items():
+                    prior_tool_results.setdefault(_name, _content)
                 # 把前两阶段的 tool_calls 以独立事件推给前端，补全工具调用链展示
                 for tool_name in res.get("tool_calls", []):
                     yield ("tool_progress", tool_name)
@@ -697,7 +1380,14 @@ class GraphService:
         """用 astream 跟踪真实工具进度，最后一次性推送完整报告；登录态下顺带落历史"""
         if ctx is None:
             ctx = new_context("stream_sse")
+        # HTTP 入口会提前设置 request_context，但 CLI/测试/脚本可能直接调用
+        # stream_sse。统一在服务层绑定当前上下文，保证最终快照能拿到同一个
+        # run_id，避免真实演示产物的 analysis_id 为空而无法批次隔离。
+        request_context.set(ctx)
         run_id = ctx.run_id
+        # 开启新产物批次：三段串跑共享同一时间戳子目录，下次运行生成全新目录
+        from local_storage import begin_batch
+        begin_batch()
         fast = _payload_wants_fast_mode(payload)
         # C 端轻量工具路由：以最后一条消息（最新用户意图）为准，命中时优先于
         # 历史消息里残留的模块标记（否则同会话跑过综合研判后轻量卡片永远进不去）
@@ -713,6 +1403,7 @@ class GraphService:
         current_pct = 2
         all_messages = []
         final_messages = None  # 后处理（辩论/兜底导出/评分）后的完整消息，优先用于构建最终报告
+        final_snapshot = None  # 后处理产出的结构化最终快照，正常发布路径的事实源
         # 预跑/前序阶段的工具结果：它们位于图输入侧，astream 增量里不会出现，
         # 必须单独登记，否则最终报告的数据源清单与指标视图会全部判为「未获取」。
         seed_tool_results = []
@@ -816,6 +1507,7 @@ class GraphService:
                     continue
                 if isinstance(chunk, dict) and chunk.get("__post_processed__"):
                     final_messages = chunk.get("messages") or None
+                    final_snapshot = chunk.get("final_snapshot")
                     continue
 
                 new_msgs = self._extract_new_messages(chunk, seen_ids)
@@ -852,9 +1544,11 @@ class GraphService:
                 # 预跑/前序阶段工具结果补在流内消息之前：它们真实发生在最前，且同名
                 # 工具以首次结果为准（预跑是确定性计算，优先于 LLM 自行传参的重复
                 # 调用）。缺此补入，正文/PDF 有数据而数据源清单显示「0/7 已获取」。
-                report = self._build_final_report_from_messages(seed_tool_results + processed)
+                report = self._build_final_report_from_messages(
+                    seed_tool_results + processed, final_snapshot=final_snapshot)
             else:
-                report = self._build_final_report_from_messages(all_messages)
+                report = self._build_final_report_from_messages(
+                    all_messages, final_snapshot=final_snapshot)
 
             # 轻量工具路径：从 ToolMessage 原文确定性注入专属卡片 marker（不依赖
             # LLM 复制 JSON），前端据此渲染投资参考卡/行业风向标，并随历史持久化
@@ -925,7 +1619,7 @@ class GraphService:
             logger.warning(f"轻量卡片 marker 注入失败: {e}")
         return report
 
-    def _build_final_report_from_messages(self, all_messages):
+    def _build_final_report_from_messages(self, all_messages, final_snapshot=None):
         """从消息列表构建最终报告。
 
         链接来源有两处，必须都扫：
@@ -936,9 +1630,22 @@ class GraphService:
         """
         ai_text = ""
         tool_results = []
+        # 原文文本：报告身份兜底的公司名/报告期只能从年报正文确定性提取，
+        # 这里取最长的一条 human 消息（即上传的年报解析文本）作为识别语料。
+        report_text = ""
 
         for d in all_messages:
             msg_type = d.get("type", "")
+
+            if msg_type in ("human", "HumanMessage"):
+                content = d.get("content", "")
+                if isinstance(content, list):
+                    content = "".join(
+                        p if isinstance(p, str) else p.get("text", "")
+                        for p in content
+                    )
+                if isinstance(content, str) and len(content) > len(report_text):
+                    report_text = content
 
             if msg_type in ("ai", "AIMessage"):
                 content = d.get("content", "")
@@ -967,7 +1674,7 @@ class GraphService:
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
                     artifact_candidates.append({"tool": source_name, "path": m.group(1)})
-            for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.(?:pdf|xlsx))', text):
+            for m in re.finditer(r'(/local_storage/[^\s"\'<>）)\]，,]+\.(?:pdf|xlsx|json|txt))', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
                     artifact_candidates.append({"tool": source_name, "path": m.group(1)})
@@ -976,7 +1683,7 @@ class GraphService:
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
                     artifact_candidates.append({"tool": source_name, "path": m.group(1)})
-            for m in re.finditer(r'file://([^\s"\'<>]+\.(?:pdf|xlsx))', text):
+            for m in re.finditer(r'file://([^\s"\'<>]+\.(?:pdf|xlsx|json|txt))', text):
                 if m.group(1) not in seen_paths:
                     seen_paths.add(m.group(1))
                     artifact_candidates.append({"tool": source_name, "path": m.group(1)})
@@ -987,17 +1694,35 @@ class GraphService:
         # 兜底导出的链接在 AI 正文里（📎 PDF报告: .../📊 Excel底稿: ...）
         _collect("fallback_export", str(ai_text))
 
-        # 结构化台账是网页/API 的权威来源，避免前端从模型散文反推风险数。
+        # 正常新链路直接消费 Agent 产出的最终快照。ai_text 中的 JSON 只作为
+        # 旧历史/异常链路兼容输入，不能再作为网页/API 的事实来源。
         risk_ledger = {}
-        try:
-            from agents.agent import _extract_risk_json
-            risk_json = _extract_risk_json(str(ai_text))
-            if risk_json:
-                parsed = json.loads(risk_json)
-                if isinstance(parsed, dict):
-                    risk_ledger = parsed
-        except (TypeError, ValueError, json.JSONDecodeError):
-            risk_ledger = {}
+        risk_json = ""
+        snapshot_from_agent = isinstance(final_snapshot, dict) and bool(final_snapshot)
+        if snapshot_from_agent:
+            from core.report_publication import ensure_snapshot_identity
+            from core.report_snapshot import snapshot_as_legacy_payload
+            current_run_id = getattr(request_context.get(), "run_id", "") or ""
+            snapshot_meta = ensure_snapshot_identity(final_snapshot, run_id=current_run_id)
+            risk_ledger = snapshot_as_legacy_payload(snapshot_meta, {})
+            risk_ledger["report_snapshot"] = snapshot_meta
+        else:
+            try:
+                from agents.agent import _extract_risk_json
+                risk_json = _extract_risk_json(str(ai_text)) or ""
+                if risk_json:
+                    parsed = json.loads(risk_json)
+                    if isinstance(parsed, dict):
+                        risk_ledger = parsed
+            except (TypeError, ValueError, json.JSONDecodeError):
+                risk_ledger = {}
+
+            snapshot_meta = risk_ledger.get("report_snapshot") if isinstance(risk_ledger, dict) else None
+            if isinstance(snapshot_meta, dict) and isinstance(snapshot_meta.get("risks"), dict):
+                # 旧台账若已嵌入快照，也统一通过集中适配器展开兼容字段。
+                from core.report_snapshot import snapshot_as_legacy_payload
+                risk_ledger = snapshot_as_legacy_payload(snapshot_meta, risk_ledger)
+                risk_ledger["report_snapshot"] = snapshot_meta
 
         # 仅将真实存在且可读的文件交给前端下载；失效路径只保留在日志中，
         # 并由 ArtifactManifest 对应期望项记录失败状态。
@@ -1014,8 +1739,19 @@ class GraphService:
             target = images if suffix in {"png", "jpg", "jpeg"} else files
             target.append(item)
 
-        from core.result_contract import ArtifactManifest, DATA_VERSION, RULE_VERSION
+        from core.result_contract import DATA_VERSION, RULE_VERSION
         company_info = risk_ledger.get("company_info") if isinstance(risk_ledger, dict) else {}
+        # 报告身份确定性兜底：LLM 漏抽公司名/报告期时，用原文（封面/股票代码/期间表述）
+        # 补齐 company_info，保证 report_metadata 与产物文件名不退化为「未知公司」。
+        # 仅补空字段，绝不覆盖模型已给出的非空值。
+        if report_text:
+            try:
+                from utils.report_identity import apply_company_info_fallback
+                company_info = apply_company_info_fallback(company_info, report_text)
+                if isinstance(risk_ledger, dict):
+                    risk_ledger["company_info"] = company_info
+            except Exception as _identity_err:
+                logger.warning("报告身份兜底识别失败（不阻断导出）: %s", _identity_err)
         analysis_id = str((risk_ledger or {}).get("analysis_id", "") or "")
         if not analysis_id and isinstance(company_info, dict):
             analysis_id = str(company_info.get("run_id", "") or "")
@@ -1033,54 +1769,99 @@ class GraphService:
                 {"key": "pdf_compliance", "kind": "pdf", "label": "合规与信息披露报告"},
                 {"key": "pdf_synthesis", "kind": "pdf", "label": "综合汇总报告"},
                 {"key": "excel", "kind": "xlsx", "label": "Excel审计底稿"},
+                {"key": "json", "kind": "json", "label": "TXT格式结构化风险台账（JSON内容）"},
             ]
+        is_outlook = "INDUSTRY_OUTLOOK" in str(ai_text)
+        if isinstance(expectations, list) and risk_ledger and not is_outlook \
+                and not any(str(item.get("key", "")) == "json"
+                            for item in expectations if isinstance(item, dict)):
+            expectations = [*expectations, {
+                "key": "json", "kind": "json", "label": "TXT格式结构化风险台账（JSON内容）"}]
         expectations = expectations if isinstance(expectations, list) else []
-        used_paths = set()
+
+        # 结构化 JSON 以 TXT 独立产物交付，不再依赖 ai_text 的长度和 Markdown 渲染。
+        # 去掉 manifest 是为了避免文件内容与自身的 content_hash 形成循环引用。
+        if risk_ledger and not is_outlook and any(
+                isinstance(item, dict) and item.get("key") == "json"
+                for item in expectations):
+            json_payload = copy.deepcopy(risk_ledger)
+            json_payload.pop("artifact_manifest", None)
+            json_snapshot = json_payload.get("report_snapshot")
+            if isinstance(json_snapshot, dict):
+                json_snapshot.pop("artifact_manifest", None)
+            from core.report_publication import write_txt_artifact
+            json_url = write_txt_artifact(json_payload, risk_ledger)
+            if json_url:
+                json_candidate = {"tool": "txt_artifact", "path": json_url}
+                artifact_candidates.append(json_candidate)
+                # PDF/Excel/图表候选已在上方完成扫描；TXT 是此处新生成的，
+                # 立即通过同一可访问性门禁加入前端下载列表和 manifest。
+                if _artifact_is_accessible(json_url):
+                    accessible_candidates.append(json_candidate)
+                    files.append(json_candidate)
         artifact_manifest = []
 
-        def _manifest_record(item, expectation, success, error=""):
-            path = str(item.get("path", "") or "") if item else ""
-            name = Path(path).name if path else str(expectation.get("label", ""))
-            suffix = Path(name).suffix.lower()
-            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                    ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}.get(suffix, "")
-            return ArtifactManifest(
-                artifact_id=f"artifact-{len(artifact_manifest) + 1:03d}",
-                kind=str(expectation.get("kind", "file")),
-                status="success" if success else "failed",
-                path=path if success else "",
-                url=path if success else "",
-                name=name,
-                mime_type=mime,
-                exists=bool(success),
-                accessible=bool(success),
-                source=str(item.get("tool", "")) if item else "",
-                analysis_id=analysis_id,
-                data_version=data_version,
-                rule_version=rule_version,
-                error=error,
-            ).to_dict()
+        snapshot_meta = risk_ledger.get("report_snapshot") if isinstance(risk_ledger, dict) else None
+        snapshot_meta = snapshot_meta if isinstance(snapshot_meta, dict) else {}
+        snapshot_quality = snapshot_meta.get("data_quality", {}) if isinstance(snapshot_meta, dict) else {}
+        snapshot_present = bool(snapshot_meta.get("snapshot_id"))
+        presentation_mode = str(snapshot_quality.get("presentation_mode") or
+                                 (risk_ledger.get("presentation_mode", "") if isinstance(risk_ledger, dict) else "") or
+                                 "strict")
+        if presentation_mode in {"demo", "demo_placeholder"}:
+            artifact_data_status = "demo_placeholder"
+        elif snapshot_present and (snapshot_quality.get("pending_risks") or
+                                    snapshot_quality.get("incomplete_facts") or
+                                    snapshot_quality.get("incomplete_metrics")):
+            artifact_data_status = "incomplete"
+        else:
+            artifact_data_status = "verified"
+        artifact_status_labels = {
+            "verified": "已核验",
+            "incomplete": "数据源不完整，仅供参考",
+            "unverified": "来源未核验，仅供人工复核",
+            "demo_placeholder": "演示占位数据，不代表公司实际数据",
+        }
 
-        for expectation in expectations:
-            if not isinstance(expectation, dict):
-                continue
-            key = str(expectation.get("key", "") or "")
-            match = next((item for item in accessible_candidates
-                          if item.get("path") not in used_paths
-                          and _artifact_key(item.get("path")) == key), None)
-            if match:
-                used_paths.add(match.get("path"))
-                artifact_manifest.append(_manifest_record(match, expectation, True))
-            else:
-                artifact_manifest.append(_manifest_record(
-                    None, expectation, False, "未发现实际生成且可访问的产物链接"))
-        # 记录期望清单之外的真实文件，防止额外产物被静默丢弃。
-        for item in accessible_candidates:
-            if item.get("path") in used_paths:
-                continue
-            kind = "chart" if Path(str(item.get("path", ""))).suffix.lower() in {".png", ".jpg", ".jpeg"} else Path(str(item.get("path", ""))).suffix.lower().lstrip(".") or "file"
-            artifact_manifest.append(_manifest_record(
-                item, {"kind": kind, "label": Path(str(item.get("path", ""))).name}, True))
+        # 产物清单由集中发布模块生成。这里传入已通过文件可访问性门禁的候选项，
+        # 兼容旧测试对 _artifact_is_accessible 的替换，同时避免发布层自行维护
+        # 第二套 key 匹配和哈希逻辑。
+        from core.report_publication import finalize_artifact_manifest
+        artifact_warning = "" if artifact_data_status == "verified" else (
+            f"{artifact_status_labels.get(artifact_data_status, artifact_data_status)}；"
+            "请勿将该产物视为完整审计结论")
+        artifact_manifest = finalize_artifact_manifest(
+            expectations, accessible_candidates, analysis_id,
+            str(snapshot_meta.get("snapshot_id", "") or ""),
+            storage_root=os.getcwd(), accessible_fn=lambda _path: True,
+            data_status=artifact_data_status,
+            warning=artifact_warning)
+
+        # 发布层才能确定文件是否真实存在，因此 manifest 在这里回写最终快照。
+        # snapshot_digest 明确排除了 artifact_manifest，回写不会改变共享 snapshot_id。
+        if isinstance(snapshot_meta, dict) and snapshot_meta.get("snapshot_id"):
+            snapshot_meta["artifact_manifest"] = copy.deepcopy(artifact_manifest)
+            if isinstance(risk_ledger, dict):
+                # Rebuild the compatibility shell after the manifest is final.
+                # This keeps persisted AI JSON and old history readers aligned
+                # with the same snapshot-derived gate/status fields.
+                from core.report_snapshot import snapshot_as_legacy_payload
+                risk_ledger = snapshot_as_legacy_payload(snapshot_meta, risk_ledger)
+                risk_ledger["report_snapshot"] = snapshot_meta
+
+        # ai_text 会随会话历史持久化，不能继续保留模型生成的旧台账。
+        # 否则网页顶层清单虽已正确，历史正文/API 再次提取时仍会得到空清单。
+        # 只替换已被 _extract_risk_json 确认的首个结构化台账，保留正文和评分 marker。
+        if risk_ledger:
+            try:
+                if snapshot_from_agent:
+                    from core.report_publication import sync_ai_text_with_snapshot
+                    ai_text = sync_ai_text_with_snapshot(ai_text, risk_ledger)
+                elif risk_json:
+                    updated_risk_json = json.dumps(risk_ledger, ensure_ascii=False)
+                    ai_text = str(ai_text).replace(risk_json, updated_risk_json, 1)
+            except (TypeError, ValueError):
+                logger.warning("发布层回写结构化台账失败，保留原始 AI 正文")
 
         # ── 报告元数据与完整性：版本、运行标识与各数据源可得性 ──
         # 前端「报告元数据与完整性」分区直接渲染本节，避免从模型散文推断覆盖率；
@@ -1104,25 +1885,55 @@ class GraphService:
                 return False
             return isinstance(parsed, dict) and "error" not in parsed
 
-        data_sources = _build_data_sources(tool_result_index)
+        data_sources = _build_data_sources(tool_result_index, snapshot_meta)
         company = company_info if isinstance(company_info, dict) else {}
         gate = risk_ledger.get("review_gate") if isinstance(risk_ledger, dict) else {}
         gate = gate if isinstance(gate, dict) else {}
+        snapshot_meta = risk_ledger.get("report_snapshot") if isinstance(risk_ledger, dict) else None
+        snapshot_meta = snapshot_meta if isinstance(snapshot_meta, dict) else {}
+        snapshot_validation = snapshot_meta.get("validation") if isinstance(snapshot_meta, dict) else {}
+        if not isinstance(snapshot_validation, dict):
+            snapshot_validation = {}
+        if isinstance(snapshot_validation.get("data_validation"), dict):
+            snapshot_validation = snapshot_validation["data_validation"]
+        snapshot_source = snapshot_meta.get("source") if isinstance(snapshot_meta, dict) else {}
+        if not isinstance(snapshot_source, dict):
+            snapshot_source = {}
         report_metadata = {
             "analysis_id": analysis_id,
             "data_version": data_version,
             "rule_version": rule_version,
+            "result_schema_version": str(risk_ledger.get("result_schema_version", "") or
+                                           snapshot_meta.get("schema_version", ""))
+                if isinstance(risk_ledger, dict) else "",
+            "snapshot_id": str(snapshot_meta.get("snapshot_id", "") or "")
+                or str(risk_ledger.get("snapshot_id", "") or ""),
+            "validation_status": str(snapshot_validation.get("validation_result", "") or
+                                      snapshot_meta.get("validation_status", "") or
+                                      (risk_ledger.get("data_validation") or {}).get("validation_result", "") or "")
+                if isinstance(risk_ledger, dict) else "",
+            "source_hash": str(snapshot_source.get("source_hash", "") or
+                                snapshot_meta.get("source_hash", "") or ""),
+            "data_status": artifact_data_status,
+            "warning": "" if artifact_data_status == "verified" else artifact_status_labels.get(artifact_data_status, artifact_data_status),
             "company_name": str(company.get("company_name", "") or ""),
             "stock_code": str(company.get("stock_code", "") or ""),
             "report_year": str(company.get("report_year", "") or ""),
+            "report_period": str(company.get("report_period") or company.get("period") or ""),
             "industry": str(company.get("industry", "") or ""),
             "audit_opinion": str(company.get("audit_opinion", "") or ""),
+            "accounting_standard": str(company.get("accounting_standard", "") or ""),
             "review_gate_status": str(gate.get("status", "not_run") or "not_run"),
             "human_review_required": bool(gate.get("human_review_required")),
             "data_sources": data_sources,
             "source_used_count": sum(1 for item in data_sources if item["used"]),
             "source_total": len(data_sources),
         }
+        # 新链路的元数据以快照和最终 manifest 为准；data_sources 是网页特有的
+        # 能力覆盖说明，保留在发布对象中但不反向影响身份、门禁和版本字段。
+        if snapshot_present and isinstance(snapshot_meta.get("risks"), dict):
+            from core.report_publication import publication_metadata
+            report_metadata.update(publication_metadata(snapshot_meta, artifact_manifest))
 
         return {
             "ai_text": ai_text,
@@ -1140,6 +1951,12 @@ class GraphService:
             "artifact_manifest": artifact_manifest,
             "task_status": derive_task_status(artifact_manifest),
             "report_metadata": report_metadata,
+            "report_snapshot": snapshot_meta if snapshot_present else {},
+            "final_snapshot": copy.deepcopy(snapshot_meta) if snapshot_present else None,
+            "snapshot_id": report_metadata["snapshot_id"],
+            "risk_summary": (risk_ledger.get("risk_summary", {}) if isinstance(risk_ledger, dict) else {}),
+            "data_status": artifact_data_status,
+            "warning": report_metadata["warning"],
             "indicator_view": build_indicator_view(
                 tool_result_index.get("calculate_financial_indicators", "")),
         }
@@ -1148,7 +1965,8 @@ class GraphService:
         """兼容旧调用"""
         messages = result.get("messages", []) if result else []
         all_msgs = [self._msg_to_dict(m) for m in messages]
-        return self._build_final_report_from_messages(all_msgs)
+        return self._build_final_report_from_messages(
+            all_msgs, final_snapshot=(result or {}).get("final_snapshot"))
 
     @staticmethod
     def _msg_to_dict(msg):
@@ -1178,19 +1996,38 @@ async def lifespan(app: FastAPI):
     # 再预加载 agent（确保 build_agent 拿到的是持久化 saver）
     from storage.memory.memory_saver import init_memory_saver, close_memory_saver
     await init_memory_saver()
+    maintenance_task = None
+    try:
+        maintenance_policy = MaintenancePolicy.from_env()
+        if maintenance_policy.enabled:
+            maintenance_task = asyncio.create_task(maintenance_worker(maintenance_policy))
+            logger.info(
+                "定期回收已启动：每 %.1f 小时一次，检查点保留最近 %d 个线程",
+                maintenance_policy.interval_hours,
+                maintenance_policy.checkpoint_keep_threads,
+            )
+    except Exception as exc:  # noqa: BLE001 - 回收配置异常不应阻断启动
+        logger.warning("定期回收启动失败（不影响主服务）: %s", exc)
     # 业务库建表（用户/会话/分析历史）：幂等 create_all；失败不阻断启动，
     # 仅登录/历史功能降级不可用（接口会返回可见错误），分析主流程不受影响。
     try:
-        from storage.database.db import get_engine
-        from storage.database.shared.model import Base
-        Base.metadata.create_all(get_engine())
+        from storage.database.db import init_tables
+        init_tables()
         logger.info("业务库表结构就绪（users / session_tokens / analysis_history）")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"业务库初始化失败（登录/历史功能不可用）: {e}")
     service._get_agent()
-    yield
-    # 关闭时释放 checkpointer 连接
-    await close_memory_saver()
+    try:
+        yield
+    finally:
+        # 先停止周期任务，再释放 checkpointer 连接
+        if maintenance_task is not None:
+            maintenance_task.cancel()
+            try:
+                await maintenance_task
+            except asyncio.CancelledError:
+                pass
+        await close_memory_saver()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -1214,7 +2051,15 @@ app.add_middleware(
 
 # ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作接口强制校验 X-API-Key ──
 # 默认不配置即完全放行，保证本地演示零摩擦；对外暴露服务时在 .env 中设置。
-_PROTECTED_PREFIXES = ("/run", "/stream_run", "/upload", "/api/upload_kb", "/api/evaluate/run")
+_PROTECTED_PREFIXES = (
+    "/run",
+    "/stream_run",
+    # OpenAI 兼容端点同样会真实调用大模型并写产物，必须与 /run 同级保护
+    "/v1/chat/completions",
+    "/upload",
+    "/api/upload_kb",
+    "/api/evaluate/run",
+)
 
 
 @app.middleware("http")
@@ -1575,6 +2420,15 @@ async def health_check():
     return {"status": "ok", "message": "Service is running (local mode)"}
 
 
+@app.get("/api/maintenance/status")
+async def maintenance_status():
+    """只读查询最近一次定期回收报告（不触发回收）。"""
+    report = last_report()
+    if not report:
+        return {"status": "idle", "message": "尚无回收记录（首次回收将在启动后调度）"}
+    return {"status": "ok", "report": report}
+
+
 @app.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
     """接收上传文件，保存到临时目录并解析提取文本内容。
@@ -1616,6 +2470,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
             # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM
             size = 0
             oversize = False
+            source_digest = hashlib.sha256()
             with open(save_path, "wb") as out:
                 while chunk := await f.read(1024 * 1024):
                     size += len(chunk)
@@ -1623,6 +2478,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
                         oversize = True
                         break
                     out.write(chunk)
+                    source_digest.update(chunk)
             if oversize:
                 os.remove(save_path)
                 results.append({
@@ -1738,6 +2594,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
                 "file_size": size,
                 "extracted_text": extracted_text,
                 "page_count": page_count,
+                # 上传层计算的源文件指纹随结构化元数据传给前端和终局快照；
+                # 不把哈希埋在解析文本中，避免模型改写或截断来源信息。
+                "source_document": f.filename or "",
+                "source_hash": source_digest.hexdigest(),
             })
             logger.info(f"文件上传成功: {f.filename} → {save_path} ({size} bytes)")
 
@@ -2016,7 +2876,7 @@ async def get_evaluation_status():
 async def run_evaluation(mode: str = "tool"):
     """运行效果评估（工具模式或全链路 Agent 模式）。
 
-    工具模式：直接调用 financial_calculator 计算 18 个测试用例，<1秒完成。
+    工具模式：直接调用本地确定性评估逻辑计算 22 个测试用例，通常数秒内完成。
     Agent 模式：调用完整 LLM + RAG + 辩论链路，每个用例约 30-60 秒。
 
     Args:
@@ -2026,36 +2886,28 @@ async def run_evaluation(mode: str = "tool"):
         评估完成状态和结果数据（含 Precision/Recall/F1/基线对比）
     """
     try:
-        import subprocess
-        import sys
-
-        # 定位 evaluation_report.py 脚本路径
-        workspace = os.getenv("COZE_WORKSPACE_PATH", os.path.join(os.path.dirname(__file__), ".."))
-        script_path = os.path.normpath(os.path.join(workspace, "..", "tests", "evaluation_report.py"))
-        if not os.path.exists(script_path):
-            script_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "tests", "evaluation_report.py"))
-
+        # 评估脚本与服务使用同一项目根目录，避免 COZE_WORKSPACE_PATH 指向父目录时
+        # 产生错误的 cwd/PYTHONPATH。工具评估本身是同步计算，放到线程中避免阻塞
+        # FastAPI 事件循环；CLI 与接口共用 tests.evaluation_report.run_evaluation。
+        project_root = Path(__file__).resolve().parents[1]
+        script_path = project_root / "tests" / "evaluation_report.py"
         if not os.path.exists(script_path):
             return {"status": "error", "message": f"评估脚本不存在: {script_path}"}
 
-        # 工具模式：直接运行（<1秒）
         if mode == "tool":
-            result = subprocess.run(
-                [sys.executable, script_path, "--mode", "tool"],
-                capture_output=True, text=True, timeout=30,
-                cwd=workspace,
-                env={**os.environ, "PYTHONPATH": os.path.join(workspace, "..", "src")},
-            )
-            if result.returncode == 0:
-                # 读取生成的 JSON 结果
-                eval_json_path = os.path.normpath(os.path.join(os.path.dirname(script_path), "evaluation_results.json"))
-                if os.path.exists(eval_json_path):
-                    with open(eval_json_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    return {"status": "ok", "mode": "tool", "data": data}
-                return {"status": "ok", "mode": "tool", "message": "评估完成", "stdout": result.stdout[-1000:]}
-            else:
-                return {"status": "error", "message": result.stderr[:500]}
+            import importlib.util
+
+            def _run_tool():
+                spec = importlib.util.spec_from_file_location("evaluation_report_service", script_path)
+                if spec is None or spec.loader is None:
+                    raise RuntimeError(f"无法加载评估模块: {script_path}")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                output_path = project_root / "tests" / "evaluation_results.json"
+                return module.run_evaluation("tool", str(output_path))
+
+            data = await asyncio.wait_for(asyncio.to_thread(_run_tool), timeout=30)
+            return {"status": "ok", "mode": "tool", "data": data}
 
         # Agent 模式：返回提示（因为耗时较长，建议通过命令行的 --mode agent 运行）
         elif mode == "agent" or mode == "all":
@@ -2070,7 +2922,7 @@ async def run_evaluation(mode: str = "tool"):
 
         return {"status": "error", "message": f"未知评估模式: {mode}"}
 
-    except subprocess.TimeoutExpired:
+    except asyncio.TimeoutError:
         return {"status": "error", "message": "评估超时（30秒），请检查系统状态"}
     except Exception as e:
         logger.error(f"运行评估失败: {e}")
@@ -2097,8 +2949,36 @@ def parse_input(input_str: str) -> Dict[str, Any]:
         return {"messages": [HumanMessage(content=input_str)]}
 
 
+def _pick_free_port(host: str, port: int, attempts: int = 20) -> int:
+    """端口自愈：若目标端口不可 bind，则向后顺延到空闲端口。
+
+    Windows 上加速器/代理软件（如 Watt Toolkit / Steam++）会以 Bound 状态长期占用
+    5000-5002 等端口，uvicorn 直接启会报 WinError 10013 退出。这里用真实 bind 探测，
+    避免用户双击启动却看不到任何有效提示。
+    """
+    import socket
+
+    for candidate in range(port, port + attempts + 1):
+        for addr in (host, "0.0.0.0"):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s.bind((addr, candidate))
+            except OSError:
+                break
+            finally:
+                s.close()
+        else:
+            return candidate
+    return port
+
+
 def start_http_server(port):
     reload = os.getenv("ENV", "dev") == "dev"
+    host = os.getenv("HOST", "127.0.0.1")
+    picked = _pick_free_port(host, port)
+    if picked != port:
+        logger.warning(f"端口 {port} 不可用（可能被加速器/代理软件占用），已自动改用 {picked}")
+        port = picked
     logger.info(f"Start HTTP Server, Port: {port}, Reload: {reload}")
     # 白名单模式：只监控 .py 文件变化，避免 app.log/数据库/向量库写入触发热重载死循环
     # （HTML/CSS/JS 为每次请求实时读取，修改后无需重载即可生效）
@@ -2124,3 +3004,4 @@ if __name__ == "__main__":
             print(ai_msgs[-1].content)
         else:
             print(json.dumps(result, ensure_ascii=False, indent=2))
+
