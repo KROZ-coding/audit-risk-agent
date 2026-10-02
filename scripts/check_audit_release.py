@@ -12,7 +12,8 @@
 - 任何环境开关试图触发真实服务调用（远程模型 / 读取生产 .env / 联网评分）。
 
 本脚本离线模式在导入时即屏蔽真实服务边界：不加载 .env、不构造 LLM Agent、
-不调用任何远程模型。所有指标来自本机确定性工具链与本地源 PDF。
+不调用任何远程模型。所有指标来自本机确定性工具链与本地 PDF fixture；
+本地存在真实年报时优先使用真实年报，否则使用仓库内的脱敏 CI fixture。
 """
 from __future__ import annotations
 
@@ -195,6 +196,18 @@ def _check_fixture(pdf_path: str) -> bool:
     return bool(pdf_path) and os.path.isfile(pdf_path) and os.path.getsize(pdf_path) > 0
 
 
+def _default_pdf_path(repo: Path) -> str:
+    """Prefer the local real report, then fall back to the sanitized CI fixture."""
+    candidates = [
+        repo / "测试" / "中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf",
+        repo / "tests" / "fixtures" / "petrochina_2025_h1_sanitized.pdf",
+    ]
+    for candidate in candidates:
+        if _check_fixture(str(candidate)):
+            return str(candidate)
+    return str(candidates[0])
+
+
 def _snapshot_id_of(validation: dict, git: dict) -> str:
     """派生统一快照 ID（与 _apply_review_gates 同规则的可复现版本）。"""
     meta = {
@@ -217,10 +230,10 @@ def check(case: str = "petrochina_2025_h1", run_pytest_full: bool = True,
     if leaked:
         problems.append(f"检测到生产凭据泄露进入本进程：{leaked}")
 
-    # 2) 源 PDF fixture 必须存在（§9.3 必需 fixture 缺失不得通过）
+    # 2) PDF fixture 必须存在（§9.3 必需 fixture 缺失不得通过）
     if pdf_path is None:
         repo = Path(__file__).resolve().parent.parent
-        pdf_path = str(repo / "测试" / "中国石油：中国石油天然气股份有限公司2025 年半年度报告.pdf")
+        pdf_path = _default_pdf_path(repo)
     if not _check_fixture(pdf_path):
         problems.append(f"必需 fixture（源 PDF）缺失或为空: {pdf_path}")
 

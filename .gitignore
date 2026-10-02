@@ -63,6 +63,10 @@ audit-ai_v*.tar.gz
 *.xlsx
 *.csv
 
+# Deterministic sanitized PDF fixtures used by CI
+!/tests/fixtures/
+!/tests/fixtures/*.pdf
+
 # Preview files
 .preview
 
