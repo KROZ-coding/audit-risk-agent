@@ -383,7 +383,7 @@ class TestSystemFactsInjection:
     def test_reliability_risk_injects_reconciliation(self):
         from tools.pdf_export import _system_facts_text
         risk = {"risk_id": "R003", "dimension": "数据可靠性风险",
-                "title": "未分配利润勾稽不一致", "evidence": "未分配利润变动38,122百万元 vs 合并净利润-分红47,911百万元"}
+                "title": "未分配利润勾稽不一致", "evidence": "未分配利润变动35,800百万元 vs 归母净利润-分红36,000百万元"}
         val = json.dumps({"data_validation": {"all_checks": [
             {"check": "未分配利润一致性", "passed": None, "difference_pct": "20.43%",
              "message": "未提供归母净利润，仅作口径提示"}]}})

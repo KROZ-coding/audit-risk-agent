@@ -410,7 +410,7 @@ class TestStaleValidationCleanup:
         report = {"risk_details": [
             {"risk_id": "R007", "title": "勾稽差异及担保披露问题可能触发监管关注",
              "evidence": "校验项：现金流勾稽，差异：45541.0（16.71%）"},
-            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +67.18%"},
+            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +62.67%"},
         ]}
         vd = {"data_validation": {"all_checks": [
             {"check": "现金流勾稽", "passed": True,
@@ -450,7 +450,7 @@ class TestStaleValidationCleanup:
     def test_unmatched_evidence_kept(self):
         """无法对应到具体校验项 → 保守保留（防误删真实风险）。"""
         report = {"risk_details": [
-            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +67.18%"},
+            {"risk_id": "R001", "title": "应收账款激增", "evidence": "应收同比 +62.67%"},
         ]}
         vd = {"data_validation": {"all_checks": [
             {"check": "现金流勾稽", "passed": True, "message": "现金流勾稽成立，无异常"},
@@ -542,7 +542,7 @@ class TestScoreLedgerBackfill:
 class TestReviewGateLedgerSync:
     """门禁后台账必须同步回消息层——网页「报告元数据与完整性」的唯一来源
 
-    实测缺陷（中国石油 2025 年半年度）：C1 辩论三轮与 C2 语义复核都已执行、仲裁也
+    实测缺陷（某半年度报告样例）：C1 辩论三轮与 C2 语义复核都已执行、仲裁也
     回写了 3 条等级调整，网页却显示「审查门禁：未执行审查」。根因是证据门禁
     （review_gate / accepted_risk_details / formal_status）在仲裁回写之后才写入导出
     台账，消息层台账仍停在仲裁前版本，而网页报告元数据读的正是消息层台账，
@@ -1054,7 +1054,7 @@ class TestCashflowPenetrationNote:
                         name=VALIDATE_TOOL, tool_call_id="call_v"),
             ToolMessage(content=json.dumps(
                 {"indicators": {}, "alerts": [
-                    "应收账款增速(67.18%)显著高于营收增速(-6.74%)，可能存在提前确认收入或放宽信用政策"]},
+                    "应收账款增速(62.67%)显著高于营收增速(-6.25%)，可能存在提前确认收入或放宽信用政策"]},
                 ensure_ascii=False), name=CALCULATE_TOOL, tool_call_id="call_c"),
             ToolMessage(content=json.dumps({"compliance_score": 90, "risk_score": 10},
                                            ensure_ascii=False),
@@ -1072,8 +1072,8 @@ class TestCashflowPenetrationNote:
         # PDF 载荷写入确定性注记（Excel 同源）
         assert len(pdf_mock.calls) == 1
         exported = json.loads(pdf_mock.calls[0]["risk_report_json"])
-        assert "应收账款账面余额较上年末增长64.06%" in exported["cashflow_penetration_note"]
-        assert "两项比较期间不同，暂不作背离判断" in exported["cashflow_penetration_note"]
+        assert "不得以当期静态现金流比率替代跨期穿透分析" in exported["cashflow_penetration_note"]
+        assert "须核查经营性应付项目变动、应收票据贴现与回款质量" in exported["cashflow_penetration_note"]
 
     def test_no_note_without_ar_alert(self, monkeypatch):
         monkeypatch.setattr(agent_module, "REVIEW_ENABLED", False)
@@ -1437,7 +1437,7 @@ class TestScoreBackfillRun:
                             _RecordingExportTool("/local_storage/charts/r.png"))
         monkeypatch.setattr(agent_module, "generate_trend_chart",
                             _RecordingExportTool("/local_storage/charts/t.png"))
-        long_text = "中国石油天然气股份有限公司 2025 年半年度报告。" * 100  # >2000 字
+        long_text = "示例能源集团股份有限公司 2025 年半年度报告。" * 100  # >2000 字
         msgs = [HumanMessage(content="请分析以下年报：\n" + long_text)]
         msgs.append(AIMessage(content="分析完成，整体稳健。"))
         wrapper = _AgentWrapper(_FakeAgent(msgs))

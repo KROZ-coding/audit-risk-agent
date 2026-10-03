@@ -77,7 +77,7 @@ class TestUnitNormalization:
         # 2021 净利润 921,700 万元（=92.17 亿） vs 2025H1 净利润 93,666 百万元（=936.66 亿）
         data = {
             "2021": {"revenue": 1930900, "net_profit": 921700, "operating_cashflow": 210500},
-            "2025H1": {"revenue": 1450099, "net_profit": 93666, "operating_cashflow": 227063},
+            "2025H1": {"revenue": 1200000, "net_profit": 80000, "operating_cashflow": 180000},
         }
         # 工具入参键名以工具签名为准（此处直接调用底层，绕过 @tool 参数包装）
         from tools.multi_year_comparison import _compare_multi_year_impl

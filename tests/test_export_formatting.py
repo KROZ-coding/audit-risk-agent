@@ -897,12 +897,12 @@ class TestStatementsAnalysis:
     def test_declared_million_unit_is_converted_before_pdf_display(self):
         """报表原值为百万元时，PDF金额应先换算为人民币元再显示亿元。"""
         from tools import pdf_export as pe
-        assert pe._fmt_num(1450099, input_unit="人民币百万元") == "14,500.99 亿元"
+        assert pe._fmt_num(1200000, input_unit="人民币百万元") == "12,000.00 亿元"
         assert pe._fmt_num(840.07, input_unit="亿元") == "840.07 亿元"
 
         data = {"amount_unit": "人民币百万元", "statement_items": {
-            "income_statement": {"revenue_current": 1450099,
-                                  "revenue_previous": 1554973},
+            "income_statement": {"revenue_current": 1200000,
+                                  "revenue_previous": 1280000},
         }}
         st = pe._build_styles(pe._register_chinese_font())
         body = pe._statements_section_body(json.dumps(data, ensure_ascii=False), st,
@@ -915,7 +915,7 @@ class TestStatementsAnalysis:
                         texts.append(cell)
                     elif hasattr(cell, "text"):
                         texts.append(str(cell.text))
-        assert "14,500.99 亿元" in " ".join(texts)
+        assert "12,000.00 亿元" in " ".join(texts)
 
 
 class TestAuditOpinionSource:
