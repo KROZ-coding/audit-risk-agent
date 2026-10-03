@@ -123,3 +123,16 @@ _tmp_*
 /hallmark/
 /vercel-agent-skills/
 /sanyuan-skills/
+
+# ── 脱敏（数据合规）：以下真实数据 / 本地私有文件一律不入库 ──
+# IDE（Qoder）会话与知识库产物
+/.qoder/
+# 本地媒体彩蛋（大体积，不入库）
+/cirno的算数教室.mp3
+# 本地知识库私增语料（真实公司年报摘要，不入库）
+/knowledge_base/富特科技*.txt
+# 本地案例修正模块与真实案例数据（不入库；示例模板见 config/local_case_overrides.example.py）
+/config/local_case_overrides.py
+/scripts/_local_case/
+# 本地测试年报目录（真实年报 PDF）
+/测试/
