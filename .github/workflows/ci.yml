@@ -43,11 +43,12 @@ jobs:
       # 单一离线验收入口（方案 §9.3 / §9.4）：fail-closed，超时阻断，禁止 continue-on-error。
       # 必须显式 --offline；任何密钥泄露、必需 fixture 缺失、pytest 非零/零收集/跳过/断言为零
       # /输出为空都会令该步骤失败并阻断流水线。不注入模型密钥、不读取生产 .env。
-      # 仓库提供脱敏的最小 PDF fixture；本地若存在真实年报，验收脚本会优先使用真实年报。
+      # 仓库提供脱敏合成的最小 PDF fixture 与合成黄金案例（scripts/offline_case.py，
+      # 不对应任何真实企业）；本地真实年报验证走 --pdf 显式路径，数据不入库。
       # 两种路径都必须实际解析 PDF 并产出确定性工具链结果，缺失 fixture 仍会 fail-closed。
       - name: Offline acceptance gate (check_audit_release)
         timeout-minutes: 15
-        run: uv run python scripts/check_audit_release.py --offline --case petrochina_2025_h1
+        run: uv run python scripts/check_audit_release.py --offline --case sanitized_energy_h1
 
       # 可选质量信号（不阻断流水线）：以 tool 模式跑效果评估脚本，产出工具级评估指标。
       # 该步骤仅作观测信号，失败不影响 CI 结论（continue-on-error）。

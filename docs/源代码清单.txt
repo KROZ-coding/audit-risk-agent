@@ -68,16 +68,16 @@ src/ 合计：54 个 Python 文件，约 22052 行（当前工作树统计）。
 文件                                                  行数  职责
 ------------------------------------------------------------------------------
 scripts/acceptance_run.py              72  验收运行脚本
-scripts/check_audit_release.py        327  发布前离线验收（CI fail-closed，--offline --case petrochina_2025_h1）
+scripts/check_audit_release.py             发布前离线验收（CI fail-closed，--offline --case sanitized_energy_h1）
 scripts/e2e_invariants.py             162  端到端不变量校验
 scripts/fetch_echarts.py               60  下载/落盘 ECharts 本地 vendor 资源
 scripts/generate_sample_reports.py    367  生成示例报告与图表样张
 scripts/init_knowledge_base.py         47  初始化知识库向量集合
 scripts/load_env.py                    22  加载 .env 到环境变量
 scripts/maintenance_cli.py             60  运行时资源回收 CLI（默认 dry-run，--apply 才真正删除）
-scripts/offline_real_verify.py        321  真实案例离线验证
+scripts/offline_case.py                    离线验收黄金案例（合成数据，真实案例走 --case-file 本地路径）
 scripts/pack_source.py                154  源码交付包打包（白名单 + 禁止项正则）
-scripts/real_chain_verify.py          114  真实链路验证
+scripts/real_chain_verify.py               真实链路验证（本地样本路径由参数提供，数据不入库）
 ------------------------------------------------------------------------------
 scripts/ 合计：12 个 Python 文件，约 2088 行（当前工作树统计）。
 
@@ -114,7 +114,7 @@ tests/test_local_knowledge.py                 213  知识库与指纹重建
 tests/test_maintenance.py                     165  运行时资源回收
 tests/test_module_routing.py                  206  模块路由与工具裁剪
 tests/test_multi_year_comparison.py            90  多年对比
-tests/test_offline_real_verify.py              71  离线真实验证脚本
+tests/test_offline_case.py                     离线合成案例守卫
 tests/test_pdf_content_richness.py            382  PDF 内容完整性
 tests/test_pending_export.py                   86  待处理导出
 tests/test_pipeline_handoff.py                323  流水线交接

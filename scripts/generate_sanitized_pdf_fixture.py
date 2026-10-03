@@ -8,7 +8,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT = ROOT / "tests" / "fixtures" / "petrochina_2025_h1_sanitized.pdf"
+OUTPUT = ROOT / "tests" / "fixtures" / "sanitized_energy_h1_report.pdf"
 
 
 def main() -> None:

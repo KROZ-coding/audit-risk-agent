@@ -65,8 +65,11 @@ tmp/
 # 作者水印 / 本地验证脚本
 verify_authorship.py
 _gen_watermark.py
-scripts/offline_real_verify.py
 scripts/real_chain_verify.py
+
+# 本地真实案例数据与私有修正规则（不入库，也不进镜像）
+scripts/_local_case/
+config/local_case_overrides.py
 
 # 文档与示例（镜像内不需要）
 /docs/

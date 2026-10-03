@@ -688,13 +688,13 @@ P6 端到端验收：驱动 /stream_run 跑一次单模块分析，落盘 SSE �
 | 函数 | `build_parser()` |  |
 | 函数 | `main(argv)` |  |
 
-### `scripts/offline_real_verify.py`（321 行）
+### `scripts/offline_case.py`（离线验收黄金案例）
 
-离线真实数据验证：中国石油 2025 半年报完整工具链打样。
+离线验收运行器：内嵌**合成**黄金案例（不对应任何真实企业），完整工具链打样；本地真实年报通过 `--case-file` 加载（数据不入库）。
 
 | 类型 | 名称 | 说明 |
 |---|---|---|
-| 函数 | `build_ledger(fin, dc, vd, ao, my)` | 台账构造器：仅基于工具输出生成风险条目（来源可追溯）。 |
+| 函数 | `build_ledger(fin, dc, vd, ao, my, company_info=None)` | 台账构造器：仅基于工具输出生成风险条目（来源可追溯）。 |
 | 函数 | `main()` |  |
 
 内部实现（不逐个展开）：`_level_of`, `_dim_of`。
@@ -710,9 +710,9 @@ P6 端到端验收：驱动 /stream_run 跑一次单模块分析，落盘 SSE �
 
 内部实现（不逐个展开）：`_is_skippable`。
 
-### `scripts/real_chain_verify.py`（114 行）
+### `scripts/real_chain_verify.py`（真实链路验证）
 
-真实链路测试：中国石油 2025 半年报（含 LLM 全流程）。
+真实链路测试（含 LLM 全流程）：本地真实样本路径由参数/环境变量提供，脚本不含任何公司数据。
 
 | 类型 | 名称 | 说明 |
 |---|---|---|
