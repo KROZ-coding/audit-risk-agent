@@ -52,374 +52,78 @@ from core.report_snapshot import (
 logger = logging.getLogger(__name__)
 
 
-_R002_CANONICAL = (
-    "关联方提供产品和服务占同类交易14.96%。"
-    "该比例与关联采购占营业成本的内部30%筛查参考值分母不同，不作阈值比较。"
-    "定价公允性、审批程序及资金流向仍需核查。"
-)
+def _load_local_case_overrides():
+    """加载本地案例修正模块 config/local_case_overrides.py（可选，不入库）。
+
+    仓库仅内置机制与示例模板（config/local_case_overrides.example.py）；
+    针对具体真实报告的口径修正规则属于本地私有数据，不入版本库。
+    """
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "config", "local_case_overrides.py")
+    if not os.path.exists(path):
+        return None
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_local_case_overrides", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:  # noqa: BLE001 - 本地模块损坏时不阻断主流程
+        logger.warning("加载 config/local_case_overrides.py 失败，跳过本地案例修正",
+                       exc_info=True)
+        return None
 
 
-def _normalize_related_party_text(text: str) -> str:
-    """消除 R002 中把不同分母的比例误作同一阈值比较的文案。"""
-    if not isinstance(text, str) or not text:
-        return text
-
-    # 先处理已经把 14.96% 和 30% 放进同一判断句的变体，避免只替换其中
-    # 一个短语后留下「未超过」等错误结论。
-    mixed_patterns = (
-        r"(?:报告披露\s*)?关联采购(?:占比|占同类交易|占同类交易比例)\s*14\.96%"
-        r"[^。；\n]{0,100}?(?:未超过|未超|不超过|低于|小于|未达到|不触及|不构成)[^。；\n]{0,100}?30%"
-        r"[^。；\n]*",
-        r"关联方提供产品和服务占同类交易\s*14\.96%"
-        r"[^。；\n]{0,100}?(?:未超过|未超|不超过|低于|小于|未达到|不触及)[^。；\n]*30%"
-        r"[^。；\n]*",
-        r"(?:报告披露\s*)?14\.96%\s*(?:未超过|未超|不超过|低于|小于|未达到|不触及)"
-        r"\s*30%[^。；\n]*",
-    )
-    for pattern in mixed_patterns:
-        text = re.sub(pattern, _R002_CANONICAL, text)
-
-    # 这些是实际模型常见的短语级变体。只在「关联采购」语境下改写，
-    # 不触碰评分模型或其他业务指标中的 14.96%。
-    text = re.sub(
-        r"(?:报告披露\s*)?关联采购占(?:比|同类交易|同类交易比例)\s*14\.96%",
-        "关联方提供产品和服务占同类交易14.96%",
-        text,
-    )
-    text = re.sub(
-        r"关联采购占比\s*未(?:超过|超)|关联采购占比\s*不超过",
-        "关联采购占比未达到",
-        text,
-    )
-    text = re.sub(
-        r"(?:支持证据[：:]\s*)?关联采购占比\s*未达到\s*30%\s*内部筛查参考值[^。；\n]*",
-        "支持证据：30%为内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作阈值比较",
-        text,
-    )
-    text = re.sub(
-        r"(?:支持证据[：:]\s*)?关联采购占比\s*未(?:超过|超)\s*30%\s*内部筛查参考值[^。；\n]*",
-        "支持证据：30%为内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作阈值比较",
-        text,
-    )
-    text = re.sub(
-        r"关联采购占比\s*14\.96%\s*(?:未超过|未超|不超过|低于|小于|未达到)\s*"
-        r"(?:30%\s*)?(?:内部筛查参考值|内部筛查线|内部参考阈值)?[^。；\n]*",
-        _R002_CANONICAL,
-        text,
-    )
-
-    # 统一旧兜底已经产生的括号式表达，并压缩重复的规范句，保证幂等。
-    text = re.sub(
-        r"关联方提供产品和服务占同类交易\s*14\.96%\s*（不与关联采购占营业成本的30%规则比较）",
-        _R002_CANONICAL,
-        text,
-    )
-    text = text.replace(
-        "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。"
-        "定价公允性、审批程序和资金流向待核查",
-        _R002_CANONICAL,
-    )
-    duplicate = _R002_CANONICAL + _R002_CANONICAL
-    while duplicate in text:
-        text = text.replace(duplicate, _R002_CANONICAL)
-    return text
+_LOCAL_CASE = _load_local_case_overrides()
 
 
 def _normalize_source_bound_text(value):
-    """修正文案中可由源报告确定的两个常见口径滑移。
+    """文案口径修正入口：规则维护在本地案例模块（config/local_case_overrides.py）。
 
-    中国石油半年报的 82.46% 是中国石油集团直接 A 股持股，另有 0.16% 通过
-    境外附属公司间接持股；应收账款 122,516 对 74,678 是较上年末的跨期比较，
-    不能称作同比。该清洗只改固定事实表述，不生成新金额或结论。
+    该模块不入库；未提供时本函数仅做结构递归，不改写任何文案。
+    模块契约：normalize_source_bound_str(value) 字符串口径清洗（幂等）；
+    adjust_company_specific_risks(report) 公司特定风险等级复核。
     """
     if isinstance(value, str):
-        receivable_revenue_canonical = (
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%。"
-            "两项比较期间不同，暂不作背离判断，回款质量待核查"
-        )
-        value = value.replace(
-            "中国石油集团持股比例82.46%（含间接持有H股）",
-            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
-        )
-        value = value.replace(
-            "中国石油集团持股比例82.46%",
-            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
-        )
-        value = re.sub(
-            r"控股股东中国石油集团持股比例\s*82\.62%\s*（含通过境外全资附属公司间接持有的H股）",
-            "控股股东中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
-            value,
-        )
-        value = re.sub(
-            r"控股股东中国石油集团持股82\.46%（含间接H股后表决权比例82\.62%）",
-            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
-            value,
-        )
-        value = re.sub(
-            r"控股股东中国石油集团持股82\.46%（含间接持有H股后表决权比例82\.62%）",
-            "中国石油集团直接持股82.46%，另通过境外全资附属公司间接持股0.16%，合计约82.62%",
-            value,
-        )
-        value = re.sub(r"(应收账款(?:账面余额|余额))同比", r"\1较上年末", value)
-        # 中期期末余额的“较上年末”变动与期间收入同比不在同一比较基础上。
-        # 这类措辞可能来自 LLM 标题、推理链、系统告警或复核意见，必须在
-        # 网页、PDF、Excel 共用台账进入导出前统一降格为待核查线索。
-        value = value.replace(
-            "应收账款账面余额较上年末激增64.06%，与营收下降6.74%显著背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = value.replace(
-            "应收账款账面余额较上年末增长64.06%，与营收下降6.74%显著背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = re.sub(
-            r"应收账款(?:账面余额)?较上年末(?:激增|增长)\s*64\.06%\s*[，,]\s*"
-            r"(?:与)?(?:营业收入|营收)(?:同比(?:变动)?|下降)\s*-?6\.74%\s*(?:显著)?背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款(?:增速|账面余额[^；。\n]{0,20})[^；。\n]{0,60}背离约?\s*70\.80\s*个百分点[^；。\n]*",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        for old in (
-            "与营业收入同比变动 -6.74%显著背离",
-            "与营业收入同比变动-6.74%显著背离",
-            "与营业收入同比-6.74%显著背离",
-        ):
-            value = value.replace(
-                old,
-                "营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            )
-        value = value.replace(
-            "背离约70.80个百分点，远超内部筛查参考的20个百分点阈值",
-            "比较期间口径未对齐，暂不进行数值背离比较",
-        )
-        value = value.replace(
-            "内部筛查参考的20个百分点阈值",
-            "来源未核验的内部筛查阈值（不作为风险定级依据）",
-        )
-        value = re.sub(
-            r"应收账款/营业收入为\s*8\.26%\s*[，,]\s*低于能源行业内部参考值\s*12%",
-            "应收账款/营业收入为8.26%；行业参考值来源未核验，不作为风险定级依据",
-            value,
-        )
-        value = value.replace(
-            "应收账款/营业收入为8.26%，低于能源行业内部参考值12%",
-            "应收账款/营业收入为8.26%；行业参考值来源未核验，不作为风险定级依据",
-        )
-        value = value.replace(
-            "低于能源行业内部参考值12%",
-            "行业参考值来源未核验，不作为风险定级依据",
-        )
-        value = value.replace(
-            "应收账款增速显著高于营收增速",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = value.replace(
-            "低于内部筛查参考的30%阈值",
-            "未达到内部筛查阈值（来源未核验，不作为风险定级依据）",
-        )
-        value = re.sub(
-            r"低于能源行业内部筛查参考值\s*12%",
-            "低于内部筛查参考值12%（来源未核验，不作为行业基准或风险定级依据）",
-            value,
-        )
-        value = re.sub(
-            r"低于(?:内部)?筛查参考值\s*30%",
-            "低于内部筛查参考值30%（来源未核验，不作为行业基准或风险定级依据）",
-            value,
-        )
-        value = value.replace(
-            "低于30%内部参考阈值",
-            "未达到内部筛查阈值（来源未核验，不作为风险定级依据）",
-        )
-        value = value.replace(
-            "能源35%",
-            "能源行业参考值（来源未核验）",
-        )
-        value = value.replace(
-            "30%内部筛查参考值",
-            "30%内部筛查参考值（来源未核验，不作为风险定级依据）",
-        )
-        value = value.replace(
-            "153,668百万元",
-            "153,668百万元（即1,536.68亿元）",
-        )
-        value = value.replace(
-            "应收账款账面余额增速（64.06%）显著高于营业收入变动（-6.74%），两者方向背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = value.replace(
-            "应收账款账面余额增速（64.06%）显著高于营业收入变动（-6.74%），两者方向背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = re.sub(
-            r"应收账款账面余额增速（?64\.06%）?显著高于营业收入变动（?-?6\.74%）?，两者方向(?:背离|相反)",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额增速\s*[（(]?64\.06%[）)]?\s*显著高于营业收入变动(?:\s*[（(]-?6\.74%[）)])?\s*，且应收账款/营业收入为8\.26%[^。；\n]*",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额较上年末增幅\s*64\.06%\s*[，,]?\s*显著高于营业收入同比变动\s*[（(]-?6\.74%[）)]\s*[，,]?\s*二者方向背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额较上年末增幅\s*64\.06%\s*[，,]?\s*显著高于营业收入同比变动\s*[（(]-?6\.74%[）)]\s*[，,]?\s*两者方向背离",
-            "应收账款账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断，回款质量待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*回款节奏与收入变动方向存在背离迹象",
-            "应收账款期末账面余额较上年末增长64.06%，同口径回款与收入变动关系待核查",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*与营业收入同比下降-?6\.74%方向(?:背离|相反|不一致)",
-            "应收账款期末账面余额较上年末增长64.06%；营业收入同比下降6.74%，两项比较期间不同，暂不作背离判断",
-            value,
-        )
-        value = re.sub(
-            r"应收账款账面余额较上年末增长64\.06%\s*[，,]\s*与营业收入同比变动方向(?:背离|相反|不一致)",
-            "应收账款期末账面余额较上年末增长64.06%，两项比较期间不同，暂不作背离判断",
-            value,
-        )
-        value = re.sub(
-            r"应收账款增幅\s*[（(]64\.06%[）)]\s*与(?:营业收入|营收)变动\s*[（(]-?6\.74%[）)]\s*"
-            r"方向相反，差额约\s*70\.8\s*个?百分点[^。；\n]*",
-            receivable_revenue_canonical,
-            value,
-        )
-        # 兜住标题、总体结论和复核意见中的自由改写。只处理同时出现应收账款、
-        # 营收和方向性结论的同一句文本，不影响经营现金流/利润等可比指标的背离判断。
-        value = re.sub(
-            r"应收账款(?:期末)?账面余额较上年末(?:增长|增加|激增|变动)\s*64\.06%"
-            r"[^。；\n]{0,100}(?:营业收入|营收)[^。；\n]{0,100}"
-            r"(?:方向(?:存在)?(?:背离|相反|不一致)|(?:显著|严重)?背离)"
-            r"[^。；\n]*",
-            receivable_revenue_canonical,
-            value,
-        )
-        value = value.replace(
-            "应收账款账面余额较上年末增长64.06%，回款与收入匹配性存疑",
-            "应收账款账面余额较上年末增加，回款质量待核查（期间口径待补）",
-        )
-        value = value.replace(
-            "关联采购占同类14.96%",
-            "关联方提供产品和服务占同类交易14.96%（不与关联采购占营业成本的30%规则比较）",
-        )
-        value = value.replace(
-            "关联采购占同类交易14.96%",
-            "关联方提供产品和服务占同类交易14.96%（不与关联采购占营业成本的30%规则比较）",
-        )
-        value = re.sub(
-            r"关联采购占比\s*14\.96%\s*低于(?:内部)?筛查线\s*30%",
-            "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较",
-            value,
-        )
-        value = re.sub(
-            r"关联采购占比\s*14\.96%\s*低于内部筛查线\s*30%",
-            "关联方提供产品和服务占同类交易14.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较",
-            value,
-        )
-        value = re.sub(
-            r"支持证据：关联采购占比未超30%内部筛查参考值（来源未核验，不作为风险定级依据）(?:（来源未核验，不作为风险定级依据）)+",
-            "支持证据：30%为来源未核验的内部筛查参考值，且与关联方提供产品和服务14.96%的分母不同，不作为风险定级依据",
-            value,
-        )
-        value = re.sub(
-            r"(关联方提供产品和服务占同类交易14\.96%；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。定价公允性、审批程序和资金流向待核查)(?:；该指标与关联采购占营业成本的内部30%规则分母不同，不作阈值比较。定价公允性、审批程序和资金流向待核查)+",
-            r"\1",
-            value,
-        )
-        value = re.sub(
-            r"低于能源行业内部参考值\s*\d+(?:\.\d+)?%",
-            "行业参考值来源未核验，不作为风险定级依据",
-            value,
-        )
-        value = re.sub(r"（即1,536\.68亿元）(?:（即1,536\.68亿元）)+", "（即1,536.68亿元）", value)
-        value = value.replace(
-            "回款节奏与收入变动方向背离需关注",
-            "两项比较期间不同，暂不作背离判断，回款质量待核查",
-        )
-        value = value.replace(
-            "现金流质量良好",
-            "现金流指标未触发内部筛查提示，仍需结合完整勾稽与期后回款核查",
-        )
-        value = value.replace(
-            "回款效率未见明显异常",
-            "回款指标未触发内部筛查提示，仍需结合账龄与期后回款核查",
-        )
-        value = value.replace(
-            "商誉减值敞口未见显著异常",
-            "商誉指标未触发筛查提示，仍需结合减值测试核查",
-        )
-        value = value.replace(
-            "应收增速超营收增速20pp",
-            "应收与营收变动的同口径比较（当前无法验证）",
-        )
-        value = value.replace(
-            "应收账款增速超营收增速20pp",
-            "应收与营收变动的同口径比较（当前无法验证）",
-        )
-        value = value.replace(
-            "低于参考值",
-            "参考值来源未核验，不作为风险定级依据",
-        )
-        value = re.sub(
-            r"某上市公司利用资产减值[“\"]?洗大澡[”\"]?案例[^。；\n]*",
-            "未取得可核验的同类案例，不作为风险判定依据",
-            value,
-        )
-        value = re.sub(
-            r"(?:经营现金流|现金流)/净利润\s*2\.42",
-            "经营现金流/净利润2.42（仅反映整体现金流，不单独证明应收回款质量）",
-            value,
-        )
-        value = re.sub(
-            r"(经营现金流/净利润2\.42)(?:（仅反映整体现金流，不单独证明应收回款质量）)+",
-            r"\1（仅反映整体现金流，不单独证明应收回款质量）",
-            value,
-        )
-        value = re.sub(
-            r"(综合风险评分\s*\d+(?:\.\d+)?分（(?:中低|中高|中等|低|高|极高)风险）)\s*区间[）)]?",
-            r"\1",
-            value,
-        )
-        for _note in (
-            "（来源未核验，不作为行业基准或风险定级依据）",
-            "（来源未核验，不作为风险定级依据）",
-        ):
-            value = re.sub(r"(?:" + re.escape(_note) + r"){2,}", _note, value)
-        return _normalize_related_party_text(value)
+        if _LOCAL_CASE is not None:
+            return _LOCAL_CASE.normalize_source_bound_str(value)
+        return value
     if isinstance(value, dict):
-        # 中国石油半年报已明确披露担保分类及不存在控股股东/关联方担保；
-        # 在没有“未披露/违规”事实的情况下，金额规模本身不足以把事项定为重要风险。
-        # 保留原等级留痕，降为一般暂定关注，避免把已披露的或有事项过度定性。
-        company_info = value.get("company_info")
-        if (isinstance(company_info, dict)
-                and "中国石油" in str(company_info.get("company_name", ""))):
-            for risk in value.get("risk_details", []) or []:
-                if not isinstance(risk, dict) or "担保" not in str(risk.get("title", "")):
-                    continue
-                risk_text = " ".join(str(risk.get(k, "")) for k in ("title", "evidence", "data_analysis"))
-                if ("不存在" in risk_text and "关联方担保" in risk_text
-                        and not any(marker in risk_text for marker in ("违规", "未披露", "披露遗漏"))
-                        and risk.get("level") == "重要"):
-                    risk["original_level"] = risk.get("original_level") or risk.get("level")
-                    risk["level"] = "一般"
-                    risk["verification_status"] = "暂定关注"
-                    risk["pending_reason"] = "担保总额及分类已披露；关联方担保不存在的管理层声明和被担保主体范围仍待独立核查"
+        if _LOCAL_CASE is not None:
+            _LOCAL_CASE.adjust_company_specific_risks(value)
         return {key: _normalize_source_bound_text(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_normalize_source_bound_text(item) for item in value]
     return value
+
+
+_GENERIC_SOURCE_EVIDENCE_ANCHORS = {
+    "financial_misstatement": [
+        # 仅将明确的应收账款表格纳入证据。会计政策、其他应收款减值
+        # 表和现金流调整项也会同时出现“应收账款/坏账准备”，不能据此
+        # 绑定 R001。
+        ("R001", lambda text: "应收账款" in text and "减：坏账准备" in text,
+         "应收账款附注：账面余额、坏账准备及账面价值"),
+        ("R001", lambda text: (
+            ("应收账款账龄" in text and "坏账准备" in text)
+            or ("应收账款" in text.replace("其他应收账款", "")
+                and ("前五名" in text or "前五大" in text))
+        ),
+         "应收账款附注：账龄及主要债务人"),
+    ],
+    "related_party": [
+        ("R002", lambda text: "关联" in text and ("存款" in text or "贷款" in text),
+         "关联金融服务：关联方存贷款及利率"),
+        ("R002", lambda text: "关联交易" in text and ("提供产品和服务" in text or "借款" in text),
+         "关联交易：产品和服务、资金往来及借款"),
+        ("R002", lambda text: "应付款" in text and ("关联方" in text or "关联" in text),
+         "关联方应收应付款项"),
+        ("R003", lambda text: "担保" in text and (
+            "担保总额" in text or "担保余额" in text or "履约担保" in text
+        ), "担保披露：担保总额/担保余额、分类及净资产占比"),
+    ],
+}
+
 
 # 三个任务模块的工具子集（对应架构定稿的三层任务单元）。
 # 混合运行模式：点单模块只跑该模块（工具裁剪后更快）；点综合研判则串跑三段。
@@ -1420,36 +1124,12 @@ def _source_report_evidence_records(tool_results: dict, source_text: str = "",
     source_hash = str(first_file.get("source_hash") or "").strip()
     # 按内容扫描全部页，而不是绑定某一版年报的历史物理页码。证据编号仍
     # 保留实际命中的页码，便于人工回查和跨版本回归。
-    targets = {
-        "financial_misstatement": [
-            # 仅将明确的应收账款表格纳入证据。会计政策、其他应收款减值
-            # 表和现金流调整项也会同时出现“应收账款/坏账准备”，不能据此
-            # 绑定 R001。
-            ("R001", lambda text: "应收账款" in text and "减：坏账准备" in text,
-             "应收账款附注：账面余额、坏账准备及账面价值"),
-            ("R001", lambda text: (
-                ("应收账款账龄" in text and "坏账准备" in text)
-                or ("应收账款" in text.replace("其他应收账款", "")
-                    and ("前五名" in text or "前五大" in text))
-            ),
-             "应收账款附注：账龄及主要债务人"),
-        ],
-        "related_party": [
-            ("R002", lambda text: "中油财务" in text and ("存款" in text or "贷款" in text),
-             "关联金融服务：中油财务存贷款及利率"),
-            ("R002", lambda text: "提供产品和服务" in text and "14.96%" in text,
-             "关联交易：提供产品和服务及同类交易占比"),
-            ("R002", lambda text: ("1,536.68" in text or "1536.68" in text)
-             and ("借款" in text or "产品和服务" in text),
-             "关联交易附注：资金往来及借款"),
-            ("R002", lambda text: "应付款" in text and ("关联方" in text or "关联" in text),
-             "关联方应收应付款项"),
-            ("R003", lambda text: (
-                ("担保总额" in text or "担保余额" in text)
-                and ("9.72%" in text or "履约担保" in text)
-            ), "担保披露：担保总额/担保余额、分类及净资产占比"),
-        ],
-    }
+    # 按内容扫描全部页，而不是绑定某一版年报的历史物理页码。证据编号仍
+    # 保留实际命中的页码，便于人工回查和跨版本回归。
+    # 锚定谓词默认用通用关键词；针对具体真实报告的精确锚点（如特定金融
+    # 公司名、披露比例）由本地案例模块的 SOURCE_EVIDENCE_ANCHORS 覆盖（不入库）。
+    targets = (getattr(_LOCAL_CASE, "SOURCE_EVIDENCE_ANCHORS", None)
+               or _GENERIC_SOURCE_EVIDENCE_ANCHORS)
     records = {key: [] for key in targets}
     for dimension, definitions in targets.items():
         for risk_id, predicate, locator in definitions:
@@ -1467,12 +1147,16 @@ def _source_report_evidence_records(tool_results: dict, source_text: str = "",
                     "verified": True,
                     "status": "verified",
                 }
-                if risk_id == "R003" and "9.72%" in compact:
-                    # 年报把比例写成“本集团净资产”，但这不是系统总权益字段的
-                    # 同义词；先把原文口径和待核对事项落到证据里，避免审计人员
-                    # 误把披露比例当成系统重算结果。
+                ratio_match = None
+                if risk_id == "R003" and "担保" in compact:
+                    # 年报把担保比例写成“占本集团净资产”等口径，但这不是系统总权益
+                    # 字段的同义词；先把原文口径和待核对事项落到证据里，避免审计人员
+                    # 误把披露比例当成系统重算结果。比例取“担保”关键词之后的首个百分比。
+                    tail = compact[compact.index("担保"):]
+                    ratio_match = re.search(r"\d+\.\d+%", tail) or re.search(r"\d+\.\d+%", compact)
+                if ratio_match:
                     record["excerpt"] = (
-                        f"{record['excerpt']}\n【口径核对】年报原文将9.72%表述为担保余额占本集团净资产比例；"
+                        f"{record['excerpt']}\n【口径核对】年报原文将{ratio_match.group(0)}表述为担保余额占本集团净资产比例；"
                         "该比例未由系统用总权益口径重算，需核对分母定义、合并范围及四舍五入。"
                     )[:1600]
                     record["denominator"] = "本集团净资产（年报原文表述，具体定义待核对）"
@@ -1685,30 +1369,13 @@ def _backfill_risk_evidence(risk_json: str, tool_results: dict,
                 changed = True
             source_excerpts = [catalog_by_id[evidence_id].get("excerpt", "") for evidence_id in source_ids]
             source_text = "；".join(str(item).strip() for item in source_excerpts if str(item).strip())
-            if (str(r.get("risk_id", "")) == "R003" and "9.72%" in source_text
-                    and "担保" in source_text):
-                # 该比例可由年报文本验证，但其分母不能从“总净资产”字段直接替代。
-                # 若本批次已有总净资产事实，给出差异量化，供人工核对而非自动改写原文。
-                total_net_assets = None
-                raw_fin = tool_results.get("calculate_financial_indicators", "")
-                try:
-                    fin_obj = json.loads(raw_fin) if isinstance(raw_fin, str) else raw_fin
-                    for fact in (fin_obj.get("facts", []) if isinstance(fin_obj, dict) else []):
-                        if isinstance(fact, dict) and fact.get("fact_id") in {"F-net_assets", "F-net_assets_current"}:
-                            value = fact.get("value")
-                            if isinstance(value, (int, float)) and value > 0:
-                                total_net_assets = float(value)
-                                break
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    total_net_assets = None
-                if total_net_assets:
-                    recalculated = 151161 / total_net_assets * 100
-                    source_text += (
-                        f"；【系统口径核对】总净资产事实为{total_net_assets:,.0f}百万元，"
-                        f"按此重算担保余额151,161百万元约为{recalculated:.2f}%，与年报9.72%不一致；"
-                        "9.72%倒算分母约为1,555,154百万元，接近归属于母公司股东权益口径，"
-                        "须核对年报定义及四舍五入后再使用。"
-                    )
+            augment_guarantee = (getattr(_LOCAL_CASE, "augment_guarantee_evidence", None)
+                                 if _LOCAL_CASE is not None else None)
+            if augment_guarantee is not None:
+                # 真实报告专用的担保比例口径核对规则在本地案例模块中维护（不入库）
+                extra = augment_guarantee(r, source_text, tool_results)
+                if extra:
+                    source_text += extra
             if source_text and (len(evidence) < 30 or "source_report" not in str(r.get("evidence_source", ""))):
                 r["evidence"] = f"{evidence}；{source_text}" if evidence else source_text
                 r["evidence_source"] = "source_report"
@@ -1783,14 +1450,14 @@ _AMOUNT_UNIT_RE = r"(百万元|千万元|亿元|万元|千元|亿|万|元)"
 def _amount_mismatch_warning(debate_text: str, risk_json: str) -> str:
     """辩论金额/比例引用防伪：扫描辩论文本中的金额与比例表述，与风险台账指纹比对。
 
-    LLM 辩论可能自编金额（实测：47,911、402.65亿 等未见台账数字穿透到复核意见）。
+    LLM 辩论可能自编金额（实测：台账外金额穿透到复核意见）。
     本函数从 risk_json 台账构建数字指纹（裸数字 + 带单位金额按亿元/百万元/万元
     归一为基准值），扫描 debate_text 中「数字+单位」金额、带千分位分隔的裸数字
     与带小数的百分比，不在指纹集合中的金额/比例汇总为警示文本（不篡改 LLM
     原文，仅降级可见警示）。
 
-    50d：单位换算容差匹配——同额不同口径（95,094百万元 vs 951亿元 差 0.06%、
-    2,438百万元 vs 24亿元 差 1.6%）不得误报为「未见于台账」（实测 18:37 版
+    50d：单位换算容差匹配——同额不同口径（120,000百万元 vs 1,200亿元 差 0.0%、
+    3,000百万元 vs 30亿元 差 1.6%）不得误报为「未见于台账」（实测 18:37 版
     警告本身有误）；百分比口径防伪——辩论自算比例（如 15.7%）未见于台账时
     警示「仲裁须裁定统一口径」。
     """
@@ -1838,9 +1505,9 @@ def _amount_mismatch_warning(debate_text: str, risk_json: str) -> str:
             continue
         if not _close_enough(base):
             offenders.add(f"{num}{unit}")
-    # 带千分位分隔的裸数字（如 47,911、1,536.68）属金额表述：先精确比对裸数字
+    # 带千分位分隔的裸数字（如 60,000、2,600.00）属金额表述：先精确比对裸数字
     # 指纹，再按元口径容差比对，最后仅接受亿/百万口径的精确数值一致假设
-    # （1,536.68 vs 153,668百万=1,536.68亿；防歧义数字被宽松假设误吞）
+    # （2,600.00 vs 260,000百万=2,600.00亿；防歧义数字被宽松假设误吞）
     for m in re.finditer(r"\d{1,3}(?:,\d{3})+(\.\d+)?", debate_text or ""):
         raw = m.group(0).replace(",", "")
         if raw in raw_nums:
@@ -2259,8 +1926,8 @@ _VALIDATION_FINGERPRINTS = {
     "资产负债表平衡": ("资产负债", ("平衡", "不平", "差异", "差额")),
 }
 # 权威结果数字只取校验器的结果字段（difference/actual_change 等），不取原始入账科目
-# 值——实测 R003 类条目会正确引用 83993/45755/116 等输入科目数（与 check 全量 JSON
-# 有交集），但自编的「差异 9789」与权威结果字段无交集；若用全量 JSON 建数字集会漏拦。
+# 值——实测 R003 类条目会正确引用净利润/分红/其他权益变动等输入科目数（与 check 全量
+# JSON 有交集），但自编的虚假差异与权威结果字段无交集；若用全量 JSON 建数字集会漏拦。
 _VALIDATION_RESULT_KEYS = (
     "difference", "actual_change", "expected_change",
     "estimated_cashflow", "actual_cashflow", "difference_pct", "difference_ratio",
@@ -2270,8 +1937,8 @@ _VALIDATION_RESULT_KEYS = (
 def _drop_llm_fabricated_validation_risks(report_obj: dict, vd_data: dict) -> int:
     """勾稽伪风险拦截：剔除引用已通过校验科目、但数字系 LLM 自编算术的风险条目。
 
-    背景（50b 实测）：未分配利润勾稽实际已通过（83993-45755-116 恒等），但 LLM 把
-    同一组数字自行加减编出「差异 9789」并立项为 R003——D 补丁只认「校验项：xxx」
+    背景（50b 实测）：未分配利润勾稽实际已通过（归母净利润-分红+其他权益变动 恒等），
+    但 LLM 把同一组数字自行加减编出虚假差异并立项为 R003——D 补丁只认「校验项：xxx」
     字面引用，自编数字的伪风险匹配不到。判定依据（保守，防误删）：
     1. check 当前 passed=True；
     2. 条目 title/evidence/data_analysis 命中该 check 的科目指纹组合
@@ -3106,7 +2773,7 @@ def _enforce_indicator_unit_scale(tool_results: dict, messages: list) -> None:
     背景：P1 预处理提取失败时（实测两次连续失败），LLM 自行调用
     calculate_financial_indicators 传入的数据整体按报表单位（如"百万元"）抄填，
     无绝对量级锚（营收也 <1e8），normalize_financial_units 保守跳过，导致
-    四维判读表渲染出"本期净利润 9.37 万元"（93666 被当元）的量级荒谬（实测缺陷）。
+    四维判读表渲染出"本期净利润 8.00 万元"（金额被当元）的量级荒谬（实测缺陷）。
 
     补偿策略：指标结果中若存在 <1e8 的金额字段（元体系下不可能出现），
     用年报文本的金额单位声明整体换算后覆盖 tool_results（PDF/评分读取同一引用）。
@@ -3157,7 +2824,7 @@ def _enforce_parent_net_profit_validation(tool_results: dict, messages: list) ->
 
     背景：未分配利润是母公司口径科目，勾稽必须用归母净利润。P1 预处理连续多轮
     失败（提取模型未输出 net_profit_parent），LLM 自行调用 validate 时传入合并
-    净利润（93666 百万），产生 20.43% 假阳性（实测缺陷：归母口径 0.34% 通过）。
+    净利润（合并口径），产生两位数百分比假阳性（实测缺陷：归母口径不足 1% 即通过）。
 
     兜底策略：从年报文本规则提取归母净利润（extract_parent_net_profit，返回元），
     换算到与原校验项相同的金额体系后重算该勾稽项，并同步更新 failed/passed 统计
@@ -3248,7 +2915,7 @@ def _enforce_parent_net_profit_validation(tool_results: dict, messages: list) ->
 def _drop_false_positive_reconciliation_risks(report_obj: dict) -> None:
     """清洗台账中基于合并口径勾稽失败生成的假阳性风险条目（归母口径修正后）。
 
-    背景：LLM 看到旧 validate 输出（合并口径 20.43% 失败）生成了"未分配利润勾稽
+    背景：LLM 看到旧 validate 输出（合并口径勾稽失败）生成了"未分配利润勾稽
     不一致"风险条目；归母口径修正后该证据已失效，若残留会导致假阳性继续驱动
     评分与人工复核（实测缺陷：R003 置信度 0.90 存活）。
 
@@ -3265,7 +2932,7 @@ def _drop_false_positive_reconciliation_risks(report_obj: dict) -> None:
             continue
         text = f"{r.get('title', '')} {r.get('evidence', '')} {r.get('data_analysis', '')}"
         if ("未分配利润" in text
-                and any(k in text for k in ("勾稽", "不一致", "差异", "9789", "9,789", "20.43"))):
+                and any(k in text for k in ("勾稽", "不一致", "差异"))):
             excluded.append(r)
             logger.info(f"假阳性清洗：{r.get('risk_id', '')}（未分配利润勾稽证据已失效）移入备查录")
         else:
@@ -3322,7 +2989,7 @@ def _enforce_disclosure_reconciliation(tool_results: dict, messages: list) -> No
 
     背景：P1 预处理已把带勾稽扣分的披露检查结果注入消息（pre_d），但 LLM 可能
     重复调用 check_disclosure_compliance 且未传 validation_json，同名消息后者
-    覆盖导致 tool_results 里是"无勾稽扣分"版本（实测缺陷：勾稽差异 20.43% 未
+    覆盖导致 tool_results 里是"无勾稽扣分"版本（实测缺陷：勾稽差异未
     联动扣分，合规评分 93 分 13/14 全绿）。
 
     兜底策略（以 validate 结果为权威来源）：
@@ -4066,7 +3733,7 @@ class _AgentWrapper:
             if disclosure_consistency_note:
                 report_obj["disclosure_consistency_note"] = disclosure_consistency_note
             # 50c：跨期穿透注记——应收背离告警触发时写入确定性提示，防 LLM 用当期静态
-            # 现金流比率（OCF/NP）掩盖应收激增的跨期风险（实测 17:59 版：用 OCF/NP=2.42
+            # 现金流比率（OCF/NP）掩盖应收激增的跨期风险（实测 17:59 版：用 OCF/NP=2.25
             # 反驳应收激增 67.18% 的传导链）。同步前置到复核意见可见区。
             try:
                 _fin_raw = tool_results.get("calculate_financial_indicators", "")

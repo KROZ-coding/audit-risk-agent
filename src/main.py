@@ -495,7 +495,7 @@ class GraphService:
     def _financial_extraction_excerpt(cls, text: str) -> str:
         """优先抽取中国准则合并报表所在页，并纳入所有报表关键词命中页。
 
-        PDF 上传文本由 parse_pdf_report 按页加上该标记。中国石油半年报同时
+        PDF 上传文本由 parse_pdf_report 按页加上该标记。样例半年报同时
         包含国际准则和中国准则报表，单纯截取全文前缀会把两套口径交叉拼接；
         但只用固定页号又会漏掉附注表，故此处：
 
@@ -546,7 +546,7 @@ class GraphService:
     def _backfill_source_facts(text: str, data: dict) -> dict:
         """补回可由原文表格确定识别的字段，避免 LLM 抽取随机漏项。
 
-        中国石油半年报的应收账款附注和合并权益变动表同时给出净额、账面余额、
+        样例半年报的应收账款附注和合并权益变动表同时给出净额、账面余额、
         坏账准备及「其他」变动。这里只补有明确表格锚点的值，不按金额量级猜测。
         """
         if not isinstance(data, dict) or not text:
@@ -816,7 +816,7 @@ class GraphService:
                               liab_row_context, "合并资产负债表：股东权益合计")
 
         # ── 合并利润表：营收/成本/利润/归母/利息 行级回填 ──
-        # 中国石油半年报利润表为「本期合并 / 上年同期合并 / 本期公司 / 上年同期公司」
+        # 样例半年报利润表为「本期合并 / 上年同期合并 / 本期公司 / 上年同期公司」
         # 四列，只取前两列（合并口径）；营业成本以括号列示，回填为正数。
         income_context = _context(
             lambda chunk: ("合并利润表" in chunk or "合并及公司利润表" in chunk)
