@@ -15,18 +15,35 @@
 - 76-100: 极高风险
 """
 import json
+import json
+import os
 import logging
 from core.result_contract import Evidence, MetricResult, RESULT_SCHEMA_VERSION, RULE_VERSION, make_fact
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
-# ── 各模块权重配置 ──
-WEIGHTS = {
-    "financial": 0.50,   # 财务指标风险权重
-    "disclosure": 0.30,  # 披露合规风险权重
-    "validation": 0.20,  # 数据校验风险权重
-}
+
+def _load_weights() -> dict:
+    """F3 权重外置：默认 50/30/20 为内部筛查权重（无经验校准依据，透明声明），
+    可用环境变量覆盖（RISK_WEIGHT_FINANCIAL / RISK_WEIGHT_DISCLOSURE /
+    RISK_WEIGHT_VALIDATION），三者和按比例归一化到 1。"""
+    defaults = {"financial": 0.50, "disclosure": 0.30, "validation": 0.20}
+    try:
+        for key in defaults:
+            raw = os.getenv(f"RISK_WEIGHT_{key.upper()}")
+            if raw:
+                defaults[key] = max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError) as e:
+        logger.warning(f"评分权重环境变量解析失败，使用默认权重: {e}")
+    total = sum(defaults.values())
+    if total <= 0:
+        return {"financial": 0.50, "disclosure": 0.30, "validation": 0.20}
+    return {k: v / total for k, v in defaults.items()}
+
+
+# ── 各模块权重配置（F3：可经环境变量覆盖，输出中随评分透出实际生效值）──
+WEIGHTS = _load_weights()
 
 # ── 风险等级映射 ──
 RISK_LEVELS = [
@@ -155,6 +172,19 @@ def _calc_financial_risk(analysis_json: str) -> float:
     if not isinstance(alerts, (list, tuple)):
         return 50.0  # alerts 字段畸形（如 LLM 传了数字）：视同不可解析
     if not alerts:
+        # F3 可评分性门控：零告警 ≠ 低风险，前提是指标充分。提取失败/字段极稀时
+        # （可计算的数值指标与报表科目都几乎没有），财务维度判「未获取」返回
+        # None（不参与计分）——防止"数据越缺分越低"的反向敏感：把提取失败的
+        # 年报评成 0 分低风险，比高估更隐蔽。
+        _numeric_indicators = sum(1 for v in (data.get("indicators") or {}).values()
+                                  if isinstance(v, (int, float)))
+        _statement_items = sum(1 for section in (data.get("statement_items") or {}).values()
+                               if isinstance(section, dict)
+                               for v in section.values() if v is not None)
+        if _numeric_indicators < 5 and _statement_items < 5:
+            logger.info("财务维度不可评分：零告警且指标/科目数据稀疏"
+                        f"（数值指标 {_numeric_indicators}、科目项 {_statement_items}）")
+            return None
         return 0.0
 
     score = 0.0
