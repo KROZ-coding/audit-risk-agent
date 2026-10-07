@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 BATCH_DIR_RE = re.compile(r"^\d{8}_\d{6}$")
 TEMP_PREFIX = ".tmp_"
 PROTECTED_TEMP_NAMES = {".tmp_pytest"}
+# S6：/upload 落盘的原始上传文件（真实年报原件，最大 100MB/份）旧版永不清理，
+#  由 _prune_upload_tmp 按 temp_retention_days 清扫（路径与 main.py 的 UPLOAD_DIR 同源）。
 CHECKPOINT_DB_NAME = "checkpoints.sqlite"
 
 # 最近一次回收报告（供 /api/maintenance/status 查询）
@@ -413,6 +415,41 @@ def prune_temp(policy: MaintenancePolicy, dry_run: Optional[bool] = None) -> dic
                 result["deleted_count"] += 1
         except OSError as exc:
             logger.warning("删除临时文件失败 %s: %s", path, exc)
+    # S6：同一分区纳入 /upload 原始上传文件清扫
+    upload_result = _prune_upload_tmp(policy, dry_run)
+    result["upload_tmp"] = {"path": upload_result["path"],
+                            "deleted_count": upload_result["deleted_count"],
+                            "deleted": upload_result["deleted"][:20]}
+    result["deleted_count"] += upload_result.get("deleted_count", 0)
+    return result
+
+
+def _prune_upload_tmp(policy: MaintenancePolicy, dry_run: Optional[bool] = None) -> dict[str, Any]:
+    """S6：清扫 /upload 落盘的原始上传文件（按 temp_retention_days 过期）。"""
+    import tempfile
+    upload_dir = Path(tempfile.gettempdir()) / "zhinengti_uploads"
+    cutoff_ts = time.time() - policy.temp_retention_days * 86400
+    result: dict[str, Any] = {"path": str(upload_dir), "dry_run": policy.dry_run if dry_run is None else dry_run,
+                              "deleted_count": 0, "deleted": []}
+    if not upload_dir.exists():
+        return result
+    for path in sorted(upload_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff_ts:
+                continue
+        except OSError:
+            continue
+        result["deleted"].append(path.name)
+        if result["dry_run"]:
+            continue
+        try:
+            path.unlink()
+            if not path.exists():
+                result["deleted_count"] += 1
+        except OSError as exc:
+            logger.warning("删除上传临时文件失败 %s: %s", path, exc)
     return result
 
 

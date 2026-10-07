@@ -93,11 +93,29 @@ def _create_engine_with_retry():
     # SQLite 使用单连接模式；PostgreSQL 等远程数据库使用连接池
     is_sqlite = url.startswith("sqlite")
     kwargs = {"pool_pre_ping": True}   # 每次连接前校验可用性
-    if not is_sqlite:
+    if is_sqlite:
+        # S8 并发加固：busy_timeout 让并发写在锁竞争时等待而非立即报
+        # database is locked（batch 线程池 + 会话落库 + 检查点同库写）
+        kwargs["connect_args"] = {"timeout": 10}
+    else:
         # 远程数据库配置连接池参数，提升并发性能
         kwargs.update(pool_size=10, max_overflow=100, pool_recycle=1800, pool_timeout=30)
 
     engine = create_engine(url, **kwargs)
+
+    if is_sqlite:
+        # S8：启用 WAL（读写不互斥）——多用户并发历史落库/登录场景必需
+        from sqlalchemy import event
+
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=10000")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+            finally:
+                cursor.close()
 
     # 连接探测：执行 SELECT 1 验证数据库是否可用
     # 首次启动时数据库可能尚未就绪（如 Docker 容器正在初始化），因此需要重试

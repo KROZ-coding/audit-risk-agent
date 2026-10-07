@@ -2380,8 +2380,9 @@ async def http_run(request: Request) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
     except Exception as e:
+        # S7：/run 内部错误不回显异常串（含内部路径/库细节），只给泛化文案
         logger.error(f"Error in /run: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail={"error": str(e)})
+        raise HTTPException(status_code=500, detail={"error": "服务内部错误，请稍后重试（详情见服务日志）"})
     finally:
         cozeloop.flush()
 
@@ -2637,11 +2638,13 @@ async def upload_files(files: List[UploadFile] = File(...)):
             logger.info(f"文件上传成功: {f.filename} → {save_path} ({size} bytes)")
 
         except Exception as e:
-            logger.error(f"文件上传失败: {f.filename}: {e}")
+            # S7：对外只回泛化文案——异常串可能含服务器内部绝对路径/库细节；
+            # 完整原因已入服务日志（logger.error）。
+            logger.error(f"文件上传失败: {f.filename}: {e}\n{traceback.format_exc()}")
             results.append({
                 "filename": f.filename,
                 "status": "error",
-                "error": str(e),
+                "error": "文件处理失败，请确认文件未损坏后重试（详情见服务日志）",
             })
 
     return {"files": results}
@@ -2669,7 +2672,9 @@ async def reload_knowledge_base():
             "file_count": len(kb.documents),
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        # S7：重载失败原因只进日志，不回显内部细节
+        logger.error(f"知识库重载失败: {e}\n{traceback.format_exc()}")
+        return {"status": "error", "message": "知识库重载失败，请查看服务日志后重试"}
 
 
 @app.post("/api/upload_kb")
@@ -2905,7 +2910,7 @@ async def get_evaluation_status():
         }
     except Exception as e:
         logger.warning(f"读取评估结果失败: {e}")
-        return {"status": "error", "message": str(e), "data": None}
+        return {"status": "error", "message": "读取评估结果失败，请稍后重试（详见服务日志）", "data": None}
 
 
 @app.post("/api/evaluate/run")
@@ -2961,7 +2966,7 @@ async def run_evaluation(mode: str = "tool", output_path: str | None = None):
         return {"status": "error", "message": "评估超时（30秒），请检查系统状态"}
     except Exception as e:
         logger.error(f"运行评估失败: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": "评估执行失败，请查看服务日志后重试"}
 
 
 def parse_args():
