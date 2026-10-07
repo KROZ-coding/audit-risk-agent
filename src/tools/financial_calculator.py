@@ -930,14 +930,20 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
 
     interest_expense_c = values.get("interest_expense_current")
     profit_before_tax_c = values.get("profit_before_tax_current")
-    ebit = operating_profit_c
-    ebit_keys = ("operating_profit_current", "interest_expense_current")
-    if ebit is None and profit_before_tax_c is not None and interest_expense_c is not None:
+    # F6 口径修复：主口径 = (利润总额+利息支出)/利息支出。EBIT 须加回利息支出
+    # （与 knowledge_base/风险评分模型库 的 EBIT 定义一致）；旧主口径直接用营业
+    # 利润——中国准则下营业利润已扣除财务费用（含利息支出）且混入投资收益等
+    # 非经常项，系统性低估利息保障倍数。营业利润口径仅在利润总额缺失时作
+    # 标注性 fallback。
+    if profit_before_tax_c is not None and interest_expense_c is not None:
         ebit = profit_before_tax_c + interest_expense_c
         ebit_keys = ("profit_before_tax_current", "interest_expense_current")
+        interest_formula = "(利润总额+利息支出)/利息支出"
+    else:
+        ebit = operating_profit_c
+        ebit_keys = ("operating_profit_current", "interest_expense_current")
+        interest_formula = "营业利润/利息支出（利润总额缺失，口径受限）"
     interest_coverage = _safe_div(ebit, interest_expense_c)
-    interest_formula = ("营业利润/利息支出" if operating_profit_c is not None
-                        else "(利润总额+利息支出)/利息支出")
     add("interest_coverage_ratio", "利息保障倍数（长期偿债）", interest_formula,
         ebit_keys, interest_coverage, unit="倍", threshold=1.5,
         threshold_source="内部筛查规则：利息保障倍数低于1.5倍提示偿债能力复核",
@@ -1084,8 +1090,30 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
         _only_if_any_input=True)
 
     int_income, int_expense = values.get("interest_income_current"), values.get("interest_expense_current")
-    if all(v is not None for v in (cash, short_debt, int_income, int_expense)) and cash > short_debt and int_expense > int_income * 2:
-        alerts.append(f"现金及现金等价物({_format(cash)})高于短期借款({_format(short_debt)})，但利息支出({_format(int_expense)})远大于利息收入({_format(int_income)})，存在存贷双高异常")
+    # F7 存贷双高筛查加固：
+    # ① 双侧量级门槛——货币资金与短期借款需各自达到总资产的 5%，"双高"才是
+    #    有意义的异常信号；小额现金对照小额借款触发告警属常态噪声。
+    # ② 覆盖口径声明：短期借款并非有息负债全口径（缺长期借款/应付债券/一年内
+    #    到期非流动负债字段），「存长贷双高」形态本筛查覆盖不到，结果须结合
+    #    人工复核；字段扩展后应改用有息负债合计。
+    # ③ 输入不足时显式声明「未验证」，不再静默跳过（fail-loud）。
+    _dual_high_inputs = {"cash_and_equivalents": cash, "short_term_debt": short_debt,
+                         "interest_income": int_income, "interest_expense": int_expense}
+    _ta_for_dual_high = values.get("total_assets_current")
+    _missing_dual = [k for k, v in _dual_high_inputs.items() if v is None]
+    if _missing_dual:
+        indicators["deposit_loan_dual_high"] = (
+            f"未验证：缺少 {('、'.join(_missing_dual))}，存贷双高筛查未执行")
+    else:
+        _scale_ok = (_ta_for_dual_high is None or _ta_for_dual_high <= 0
+                     or (cash >= _ta_for_dual_high * Decimal("0.05")
+                         and short_debt >= _ta_for_dual_high * Decimal("0.05")))
+        indicators["deposit_loan_dual_high"] = (
+            f"已筛查（口径：货币资金 vs 短期借款，非有息负债全口径）；"
+            f"货币资金/总资产={_format(_safe_div(cash, _ta_for_dual_high) * _D_HUNDRED, 1, '%') if _ta_for_dual_high else 'N/A'}，"
+            f"短期借款/总资产={_format(_safe_div(short_debt, _ta_for_dual_high) * _D_HUNDRED, 1, '%') if _ta_for_dual_high else 'N/A'}")
+        if cash > short_debt and int_expense > int_income * 2 and _scale_ok:
+            alerts.append(f"现金及现金等价物({_format(cash)})高于短期借款({_format(short_debt)})，但利息支出({_format(int_expense)})远大于利息收入({_format(int_income)})，存在存贷双高异常（口径：短期借款，未覆盖长期有息负债）")
 
     if np_c is not None and np_p is not None:
         indicators["net_profit_current"] = _number(np_c)

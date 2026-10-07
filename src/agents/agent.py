@@ -4318,9 +4318,11 @@ class _AgentWrapper:
         if jobs:
             with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
                 # S2：显式把请求上下文带进工作线程，导出线程读取的批次时间戳
-                # 与本次运行一致（ContextVar 不随普通线程池自动传播）
-                _ctx = contextvars.copy_context()
-                futures = {name: pool.submit(_ctx.run, fn) for name, fn in jobs.items()}
+                # 与本次运行一致（ContextVar 不随普通线程池自动传播）。
+                # 注意每个任务必须用独立的 Context 副本——同一 Context 对象
+                # 并发 run() 会抛 "cannot enter context: already entered"。
+                _job_ctxs = {name: contextvars.copy_context() for name, fn in jobs.items()}
+                futures = {name: pool.submit(_job_ctxs[name].run, fn) for name, fn in jobs.items()}
                 outputs = {name: fut.result() for name, fut in futures.items()}
             # 展示顺序固定：图表在前、报告文件在后（与阅读动线一致）
             for key in ("heatmap", "radar", "trend", "pdf", "excel"):
