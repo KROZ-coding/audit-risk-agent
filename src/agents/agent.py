@@ -613,6 +613,7 @@ def _extract_risk_json(text: str) -> str | None:
     # 顶层兼容台账的首字段不固定（可能是 analysis_id、report_snapshot
     # 或 company_info），因此不能把候选起点绑定到某一个字段名。
     candidates = re.finditer(r'\{\s*"[^"\\]+"\s*:', raw)
+    last_valid: tuple[int, int] | None = None
     for match in candidates:
         try:
             parsed, end = decoder.raw_decode(raw[match.start():])
@@ -623,8 +624,50 @@ def _extract_risk_json(text: str) -> str | None:
         # 新终局块要求兼容字段仍存在；report_snapshot-only 的内部片段
         # 不应被误当成旧台账返回。
         if "company_info" in parsed and "risk_details" in parsed:
-            return raw[match.start():match.start() + end]
-    return None
+            # G3 加固：取最后一个合法台账根对象。正式台账按 sp 约定输出在正文
+            # 末尾；正文早处出现的同名结构可能是被引用/转述的伪造台账（提示注入
+            # 的劫持面）。只有唯一候选时行为与旧逻辑等价。
+            last_valid = (match.start(), end)
+    if last_valid is None:
+        return None
+    start, end = last_valid
+    return raw[start:start + end]
+
+
+def _ledger_suspicion_reasons(ledger, tool_results: dict, source_text: str) -> list:
+    """G3 台账交叉校验：把 LLM 生成的风险台账与确定性来源互相印证。
+
+    只做便宜的确定性比对，命中疑点即整单降级为待人工复核（门禁全拒），
+    绝不自动"修正"台账内容——修正本身会被注入者利用。核对项：
+    1. 无工具依据却产出风险条目（校验/指标/披露三类核心工具结果全部缺失）；
+    2. 台账公司名与年报正文确定性识别的公司名不一致（互不为子串才算冲突，
+       兼容全称/简称差异）。
+    """
+    reasons: list = []
+    if not isinstance(ledger, dict):
+        return ["台账不是 JSON 对象"]
+    core_tools = ("validate_financial_data", "calculate_financial_indicators",
+                  "check_disclosure_compliance")
+    try:
+        details = ledger.get("risk_details")
+        has_risks = isinstance(details, list) and any(
+            isinstance(r, dict) and str(r.get("risk_id", "") or "").strip()
+            for r in details)
+    except Exception:
+        has_risks = False
+    if has_risks and isinstance(tool_results, dict):
+        has_any_tool = any(str(tool_results.get(k, "") or "").strip() for k in core_tools)
+        if not has_any_tool:
+            reasons.append("台账列出风险条目，但校验/指标/披露三类核心工具结果全部缺失，风险主张无工具依据")
+    try:
+        from utils.report_identity import extract_company_name
+        ledger_name = str(((ledger.get("company_info") or {}).get("company_name")) or "").strip()
+        ref_name = str(extract_company_name(str(source_text or "")) or "").strip()
+        if ledger_name and ref_name and ref_name not in ledger_name and ledger_name not in ref_name:
+            reasons.append(f"台账公司名「{ledger_name}」与年报确定性识别结果「{ref_name}」不一致")
+    except Exception:
+        pass
+    return reasons
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -750,7 +793,8 @@ def _compare_c2_reviews(first: dict, second: dict, risk_details: list) -> dict:
 
 
 def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
-                        c1_result: dict | None = None) -> None:
+                        c1_result: dict | None = None,
+                        ledger_suspicion: list | None = None) -> None:
     """把 C2 和证据门禁写入台账，正式风险与待处理项分开统计。"""
     report_obj["result_schema_version"] = "1.0"
     report_obj["rule_version"] = "2026-09-v3"
@@ -879,6 +923,19 @@ def _apply_review_gates(report_obj: dict, c2_result: dict, review_enabled: bool,
             "judgment_1": c2.get("evidence_ids_1", []) if c2 else [],
             "judgment_2": c2.get("evidence_ids_2", []) if c2 else [],
         }
+
+    # G3 台账级门禁：交叉校验命中疑点时整单降级——所有条目一律不采信、
+    # 转待人工复核，防止伪造台账借道任一"accepted"路径进入正式报告。
+    if ledger_suspicion:
+        _suspicion_text = "；".join(str(r) for r in ledger_suspicion)
+        for risk in details:
+            if not isinstance(risk, dict):
+                continue
+            risk["formal_status"] = "unaccepted"
+            risk["verification_status"] = "台账可疑"
+            risk["status"] = "pending_review"
+            risk["pending_reason"] = f"台账交叉校验未通过（{_suspicion_text}），整单转人工复核"
+        report_obj["ledger_suspicious"] = {"reasons": [str(r) for r in ledger_suspicion]}
 
     accepted = [r for r in details if isinstance(r, dict) and r.get("formal_status") == "accepted"]
     pending = [r for r in details if isinstance(r, dict) and r.get("formal_status") != "accepted"]
@@ -3344,11 +3401,24 @@ class _AgentWrapper:
         if last_ai is None or not last_ai.content:
             return result
 
-        # 第三步：从 AI 回复中提取风险台账 JSON
+        # 第三步：从 AI 回复中提取风险台账 JSON（取文末正式台账），并与确定性
+        # 来源交叉校验（G3）：台账由 LLM 生成不可信，命中疑点即整单转待人工复核。
         risk_json = _extract_risk_json(str(last_ai.content))
         if not risk_json:
             # 无法提取风险 JSON 时，用 AI 文本构造兜底输入（确保辩论/图表/评分仍能运行）
             risk_json = json.dumps({"company_info": {}, "risk_details": [], "overall_assessment": str(last_ai.content)[:2000]}, ensure_ascii=False)
+        self._ledger_suspicion = []
+        try:
+            _parsed_ledger = json.loads(risk_json)
+            self._ledger_suspicion = _ledger_suspicion_reasons(
+                _parsed_ledger, tool_results, str(result.get("source_text", "") or ""))
+            if self._ledger_suspicion:
+                _parsed_ledger["ledger_suspicious"] = {"reasons": list(self._ledger_suspicion)}
+                risk_json = json.dumps(_parsed_ledger, ensure_ascii=False)
+                logger.warning("风险台账交叉校验命中疑点，整单转待人工复核: %s",
+                               "；".join(self._ledger_suspicion))
+        except Exception as _ledger_check_err:
+            logger.warning(f"台账交叉校验执行失败（不阻断主流程）: {_ledger_check_err}")
         _chart_state_before = _risk_chart_state(json.loads(risk_json))
 
         # 方案 4：用真实工具结果自动补全风险台账 evidence。
@@ -3799,7 +3869,8 @@ class _AgentWrapper:
             try:
                 _apply_review_gates(report_obj, self._last_c2_result,
                                     REVIEW_ENABLED and not skip_debate,
-                                    self._last_c1_result)
+                                    self._last_c1_result,
+                                    ledger_suspicion=getattr(self, "_ledger_suspicion", None))
                 report_obj["semantic_review"] = self._last_c2_result
                 report_obj["c1_review"] = self._last_c1_result
             except Exception as e:
@@ -3918,7 +3989,8 @@ class _AgentWrapper:
             try:
                 _apply_review_gates(report_obj, self._last_c2_result,
                                     REVIEW_ENABLED and not skip_debate,
-                                    self._last_c1_result)
+                                    self._last_c1_result,
+                                    ledger_suspicion=getattr(self, "_ledger_suspicion", None))
                 report_obj["semantic_review"] = self._last_c2_result
                 report_obj["c1_review"] = self._last_c1_result
                 # 所有剥离、去重及待核实标记完成后，才应用已采信风险底线。
