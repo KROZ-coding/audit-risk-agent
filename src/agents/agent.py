@@ -14,6 +14,7 @@ import copy
 import math
 import time
 import logging
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
 from langgraph.prebuilt import create_react_agent
@@ -437,8 +438,15 @@ def _windowed_messages(old, new):
        开头（它的 tool_calls 母消息已在窗口外），逐条前移直到窗口首条不是 ToolMessage；
     4. 若窗口首条是带 tool_calls 的 AIMessage，其应答 ToolMessage 均在其后，天然完整。
     这样保证窗口内不出现「孤儿 ToolMessage」和「无应答 tool_calls」。
+
+    G11 修复（在途消息保护）：本轮模型新产生的带 tool_calls 的 AIMessage 在合并
+    时刻必然还没有 ToolMessage 应答（工具节点尚未运行），旧逻辑会把它当「无应答
+    残留」清掉——后果是 post_model_hook 状态里没有任何 AIMessage，langgraph 的
+    post_model_hook_router（next() 无默认值）抛 StopIteration 使整轮分析崩溃。
+    因此对 ``new`` 里本轮新产生的 AIMessage 一律保护，只清理真正的历史残留。
     """
-    merged = _sanitize_tool_history(add_messages(old, new))  # type: ignore
+    new_ai_ids = {getattr(m, "id", None) for m in (new or []) if isinstance(m, AIMessage)}
+    merged = _sanitize_tool_history(add_messages(old, new), protect_ids=new_ai_ids)  # type: ignore
     if len(merged) <= MAX_MESSAGES:
         return merged
 
@@ -447,10 +455,10 @@ def _windowed_messages(old, new):
     # 向后收缩：窗口不能以孤儿 ToolMessage 开头（其 tool_calls 母消息在窗口外）
     while start < len(merged) and isinstance(merged[start], ToolMessage):
         start += 1
-    return _sanitize_tool_history(merged[start:])
+    return _sanitize_tool_history(merged[start:], protect_ids=new_ai_ids)
 
 
-def _sanitize_tool_history(messages):
+def _sanitize_tool_history(messages, protect_ids=None):
     """移除历史中没有完整工具应答的残留 AIMessage。
 
     进程在模型请求失败或旧版本使用固定消息 ID 时，checkpoint 可能留下带
@@ -458,13 +466,23 @@ def _sanitize_tool_history(messages):
     DeepSeek 请求直接被协议层拒绝；完整的 AIMessage + ToolMessage 配对继续保留。
     没有 ``tool_calls`` 的历史 AIMessage 后面可能有旧版工具结果，这是既有台账
     兼容形态，不能把它们误判为悬空调用。
+
+    Args:
+        protect_ids: 本轮新产生的 AIMessage id 集合（G11 在途保护）。这些消息的
+            tool_calls 尚无应答是正常时序（工具节点下一步才运行），不得清理。
     """
+    protect_ids = protect_ids or set()
     cleaned = []
     index = 0
     messages = list(messages or [])
     while index < len(messages):
         message = messages[index]
         if not isinstance(message, AIMessage) or not message.tool_calls:
+            cleaned.append(message)
+            index += 1
+            continue
+
+        if getattr(message, "id", None) in protect_ids:
             cleaned.append(message)
             index += 1
             continue
@@ -525,11 +543,15 @@ def _merge_tool_ledger(old, new):
 
 
 def _accumulate_tool_ledger(state):
-    """post_model_hook：在消息被后续滑窗裁剪掉之前，将新出现的工具结果累积进台账。
+    """在消息被裁剪前将工具结果累积进台账（G11 后不再挂载为 post_model_hook）。
 
-    该钩子在每次模型节点执行后运行，此时最近一批工具的 ToolMessage 仍处于窗口内，
-    据此增量记账即可在裁剪前捕获完整链路。仅返回 tool_ledger 增量，绝不修改 messages，
-    因此不影响滑窗对 LLM 上下文的限长作用。
+    消息通道改为原生 add_messages 累积后，全量工具结果始终可从最终状态读取，
+    顺序门禁与评分兜底自动回退 messages 扫描；本函数保留用于兼容与单测
+    （tests/test_tool_ledger_window.py），不再作为图的节点运行。
+
+    原语义（挂载为 post_model_hook 时期）：钩子在每次模型节点执行后运行，
+    此时最近一批工具的 ToolMessage 仍处于窗口内，据此增量记账即可在裁剪前
+    捕获完整链路。仅返回 tool_ledger 增量，绝不修改 messages。
 
     Args:
         state: 当前图状态（含 messages 与 tool_ledger）。
@@ -555,13 +577,37 @@ class AgentState(MessagesState):
     """Agent 状态定义，继承自 LangGraph 的 MessagesState。
 
     Attributes:
-        messages: 对话消息列表，通过 _windowed_messages 实现自动滑动窗口
+        messages: 对话消息列表。G11 架构修复后使用原生 add_messages 累积——
+            通道层永不丢消息；上下文裁剪移至 pre_model_hook（_trim_llm_input），
+            只作用于「模型本次看到的输入」，不再在通道层销毁历史。
         remaining_steps: 剩余工具调用步数上限，防止死循环
-        tool_ledger: 工具链记账台账，与滑窗解耦、永不裁剪，供顺序门禁与综合评分兜底读取
+        tool_ledger: 工具链记账台账（预处理注入种子 + 兼容保留）；完整工具链
+            现可直接从全量 messages 读取，顺序门禁与评分兜底自动回退 messages 扫描
     """
-    messages: Annotated[list[AnyMessage], _windowed_messages]
+    messages: Annotated[list[AnyMessage], add_messages]
     remaining_steps: int = 25
     tool_ledger: Annotated[dict, _merge_tool_ledger]
+
+
+def _trim_llm_input(state):
+    """pre_model_hook（官方支持位置）：只裁剪「模型本次看到的上下文」。
+
+    G11 架构修复：旧方案把滑窗做在 messages 通道 reducer 里（_windowed_messages），
+    早期工具消息在通道层被永久丢弃，必须再靠 post_model_hook 抢救进 tool_ledger；
+    而 post_model_hook + Send 在 langgraph 1.0.x 下存在并发写竞态——模型新产出的
+    带 tool_calls 的 AIMessage 可能未及入通道，路由与工具节点基于旧快照运行，
+    轻则 post_model_hook_router 的 next() 抛 StopIteration，重则孤儿 ToolMessage
+    触发 DeepSeek 400，完整分析链路间歇性崩溃（CI 未发现：集成测试用假 Agent 不跑真图）。
+
+    现改为：消息通道永不丢消息；本函数在模型入口把「滑窗裁剪 + 配对修复」后的
+    窗口放到 llm_input_messages，模型只看窗口，状态保留全量。
+    """
+    if isinstance(state, dict):
+        messages = state.get("messages") or []
+    else:
+        messages = getattr(state, "get", lambda k: [])("messages") or []
+    trimmed = _windowed_messages([], list(messages))
+    return {"llm_input_messages": trimmed}
 
 
 def _normalize_dims(parsed: dict) -> dict:
@@ -4271,7 +4317,10 @@ class _AgentWrapper:
             logger.warning("report_invalidated 为 True，但当前策略已关闭真阻断")
         if jobs:
             with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-                futures = {name: pool.submit(fn) for name, fn in jobs.items()}
+                # S2：显式把请求上下文带进工作线程，导出线程读取的批次时间戳
+                # 与本次运行一致（ContextVar 不随普通线程池自动传播）
+                _ctx = contextvars.copy_context()
+                futures = {name: pool.submit(_ctx.run, fn) for name, fn in jobs.items()}
                 outputs = {name: fut.result() for name, fut in futures.items()}
             # 展示顺序固定：图表在前、报告文件在后（与阅读动线一致）
             for key in ("heatmap", "radar", "trend", "pdf", "excel"):
@@ -4444,22 +4493,24 @@ class _AgentWrapper:
 
     @staticmethod
     def _gather_tool_bookkeeping(result, messages):
-        """合并工具链记账：优先采用不受滑窗裁剪的 tool_ledger，辅以 messages 扫描。
+        """合并工具链记账：messages 扫描与 tool_ledger 互补，按首次出现顺序合并。
 
-        解耦背景：invoke / ainvoke 路径下 result["messages"] 为滑窗裁剪后的子集，
-        早期的 validate / calculate 等工具消息可能已被丢弃；tool_ledger 在裁剪前由
-        post_model_hook 完整累积，因此作为顺序与结果的权威来源。astream 路径下
-        无 tool_ledger，但累积的 messages 为全量，回退 messages 扫描仍可独立成立。
+        G11 后的语义：消息通道已改为原生累积、不再滑窗丢弃，messages 即全量，
+        因此结果以 messages 为权威、台账仅补缺；调用顺序取两来源的按序并集
+        （台账种子（预处理注入的先行工具轨迹）在前，messages 中新增调用按实际
+        顺序追加），兼容两种世界：
+        - 旧数据/测试：通道为窗口子集 + 完整台账 → 台账提供被裁剪的早期顺序；
+        - 新架构：全量 messages + 仅含种子的台账 → 真实调用顺序完整保留。
 
         Args:
             result: agent 返回的状态字典（可能含 tool_ledger）。
-            messages: 待扫描的消息列表（invoke 下为窗口子集，astream 下为全量）。
+            messages: 待扫描的消息列表（G11 后为全量）。
 
         Returns:
             (called_seq, results, called)
-            - called_seq: 按调用先后排列的工具名序列（优先取台账的完整序列）
-            - results:    {工具名: 最近一次结果内容}（台账为主，messages 补充）
-            - called:     已调用工具名集合（台账与 messages 的并集）
+            - called_seq: 按首次出现顺序合并的工具名序列
+            - results:    {工具名: 最近一次结果内容}（messages 为主，台账补缺）
+            - called:     已调用工具名集合（两来源并集）
         """
         ledger = (result or {}).get("tool_ledger") or {}
         ledger_seq = list(ledger.get("seq", []))
@@ -4468,11 +4519,16 @@ class _AgentWrapper:
         msg_seq = [m.name for m in messages if isinstance(m, ToolMessage)]
         msg_results = {m.name: m.content for m in messages if isinstance(m, ToolMessage)}
 
-        # 顺序：台账为裁剪前完整记录，优先采用；缺失时回退 messages 扫描
-        called_seq = ledger_seq if ledger_seq else msg_seq
-        # 结果：以 messages 为底，再用台账覆盖（台账保存全历史最近值，权威度更高）
-        results = dict(msg_results)
-        results.update(ledger_results)
+        # 顺序：两来源按首次出现合并（台账种子先行，messages 新增调用按实际顺序）
+        seen = set()
+        called_seq = []
+        for name in list(ledger_seq) + list(msg_seq):
+            if name and name not in seen:
+                seen.add(name)
+                called_seq.append(name)
+        # 结果：messages（G11 后为全量）为权威，台账覆盖补缺
+        results = dict(ledger_results)
+        results.update(msg_results)
         # 已调用集合：两来源并集（避免早期导出工具被裁剪后被误判为未调用而重复导出）
         called = set(msg_seq) | set(ledger_seq)
         return called_seq, results, called
@@ -4875,14 +4931,17 @@ def build_agent(ctx=None, model_override=None, module=None, fast=False):
         else:
             logger.warning(f"未知模块标识 {module}，回退全量工具")
 
-    # 使用 LangGraph 的 create_react_agent 构建 ReAct 模式智能体
+    # 使用 LangGraph 的 create_react_agent 构建 ReAct 模式智能体。
+    # G11：滑窗裁剪移至 pre_model_hook（只裁模型输入，通道保留全量）；
+    # post_model_hook 已移除——它与 Send 分发在 langgraph 1.0.x 存在并发写
+    # 竞态，是完整分析链路间歇性崩溃的根源。
     agent = create_react_agent(
         model=llm,
         tools=tools,
         prompt=cfg.get("sp"),           # 系统提示词（System Prompt）
         checkpointer=get_memory_saver(), # 会话记忆存储
         state_schema=AgentState,         # 自定义状态 schema
-        post_model_hook=_accumulate_tool_ledger,  # 裁剪前累积工具链台账，与滑窗解耦
+        pre_model_hook=_trim_llm_input,  # 模型入口滑窗裁剪（不销毁通道历史）
     )
 
     # 包装为 _AgentWrapper 以提供兜底导出能力（透传 module 供后处理差异化；
