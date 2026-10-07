@@ -4222,11 +4222,14 @@ class _AgentWrapper:
 
         # G8 fail-closed 导出门禁：解析与核心计算全部失败时，拒绝导出结构完整的
         # 「正常」报告——读者拿到零数据依据的 PDF/Excel 比拿到错误卡更危险。
-        # 判定：校验/指标/披露三类核心工具结果全空 且 台账无可导出的风险明细。
+        # 判定：校验/指标/披露三类核心工具结果全空 且 台账无可导出的风险明细
+        # 且 LLM 自身也未调用过导出工具（synthesis 串跑模式下 LLM 已自行导出、
+        # risk_json 提取失败是既有兼容形态，评分兜底仍应执行，不得误拦）。
         _core_tools_all_empty = not any(
             str(tool_results.get(k, "") or "").strip()
             for k in ("validate_financial_data", "calculate_financial_indicators",
                       "check_disclosure_compliance"))
+        _llm_exported = bool({"export_pdf_report", "export_excel_report"} & called)
         _has_exportable_risks = False
         try:
             _final_obj = json.loads(risk_json)
@@ -4238,7 +4241,7 @@ class _AgentWrapper:
                 or (isinstance(_snapshot_details, list) and len(_snapshot_details) > 0))
         except Exception:
             pass
-        if _core_tools_all_empty and not _has_exportable_risks:
+        if _core_tools_all_empty and not _has_exportable_risks and not _llm_exported:
             logger.warning("G8 导出门禁触发：核心工具结果全空且台账无风险明细，拒绝导出，只返回错误卡")
             if isinstance(last_ai.content, str):
                 last_ai.content += (

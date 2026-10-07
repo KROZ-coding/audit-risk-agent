@@ -9,6 +9,7 @@ import copy
 import json
 import os
 import re
+import threading
 import traceback
 import logging
 import uuid
@@ -2245,6 +2246,61 @@ async def get_system_status():
 
 
 # ══════════════════════════════════════════════════════
+# S3 登录防爆破限速器（内存滑动窗口，进程级；无新依赖）。
+# 按「IP + 用户名」双键计数：任一键在窗口内超限即 429。
+# 本地单机演示默认零摩擦；对外部署时可按需调严。
+# ══════════════════════════════════════════════════════
+_AUTH_RATE_WINDOW_SEC = 300        # 5 分钟窗口
+_AUTH_RATE_MAX_ATTEMPTS = 10       # 窗口内最多 10 次失败尝试
+_AUTH_RATE_MAX_PER_IP = 30         # 窗口内单 IP 总上限（防换用户名绕过）
+_auth_attempts: Dict[str, list] = {}
+_auth_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    """取客户端 IP（优先代理头，防直连伪造仅作尽力而为）。"""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _auth_rate_check(request: Request, username: str) -> str | None:
+    """检查登录/注册尝试是否超限；超限返回原因文本，未超限返回 None。"""
+    import time as _time
+    ip = _client_ip(request)
+    now = _time.time()
+    cutoff = now - _AUTH_RATE_WINDOW_SEC
+    with _auth_lock:
+        # 惰性清理过期记录
+        stale = [k for k, ts in _auth_attempts.items()
+                 if not ts or ts[-1] < cutoff]
+        for k in stale:
+            _auth_attempts.pop(k, None)
+        user_key = f"u:{ip}:{str(username or '')[:64]}"
+        ip_key = f"ip:{ip}"
+        user_ts = [t for t in _auth_attempts.get(user_key, []) if t >= cutoff]
+        ip_ts = [t for t in _auth_attempts.get(ip_key, []) if t >= cutoff]
+        if len(user_ts) >= _AUTH_RATE_MAX_ATTEMPTS:
+            return "登录尝试过于频繁，请 5 分钟后重试"
+        if len(ip_ts) >= _AUTH_RATE_MAX_PER_IP:
+            return "该地址请求过于频繁，请稍后重试"
+        _auth_attempts[user_key] = user_ts + [now]
+        _auth_attempts[ip_key] = ip_ts + [now]
+    return None
+
+
+# S5 分析并发上限（进程级信号量）：/run 与 /stream_run 共享，超限 429 排队拒绝。
+# 每个分析任务内部还有导出线程池/matplotlib/chroma/LLM 调用，无界并发会放大
+# 内存与 API 账单，默认 4 路（本地单机场景足够；可用 env 覆盖）。
+try:
+    _ANALYSIS_MAX_CONCURRENT = max(1, int(os.getenv("ANALYSIS_MAX_CONCURRENT", "4")))
+except (TypeError, ValueError):
+    _ANALYSIS_MAX_CONCURRENT = 4
+_analysis_semaphore = asyncio.Semaphore(_ANALYSIS_MAX_CONCURRENT)
+
+
+# ══════════════════════════════════════════════════════
 # 多用户认证与分析历史 API
 # 设计：未登录不影响分析（演示零摩擦），但历史仅在登录态记录/查询；
 # 历史接口强制按 token 对应的 user_id 隔离，无法跨用户读取。
@@ -2271,14 +2327,22 @@ async def auth_register(request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
-    """口令登录，签发会话令牌（用户名不存在与口令错误统一提示，防枚举）。"""
+    """口令登录，签发会话令牌（用户名不存在与口令错误统一提示，防枚举）。
+    S3：按 IP+用户名限速防在线爆破；PBKDF2 用 to_thread 下放，不阻塞事件循环。"""
     try:
         body = await request.json()
     except json.JSONDecodeError:
         return JSONResponse({"status": "error", "message": "请求体不是合法 JSON"}, status_code=400)
+    _username = str(body.get("username", ""))[:64]
+    limited = _auth_rate_check(request, _username)
+    if limited:
+        logger.warning(f"登录限速触发: ip={_client_ip(request)}, user={_username}")
+        return JSONResponse({"status": "error", "message": limited}, status_code=429)
     try:
         from storage.database.user_service import login_user
-        session_info = login_user(body.get("username", ""), body.get("password", ""))
+        # S3：PBKDF2 120k 迭代约 50-100ms，放事件循环内会阻塞所有并发请求
+        session_info = await asyncio.to_thread(
+            login_user, body.get("username", ""), body.get("password", ""))
     except Exception as e:  # noqa: BLE001
         logger.error(f"登录异常: {e}")
         return JSONResponse({"status": "error", "message": "登录服务异常，请稍后重试"}, status_code=500)
@@ -2359,13 +2423,20 @@ async def http_run(request: Request) -> Dict[str, Any]:
 
     try:
         payload = await request.json()
-        task = asyncio.create_task(service.run(payload, ctx))
-        service.running_tasks[run_id] = task
-        try:
-            result = await asyncio.wait_for(task, timeout=float(TIMEOUT_SECONDS))
-        except asyncio.TimeoutError:
-            task.cancel()
-            return {"status": "timeout", "run_id": run_id}
+        # S5 并发配额：超过上限直接 429（不排队，快速失败让前端提示重试），
+        # 防止无界并发放大内存与 LLM 账单
+        if _analysis_semaphore.locked():
+            return JSONResponse(
+                {"status": "busy", "message": f"当前已有 {_ANALYSIS_MAX_CONCURRENT} 个分析在执行，请稍后重试"},
+                status_code=429)
+        async with _analysis_semaphore:
+            task = asyncio.create_task(service.run(payload, ctx))
+            service.running_tasks[run_id] = task
+            try:
+                result = await asyncio.wait_for(task, timeout=float(TIMEOUT_SECONDS))
+            except asyncio.TimeoutError:
+                task.cancel()
+                return {"status": "timeout", "run_id": run_id}
 
         if not result:
             result = {}
@@ -2406,8 +2477,19 @@ async def http_stream_run(request: Request):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
 
-    generator = service.stream_sse(payload, ctx, user=_current_user(request))
-    return StreamingResponse(generator, media_type="text/event-stream")
+    # S5 并发配额：与 /run 共享信号量，超限 429 快速失败
+    if _analysis_semaphore.locked():
+        return JSONResponse(
+            {"status": "busy", "message": f"当前已有 {_ANALYSIS_MAX_CONCURRENT} 个分析在执行，请稍后重试"},
+            status_code=429)
+
+    async def _guarded_stream():
+        async with _analysis_semaphore:
+            generator = service.stream_sse(payload, ctx, user=_current_user(request))
+            async for chunk in generator:
+                yield chunk
+
+    return StreamingResponse(_guarded_stream(), media_type="text/event-stream")
 
 
 @app.post("/v1/chat/completions")
