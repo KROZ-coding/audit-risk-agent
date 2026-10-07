@@ -29,6 +29,7 @@ from utils.filename import count_existing_runs, to_roman, resolve_company_year, 
 from tools.pdf_parser import parse_pdf_report
 from tools.financial_calculator import calculate_financial_indicators
 from tools.knowledge_search import search_regulations
+from tools.external_verifier import verify_against_external_source
 from tools.excel_export import export_excel_report
 from tools.pdf_export import export_pdf_report, DIM_ALIASES
 from tools.multi_year_comparison import compare_multi_year
@@ -4937,7 +4938,7 @@ def build_agent(ctx=None, model_override=None, module=None, fast=False):
     1. 读取 agent_llm_config.json 获取 LLM 参数（模型名、温度、top_p 等）
     2. 从环境变量获取 API Key 和 Base URL
     3. 创建 ChatOpenAI 实例（兼容 DeepSeek API）
-    4. 注册全部 16 个分析工具（module 不为空时只注册该模块的工具子集）
+    4. 注册全部 17 个分析工具（module 不为空时只注册该模块的工具子集）
     5. 通过 LangGraph create_react_agent 构建 ReAct 模式 Agent
     6. 用 _AgentWrapper 包装以提供兜底导出机制
 
@@ -5013,6 +5014,7 @@ def build_agent(ctx=None, model_override=None, module=None, fast=False):
         investment_advisor,            # 智能投资参考卡（C 端轻量，风险提示定位）
         industry_outlook,              # 行业风向标（C 端轻量，新闻+知识库驱动）
         search_regulatory_inquiries,   # 监管问询在线查询（上交所/深交所，网络失败自动跳过）
+        verify_against_external_source,  # 外部数据核验（E1，MCP 框架；未配置时 external_unavailable）
     ]
 
     # 模块裁剪：单模块分析时只注册本模块所需工具，缩小 LLM 的选择空间，

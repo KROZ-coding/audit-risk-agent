@@ -23,6 +23,7 @@
     "identify_audit_opinion",
     "investment_advisor",
     "industry_outlook",
-    "search_regulatory_inquiries"
+    "search_regulatory_inquiries",
+    "verify_against_external_source"
   ]
 }

@@ -19,7 +19,7 @@
 |------|------|
 | `src/main.py` | FastAPI 服务与 CLI 入口；`/run` `/stream_run` `/upload` 等路由；`TOOL_PIPELINE` 进度映射 |
 | `src/agents/agent.py` | 构建 ReAct Agent、注册工具、多智能体辩论、兜底导出、消息滑动窗口 |
-| `src/tools/` | 全部审计与 C 端轻量工具（16 个工具，见下方常见任务路径） |
+| `src/tools/` | 全部审计与 C 端轻量工具（17 个工具，见下方常见任务路径） |
 | `src/local_knowledge.py` | 知识库加载与检索（ChromaDB / TF-IDF） |
 | `src/local_shims.py` | 替代 coze SDK 的本地兼容层（context、logging、config 等） |
 | `src/storage/` | 数据库、memory checkpoint、S3 存储封装 |

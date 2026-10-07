@@ -136,7 +136,7 @@ uv run python tests/evaluation_report.py --mode agent
 projects/
 ├── src/
 │   ├── agents/agent.py            # Agent 构建 + 预处理预跑 + 报告身份兜底 + 三方辩论复核（仲裁回写）
-│   ├── tools/                     # 16 个核心分析工具
+│   ├── tools/                     # 17 个核心分析工具（含 E1 外部数据核验）
 │   │   ├── financial_calculator.py   # 16 项核心指标（+3 扩展 / +2 条件，单次最多 21 条）
 │   │   ├── data_validator.py         # 三大勾稽校验
 │   │   ├── knowledge_search.py       # 法规知识库检索（RAG）
