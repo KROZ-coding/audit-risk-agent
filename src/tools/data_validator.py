@@ -49,7 +49,8 @@ def _metadata(data: dict) -> dict:
 def _normalize_validation_input(data: dict) -> dict:
     aliases = {
         field: tuple(dict.fromkeys((f"{field}_current", *_CURRENT_ALIASES.get(f"{field}_current", ()))))
-        for field in ("total_assets", "total_liabilities", "net_assets", "net_profit", "operating_cashflow")
+        for field in ("total_assets", "total_liabilities", "net_assets", "net_profit", "operating_cashflow",
+                      "income_tax_expense", "profit_before_tax")
     }
     aliases.update({
         "net_profit_parent": ("net_profit_parent_current",),
@@ -111,6 +112,7 @@ def _base_result(check: str, formula: str, status: str, passed, message: str, *,
         "现金流勾稽": "cashflow_reconciliation",
         "现金流合理性（有限检查）": "cashflow_limited",
         "未分配利润一致性": "retained_earnings",
+        "有效税率合理性": "effective_tax_rate",
     }.get(check, "check")
     metric_id = f"validation_{metric_slug}"
     metric = MetricResult(
@@ -313,9 +315,84 @@ def _validate_retained_earnings(data: dict) -> dict:
     return result
 
 
+def _validate_effective_tax_rate(data: dict) -> dict:
+    """知识库跨表勾稽第 9 条：所得税费用 ↔ 利润总额（有效税率合理性）。
+
+    所得税费用 / 利润总额 应接近适用税率（考虑税收优惠与递延所得税后）；
+    有效税率异常偏低且无优惠政策支撑，指向利润虚增（虚增的利润通常不交税）。
+    筛查线：有效税率 < 5% 判为异常偏低（低于常见法定优惠税率 10%~15% 的下限）；
+    利润总额 ≤ 0 或所得税费用为负（退税/递延调整）时比率无判别力，仅作有限检查。
+    """
+    tax = _decimal(data.get("income_tax_expense"))
+    profit = _decimal(data.get("profit_before_tax"))
+    inputs = {"income_tax_expense": tax, "profit_before_tax": profit}
+    if tax is None or profit is None:
+        return _base_result(
+            "有效税率合理性", "所得税费用 / 利润总额", "insufficient_data", None,
+            "缺少所得税费用或利润总额，无法执行有效税率勾稽",
+            data=data, inputs=inputs, reason="完整勾稽需要两项原始事实",
+        )
+    if profit <= 0 or tax < 0:
+        return _base_result(
+            "有效税率合理性", "所得税费用 / 利润总额", "limited_check", None,
+            f"利润总额{_number(profit, 2)}、所得税费用{_number(tax, 2)}：亏损或退税情景下"
+            "有效税率无判别力，不作异常判定；如利润为负而所得税费用为正，需人工核实递延所得税处理",
+            data=data, inputs=inputs, reason="比率在分母非正或分子为负时不具方向性",
+        )
+    rate = tax / profit
+    passed = rate >= Decimal("0.05")
+    if passed:
+        message = (f"有效税率{_number(rate * 100, 2)}%，处于合理适用税率区间"
+                   "（考虑税收优惠与递延所得税后），未触发异常偏低筛查线")
+    else:
+        message = (f"有效税率仅{_number(rate * 100, 2)}%，低于 5% 异常偏低筛查线"
+                   "（常见法定优惠税率为 10%~15%）：若无税收优惠支撑，指向利润虚增"
+                   "（虚增的利润通常不交税），须核实税收优惠依据与递延所得税构成")
+    result = _base_result(
+        "有效税率合理性", "所得税费用 / 利润总额", "calculated", passed, message,
+        data=data, inputs=inputs, difference=abs(tax - profit * Decimal("0.25")),
+        threshold="有效税率 ≥ 5%（异常偏低筛查线，参考法定税率 25% 与优惠税率 10%~15%）",
+        reason="知识库跨表勾稽第 9 条：有效税率异常偏低且无优惠政策支撑，指向利润虚增；筛查线不构成税务结论",
+    )
+    result.update({
+        "income_tax_expense": _number(tax), "profit_before_tax": _number(profit),
+        "effective_tax_rate": f"{_number(rate * 100, 2):.2f}%",
+        "statutory_reference": "法定税率 25%；高新技术等优惠税率 10%~15%",
+    })
+    return result
+
+
+# F1 覆盖声明：对照 knowledge_base/报表勾稽规则库「三、跨表勾稽」10 条规则，
+# 逐条登记本工具（及其他工具）的实现状态。未实现 ≠ 无风险，缺字段条目须
+# 先扩展提取 schema 才能勾稽，此处如实声明避免"勾稽通过"被误读为全量交叉验证。
+_KB_CROSS_TABLE_COVERAGE = [
+    {"rule_id": 1, "rule": "净利润 → 现金流量表起点", "status": "implemented",
+     "detail": "由「现金流勾稽」校验承担（净利润+间接法调整=经营活动现金流量净额）"},
+    {"rule_id": 2, "rule": "未分配利润变动 ↔ 净利润与分红", "status": "implemented",
+     "detail": "由「未分配利润一致性」校验承担（归母口径）"},
+    {"rule_id": 3, "rule": "营业收入 ↔ 应收账款", "status": "partial",
+     "detail": "由财务指标工具的应收/营收偏离告警部分覆盖（阈值筛查，非严格勾稽）"},
+    {"rule_id": 4, "rule": "营业收入 ↔ 销售商品提供劳务收到的现金", "status": "not_implemented",
+     "detail": "提取 schema 缺「销售商品提供劳务收到的现金」字段，待扩展后实现收现比勾稽"},
+    {"rule_id": 5, "rule": "营业成本 ↔ 存货与应付账款", "status": "not_implemented",
+     "detail": "缺「购买商品接受劳务支付的现金」及存货/应付账款变动字段"},
+    {"rule_id": 6, "rule": "固定资产 ↔ 折旧", "status": "not_implemented",
+     "detail": "缺固定资产原值/在建工程字段，现有折旧率筛查在 M-Score DEPI 内且口径受限"},
+    {"rule_id": 7, "rule": "货币资金 ↔ 利息收入", "status": "partial",
+     "detail": "由财务指标工具的存贷双高告警部分覆盖（含利息收入/货币资金比率）"},
+    {"rule_id": 8, "rule": "有息负债 ↔ 财务费用", "status": "not_implemented",
+     "detail": "缺有息负债合计口径字段（现有短期借款不构成全口径）"},
+    {"rule_id": 9, "rule": "所得税费用 ↔ 利润总额", "status": "implemented",
+     "detail": "由「有效税率合理性」校验承担（本次新增）"},
+    {"rule_id": 10, "rule": "现金流量表三项净额 ↔ 货币资金变动", "status": "not_implemented",
+     "detail": "缺投资/筹资活动现金流量净额与现金及现金等价物净增加额字段"},
+]
+
+
 @tool
 def validate_financial_data(financial_data_json: str) -> str:
-    """执行资产负债表、现金流和未分配利润三类数据质量校验。"""
+    """执行资产负债表平衡、现金流勾稽、未分配利润一致性、有效税率合理性四类数据质量校验，
+    并声明对知识库跨表勾稽规则的覆盖范围（未覆盖条目不表示无风险）。"""
     try:
         data = json.loads(financial_data_json)
     except (TypeError, json.JSONDecodeError) as exc:
@@ -324,7 +401,8 @@ def validate_financial_data(financial_data_json: str) -> str:
         return json.dumps({"error": "输入 JSON 顶层须为对象", "validation_version": VALIDATION_VERSION}, ensure_ascii=False)
 
     data = _normalize_validation_input(data)
-    results = [_validate_balance_sheet(data), _validate_cashflow_reconciliation(data), _validate_retained_earnings(data)]
+    results = [_validate_balance_sheet(data), _validate_cashflow_reconciliation(data),
+               _validate_retained_earnings(data), _validate_effective_tax_rate(data)]
     failed = [item for item in results if item.get("passed") is False]
     skipped = [item for item in results if item.get("passed") is None]
     limited = [item for item in results if item.get("status") == "limited_check"]
@@ -360,6 +438,16 @@ def validate_financial_data(financial_data_json: str) -> str:
             "status": "failed" if failed else "partially_tested" if pending_checks else "verified",
             "risks": risks,
             "pending_checks": pending_checks,
+            # F1 覆盖声明：本工具实现了知识库跨表勾稽 10 条中的 3 条（第 1、2、9 条），
+            # 另有 2 条由财务指标工具阈值告警部分覆盖；未实现条目逐项列明原因，
+            # 「勾稽校验通过」仅指已实现条目通过，不等于三大报表完成全量交叉验证。
+            "kb_cross_table_coverage": {
+                "implemented": sum(1 for c in _KB_CROSS_TABLE_COVERAGE if c["status"] == "implemented"),
+                "partial": sum(1 for c in _KB_CROSS_TABLE_COVERAGE if c["status"] == "partial"),
+                "not_implemented": sum(1 for c in _KB_CROSS_TABLE_COVERAGE if c["status"] == "not_implemented"),
+                "rules": _KB_CROSS_TABLE_COVERAGE,
+                "note": "勾稽校验通过仅指已实现条目通过；未实现条目不表示无风险，缺字段条目待提取 schema 扩展后补齐",
+            },
         },
         "facts": [f for item in results for f in item.get("facts", [])],
         "metric_results": [item["metric_result"] for item in results],

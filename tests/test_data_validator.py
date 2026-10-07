@@ -150,7 +150,8 @@ class TestDataValidator:
         assert validation["passed_checks"] == 1
         assert validation["limited_checks"] == 2
         assert validation["failed_checks"] == 0
-        assert len(validation["pending_checks"]) == 2
+        # F1 后为四类校验：有效税率在本用例缺字段 → insufficient_data 进入 pending
+        assert len(validation["pending_checks"]) == 3
 
     def test_current_aliases_keep_original_source_fields_and_dates(self):
         result = self._invoke({
