@@ -197,9 +197,12 @@ class LocalKnowledgeBase:
         self._idf = {}
         self._tfidf_vectors = []
 
-        # 分词
+        # G7 分词加固：中文用 1~2 字 n-gram（unigram + bigram），替换旧的
+        # 「[\u4e00-\u9fff]{2,} 整串成词」——旧分词把"存贷双高货币资金"当作
+        # 一个 token，查询与文档几乎不可能整串命中，TF-IDF 回退路径近乎零召回，
+        # 与 ChromaDB 路径行为严重不一致。n-gram 后部分重叠即可得分。
         for doc in self.documents:
-            doc["tokens"] = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', doc["content"].lower())
+            doc["tokens"] = self._tokenize(str(doc.get("content", "")))
 
         # 构建 IDF
         n = len(self.documents)
@@ -210,6 +213,24 @@ class LocalKnowledgeBase:
             for t in set(doc["tokens"]):
                 df[t] += 1
         self._idf = {t: math.log((n + 1) / (c + 1)) + 1 for t, c in df.items()}
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        """中文 1~2 字 n-gram + 英文词 + 数字（G7）。"""
+        import re
+        from collections import Counter as _C
+        text = str(text or "").lower()
+        tokens: List[str] = []
+        # 英文词与数字保持整词
+        tokens.extend(re.findall(r"[a-zA-Z]{2,}|\d+", text))
+        # 中文段做 1~2 字 n-gram
+        for segment in re.findall(r"[\u4e00-\u9fff]+", text):
+            if len(segment) == 1:
+                tokens.append(segment)
+                continue
+            tokens.extend(segment)  # unigram
+            tokens.extend(segment[i:i + 2] for i in range(len(segment) - 1))  # bigram
+        return tokens
 
     def _tfidf_search_fallback(self, query: str, top_k: int, min_score: float) -> List[Dict]:
         """TF-IDF 回退检索"""
@@ -222,7 +243,8 @@ class LocalKnowledgeBase:
         if not getattr(self, "_idf", None):
             self._build_tfidf_fallback()
 
-        q_tokens = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', query.lower())
+        # G7：查询用与文档一致的 n-gram 分词
+        q_tokens = self._tokenize(query)
         tf = Counter(q_tokens)
         total = len(q_tokens) or 1
         q_vec = {t: (tf[t] / total) * self._idf.get(t, 1.0) for t in set(q_tokens)}
