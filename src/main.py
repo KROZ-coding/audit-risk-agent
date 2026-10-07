@@ -2547,50 +2547,57 @@ async def maintenance_status():
     return {"status": "ok", "report": report}
 
 
-@app.post("/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
-    """接收上传文件，保存到临时目录并解析提取文本内容。
+def _process_uploads(files) -> list:
+    """S4：/upload 的同步处理主体（保存落盘 + 多格式解析）。
 
-    支持多种文件格式：PDF/Word/Excel/CSV/HTML/PPT/TXT/Markdown。
-    每种格式使用对应的解析器提取纯文本，供后续 AI 分析使用。
-    提取文本超过 20 万字符时自动截断，防止 LLM 上下文溢出。
+    100MB 扫描版 PDF 的解析可达数十秒，放在 async 路由内联执行会阻塞
+    事件循环、冻结全站；抽成同步函数由调用方 to_thread 下放。
+    Args:
+        files: [(filename, BytesIO) 元组]——async 层已预读的文件内容。
     """
     results = []
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    for f in files:
-        ext = os.path.splitext(f.filename or "")[1].lower()
+    for filename, bio in files:
+        ext = os.path.splitext(filename or "")[1].lower()
         if ext not in ALLOWED_EXTENSIONS:
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
                 "error": f"不支持的文件格式: {ext}，仅支持 {', '.join(ALLOWED_EXTENSIONS)}",
             })
             continue
 
-        if f.size and f.size > MAX_UPLOAD_SIZE:
+        bio.seek(0, os.SEEK_END)
+        f_size = bio.tell()
+        if f_size > MAX_UPLOAD_SIZE:
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
-                "error": f"文件大小 ({f.size} bytes) 超过限制 100MB",
+                "error": f"文件大小 ({f_size} bytes) 超过限制 100MB",
             })
             continue
 
         # 路径穿越防护：剥离路径成分并净化非法字符（与 /api/upload_kb 的净化逻辑对齐），
         # 防止构造 "../../../evil" 之类文件名逃逸出 UPLOAD_DIR
         import re as _re
-        safe_name = _re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(f.filename or "file"))
+        safe_name = _re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(filename or "file"))
         unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
         save_path = os.path.join(UPLOAD_DIR, unique_name)
 
         try:
             # 流式落盘：分块读取边写边计数，内存峰值仅一个 chunk（1MB）；
-            # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM
+            # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM。
+            # S4：本函数已改为同步（to_thread 下放），UploadFile 的异步读
+            # 需在此先行读入内存分块再落盘——由调用方先按 1MB 分块读齐。
             size = 0
             oversize = False
             source_digest = hashlib.sha256()
             with open(save_path, "wb") as out:
-                while chunk := await f.read(1024 * 1024):
+                while True:
+                    chunk = bio.read(1024 * 1024)
+                    if not chunk:
+                        break
                     size += len(chunk)
                     if size > MAX_UPLOAD_SIZE:
                         oversize = True
@@ -2600,7 +2607,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
             if oversize:
                 os.remove(save_path)
                 results.append({
-                    "filename": f.filename,
+                    "filename": filename,
                     "status": "error",
                     "error": "文件大小超过限制 100MB（已中断接收并清理半成品文件）",
                 })
@@ -2706,7 +2713,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
                         extracted_text = rf.read().decode("utf-8", errors="ignore")
 
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "saved_path": save_path,
                 "status": "ok",
                 "file_size": size,
@@ -2714,21 +2721,45 @@ async def upload_files(files: List[UploadFile] = File(...)):
                 "page_count": page_count,
                 # 上传层计算的源文件指纹随结构化元数据传给前端和终局快照；
                 # 不把哈希埋在解析文本中，避免模型改写或截断来源信息。
-                "source_document": f.filename or "",
+                "source_document": filename or "",
                 "source_hash": source_digest.hexdigest(),
             })
-            logger.info(f"文件上传成功: {f.filename} → {save_path} ({size} bytes)")
+            logger.info(f"文件上传成功: {filename} → {save_path} ({size} bytes)")
 
         except Exception as e:
             # S7：对外只回泛化文案——异常串可能含服务器内部绝对路径/库细节；
             # 完整原因已入服务日志（logger.error）。
-            logger.error(f"文件上传失败: {f.filename}: {e}\n{traceback.format_exc()}")
+            logger.error(f"文件上传失败: {filename}: {e}\n{traceback.format_exc()}")
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
                 "error": "文件处理失败，请确认文件未损坏后重试（详情见服务日志）",
             })
 
+    return results
+
+
+@app.post("/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    """接收上传文件，保存到临时目录并解析提取文本内容。
+
+    支持多种文件格式：PDF/Word/Excel/CSV/HTML/PPT/TXT/Markdown。
+    每种格式使用对应的解析器提取纯文本，供后续 AI 分析使用。
+    提取文本超过 20 万字符时自动截断，防止 LLM 上下文溢出。
+    S4：async 层只做网络读取（UploadFile 必须在事件循环内读），
+    解析主体同步执行（_process_uploads）经 to_thread 下放，
+    100MB 级扫描件解析期间事件循环照常服务其他请求。
+    """
+    # 预读：UploadFile 是异步文件对象，只能在事件循环内读取；
+    # 按 1MB 分块读入 BytesIO（内存峰值 ~文件大小，100MB 上限可控）
+    import io as _io
+    preloaded = []
+    for f in files:
+        buf = _io.BytesIO()
+        while chunk := await f.read(1024 * 1024):
+            buf.write(chunk)
+        preloaded.append((f.filename, buf))
+    results = await asyncio.to_thread(_process_uploads, preloaded)
     return {"files": results}
 
 
@@ -2743,11 +2774,18 @@ async def reload_knowledge_base():
     """
     try:
         from local_knowledge import get_knowledge_base
-        kb = get_knowledge_base()
-        kb.documents.clear()
-        kb._collection = None
-        kb._loaded = False
-        kb.load()
+
+        def _do_reload():
+            kb = get_knowledge_base()
+            kb.documents.clear()
+            kb._collection = None
+            kb._loaded = False
+            kb.load()
+            return kb
+
+        # S4：重建向量索引可达分钟级（嵌入式 ONNX 逐块 embedding），
+        # 必须下放线程池，否则期间全站（登录/历史/SSE）无响应
+        kb = await asyncio.to_thread(_do_reload)
         return {
             "status": "ok",
             "message": f"知识库重载完成，共 {len(kb.documents)} 个文档块",
