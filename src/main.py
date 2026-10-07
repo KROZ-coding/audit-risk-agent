@@ -2903,7 +2903,7 @@ async def get_evaluation_status():
 
 
 @app.post("/api/evaluate/run")
-async def run_evaluation(mode: str = "tool"):
+async def run_evaluation(mode: str = "tool", output_path: str | None = None):
     """运行效果评估（工具模式或全链路 Agent 模式）。
 
     工具模式：直接调用本地确定性评估逻辑计算 22 个测试用例，通常数秒内完成。
@@ -2911,9 +2911,8 @@ async def run_evaluation(mode: str = "tool"):
 
     Args:
         mode: 评估模式，"tool"=工具级（快速）, "agent"/"all"=全链路
-
-    Returns:
-        评估完成状态和结果数据（含 Precision/Recall/F1/基线对比）
+        output_path: 结果落盘路径；缺省写 tests/evaluation_results.json。
+            单元测试必须传 tmp_path（T5：禁止测试覆写版本库跟踪的评估结果）。
     """
     try:
         # 评估脚本与服务使用同一项目根目录，避免 COZE_WORKSPACE_PATH 指向父目录时
@@ -2933,8 +2932,8 @@ async def run_evaluation(mode: str = "tool"):
                     raise RuntimeError(f"无法加载评估模块: {script_path}")
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                output_path = project_root / "tests" / "evaluation_results.json"
-                return module.run_evaluation("tool", str(output_path))
+                output_path_final = output_path or str(project_root / "tests" / "evaluation_results.json")
+                return module.run_evaluation("tool", output_path_final)
 
             data = await asyncio.wait_for(asyncio.to_thread(_run_tool), timeout=30)
             return {"status": "ok", "mode": "tool", "data": data}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-03T02:01:56.669277",
+  "generated_at": "2026-10-07T16:21:55.347300",
   "test_suite": {
     "total_cases": 22,
     "dimensions": [
@@ -13,7 +13,7 @@
   "results": {
     "tool": {
       "mode": "tool",
-      "evaluation_time": "2026-10-03T02:01:56.764143",
+      "evaluation_time": "2026-10-07T16:21:55.444990",
       "test_count": 22,
       "metrics": {
         "average_precision": 1.0,
@@ -21,7 +21,7 @@
         "average_f1": 0.983,
         "false_positive_count": 0,
         "false_positive_total": 2,
-        "average_response_time_sec": 0.003
+        "average_response_time_sec": 0.004
       },
       "blind_test": {
         "description": "盲测集：真实处罚案例公开数据（未参与阈值设计），与合成集分开报告以验证泛化能力",
@@ -46,7 +46,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.005,
+            "elapsed_sec": 0.004,
             "expected_dimensions": [
               "financial_misstatement"
             ],
@@ -73,7 +73,7 @@
             "precision": 1.0,
             "recall": 0.5,
             "f1": 0.667,
-            "elapsed_sec": 0.004,
+            "elapsed_sec": 0.003,
             "expected_dimensions": [
               "related_party"
             ],
@@ -106,7 +106,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.003,
+            "elapsed_sec": 0.004,
             "expected_dimensions": [
               "going_concern",
               "financial_misstatement"
@@ -133,7 +133,7 @@
             "precision": 1.0,
             "recall": 1.0,
             "f1": 1.0,
-            "elapsed_sec": 0.004,
+            "elapsed_sec": 0.003,
             "expected_dimensions": [
               "financial_misstatement",
               "regulatory_penalty"
@@ -152,7 +152,7 @@
             "actual_count": 0,
             "correct": true,
             "alerts": [],
-            "elapsed_sec": 0.004,
+            "elapsed_sec": 0.005,
             "expected_dimensions": [],
             "dimension_hits": {
               "financial_misstatement": true,
@@ -223,7 +223,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.016,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern"
@@ -312,7 +312,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -356,7 +356,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.005,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -385,7 +385,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern",
             "financial_misstatement"
@@ -412,7 +412,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.002,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -439,7 +439,7 @@
           "precision": 1.0,
           "recall": 0.5,
           "f1": 0.667,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "related_party"
           ],
@@ -467,7 +467,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.003,
+          "elapsed_sec": 0.004,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -493,7 +493,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.003,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -519,7 +519,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.003,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "financial_misstatement"
           ],
@@ -571,7 +571,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -623,7 +623,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.003,
+          "elapsed_sec": 0.002,
           "expected_dimensions": [
             "going_concern"
           ],
@@ -641,7 +641,7 @@
           "actual_count": 0,
           "correct": true,
           "alerts": [],
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.005,
           "expected_dimensions": [],
           "dimension_hits": {
             "financial_misstatement": true,
@@ -675,7 +675,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.006,
+          "elapsed_sec": 0.005,
           "expected_dimensions": [
             "financial_misstatement",
             "going_concern",
@@ -729,7 +729,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "disclosure_compliance"
           ],
@@ -755,7 +755,7 @@
           "precision": 1.0,
           "recall": 1.0,
           "f1": 1.0,
-          "elapsed_sec": 0.004,
+          "elapsed_sec": 0.003,
           "expected_dimensions": [
             "regulatory_penalty"
           ],
@@ -798,5 +798,11 @@
         }
       ]
     }
+  },
+  "provenance": {
+    "git_head": "6cd7e89",
+    "mode": "tool",
+    "generated_at": "2026-10-07T16:21:55.347300",
+    "note": "评估结果与代码版本绑定；tests 不得在单测中覆写本文件（端点测试已改写 tmp_path）"
   }
 }

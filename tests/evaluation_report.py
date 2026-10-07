@@ -47,6 +47,24 @@ RISK_DIMENSIONS = [
 ]
 
 
+def _normalize_dimension(dim) -> str:
+    """T4 修复：把维度名归一到英文标识。
+
+    Agent 按系统提示词输出中文维度（"财务错报风险"等），而本脚本的
+    RISK_DIMENSIONS 是英文标识——旧实现直接用中文比对英文枚举，永远不匹配，
+    导致 agent 模式五维指标全 0（且从未被真实运行暴露）。此处做 CN→EN 归一：
+    已是英文标识的原样返回，未知维度原样返回（保守，不误归类）。
+    """
+    dim = str(dim or "").strip()
+    if not dim or dim in RISK_DIMENSIONS:
+        return dim
+    try:
+        from agents.agent import CN_TO_EN_DIM
+        return CN_TO_EN_DIM.get(dim, dim)
+    except Exception:
+        return dim
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 标准测试集：基于证监会公开处罚案例和审计准则阈值设计的 10 个标注样本
 # 每个样本包含：输入财务数据 + 期望触发的风险维度 + 期望关键词
@@ -741,10 +759,10 @@ def _evaluate_dimensions(case: dict, extracted_risks: list) -> dict:
     Returns:
         各维度指标字典 {dimension: {tp, fp, fn, precision, recall, f1}}
     """
-    # 收集系统输出的维度集合
+    # 收集系统输出的维度集合（T4：中文维度先归一到英文标识再比对）
     predicted_dims = set()
     for risk in extracted_risks:
-        dim = risk.get("dimension", "")
+        dim = _normalize_dimension(risk.get("dimension", ""))
         if dim in RISK_DIMENSIONS:
             predicted_dims.add(dim)
 
@@ -795,7 +813,7 @@ async def run_agent_evaluation():
         return None
 
     try:
-        from src.agents.agent import build_agent
+        from agents.agent import build_agent
         from local_shims import new_context
 
         ctx = new_context("evaluation")
@@ -1108,11 +1126,31 @@ def build_full_report(mode="tool", include_zero_shot: bool = False):
     return full_report
 
 
+def _git_head():
+    """取当前 git 提交短哈希（T5 provenance）；不在 git 环境时返回 None。"""
+    try:
+        import subprocess
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        return None
+
+
 def run_evaluation(mode="tool", output_path=None, include_zero_shot: bool = False):
     """运行评估并写出结果；返回与 ``evaluation_results.json`` 相同的对象。"""
     output_path = output_path or os.path.join(
         os.path.dirname(__file__) or ".", "evaluation_results.json")
     full_report = build_full_report(mode, include_zero_shot=include_zero_shot)
+    # T5 provenance：结果必须可追溯到产生它的代码版本，否则不能作为对外证据
+    full_report["provenance"] = {
+        "git_head": _git_head(),
+        "mode": mode,
+        "generated_at": full_report.get("generated_at") or datetime.now().isoformat(),
+        "note": "评估结果与代码版本绑定；tests 不得在单测中覆写本文件（端点测试已改写 tmp_path）",
+    }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(full_report, f, ensure_ascii=False, indent=2)
     print(f"\n  📄 评估结果已保存至: {output_path}")
