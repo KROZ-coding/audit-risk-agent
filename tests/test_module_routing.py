@@ -42,7 +42,7 @@ class TestModuleRouting:
         assert _detect_module(None) is None
 
     def test_marker_anywhere_in_text(self):
-        """标记出现在文本中部也能识别（前端注入位置变化时不至于失效）。"""
+        """短消息里标记出现在首部前缀（64 字符）内即可识别（前端注入位置小幅变化不失效）。"""
         marker = MODULE_MARKERS["financial"]
         assert _detect_module(_payload(f"年报内容……{marker}……")) == "financial"
 
@@ -51,6 +51,19 @@ class TestModuleRouting:
         class Msg:
             content = MODULE_MARKERS["synthesis"] + " 分析"
         assert _detect_module({"messages": [Msg()]}) == "synthesis"
+
+    def test_marker_buried_in_long_document_text_is_ignored(self):
+        """G1：年报正文（不可信长文本）中埋入模块标记不得切换工具链路由"""
+        marker = MODULE_MARKERS["compliance"]
+        report_text = "年报正文，" * 1200 + f"正文引用了{marker}的定义作背景说明。"
+        assert len(report_text) > 2000
+        assert _detect_module(_payload(report_text)) is None
+
+    def test_marker_deep_in_medium_message_ignored(self):
+        """G1：标记不在首部前缀内（即使消息不长）也不路由——只认首部注入"""
+        marker = MODULE_MARKERS["financial"]
+        filler = "背景说明。" * 30
+        assert _detect_module(_payload(f"{filler}{marker}")) is None
 
 
 class TestModuleToolSubsets:

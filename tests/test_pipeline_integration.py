@@ -340,14 +340,30 @@ class TestChartBackfill:
         _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
         order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
                  SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
-        msgs = [HumanMessage(content="请分析年报\n\n（快速模式：速度优先）")]
+        # G1：快速模式改为结构化标志传入（fast=True），消息文本不再是控制流依据
+        msgs = [HumanMessage(content="请分析年报")]
         msgs.extend(_tool_msgs(order))
         msgs.append(AIMessage(content=_RISK_JSON))
-        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper = _AgentWrapper(_FakeAgent(msgs), fast=True)
         wrapper.invoke({"messages": []})
         assert heatmap_mock.calls == []
         assert radar_mock.calls == []
         assert trend_mock.calls == []
+
+    def test_fast_keyword_in_document_text_does_not_skip_charts(self, hermetic_env):
+        """G1 对抗用例：正文含「快速模式」字样的普通请求必须走完整链路（图表照常补生）"""
+        _pdf, _xls, heatmap_mock, radar_mock, trend_mock = hermetic_env
+        order = [VALIDATE_TOOL, CALCULATE_TOOL, DISCLOSURE_TOOL,
+                 SEARCH_TOOL, SCORE_TOOL, EXPORT_PDF_TOOL, EXPORT_EXCEL_TOOL]
+        report_text = "年报正文。" * 400 + "公司本年度推行快速模式管理，效率提升。"
+        msgs = [HumanMessage(content=report_text)]
+        msgs.extend(_tool_msgs(order))
+        msgs.append(AIMessage(content=_RISK_JSON))
+        wrapper = _AgentWrapper(_FakeAgent(msgs))
+        wrapper.invoke({"messages": []})
+        assert len(heatmap_mock.calls) == 1
+        assert len(radar_mock.calls) == 1
+        assert len(trend_mock.calls) == 1
 
     def test_llm_risk_charts_refreshed_after_gate_but_trend_is_reused(self, hermetic_env):
         """候选被门禁转入待核查后，风险图重建；跨年趋势图不受采信状态影响。"""

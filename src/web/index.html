@@ -2934,6 +2934,9 @@ async function sendMessage(presetPrompt) {
   showThinkingCard();  // 思考卡已完整承担状态展示，不再另挂空的 typing 气泡
 
   const payload = {
+    // G1：快速模式用结构化字段显式声明（后端权威来源），消息内文字仅作模型行为提示，
+    // 后端不再从消息正文扫描关键词——防止年报正文里的字样误触发控制流。
+    fast_mode: !!flashMode,
     messages: [
       ...priorHistory,
       { role: 'user', content: flashMode ? `${userText}\n\n（快速模式：跳过图表与辩论复核，仅输出前3条核心风险，各章节从简，速度优先）` : userText }

@@ -99,12 +99,19 @@ def _detect_module(payload) -> Optional[str]:
     """检测请求载荷中的模块标记，返回模块标识或 None（与 _payload_wants_fast_mode 同构）。
 
     未命中任何标记时返回 None，走全量工具链路（兼容直接输入文字的传统用法）。
+
+    G1 加固：模块标记只认「前端在消息首部注入的短指令消息」——同时满足
+    消息长度 <= _MARKER_MSG_MAX_CHARS 且标记出现在前 _MARKER_PREFIX_CHARS
+    个字符内。年报正文等不可信长文本即使包含标记字样也不会被路由，
+    防止被分析对象借正文内容切换控制流。
     """
     for m in (payload or {}).get("messages", []):
         content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
         text = str(content)
+        if len(text) > _MARKER_MSG_MAX_CHARS:
+            continue
         for key, marker in MODULE_MARKERS.items():
-            if marker in text:
+            if marker in text[:_MARKER_PREFIX_CHARS]:
                 return key
     return None
 
@@ -164,6 +171,9 @@ def _detect_light_module(payload) -> Optional[str]:
     会话历史，若扫全部消息，历史里的旧轻量标记会把后续普通提问也误路由到
     轻量链路；反之历史里的模块标记也会压过用户刚点的轻量卡片。
     最后一条消息代表最新用户意图，以它为准。
+
+    G1 加固：与 _detect_module 同款「短指令消息 + 首部前缀」限定——轻量标记
+    只在短消息首部生效，正文埋标记的不可信长文本不改变路由。
     """
     msgs = (payload or {}).get("messages", [])
     if not msgs:
@@ -171,20 +181,36 @@ def _detect_light_module(payload) -> Optional[str]:
     m = msgs[-1]
     content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
     text = str(content)
+    if len(text) > _MARKER_MSG_MAX_CHARS:
+        return None
     for key, marker in LIGHT_MARKERS.items():
-        if marker in text:
+        if marker in text[:_MARKER_PREFIX_CHARS]:
             return key
     return None
 
 
+# G1 控制流与不可信文本隔离的扫描限定：标记消息必须是短指令（前端卡片按钮 /
+# 模块入口注入的文本均远小于该上限），且标记位于消息首部前缀内。
+_MARKER_MSG_MAX_CHARS = 2000
+_MARKER_PREFIX_CHARS = 64
+
+
 def _payload_wants_fast_mode(payload) -> bool:
-    """检测请求载荷是否启用快速模式（与 agent.py 跳过辩论的关键词保持一致）。
+    """检测请求载荷是否启用快速模式。
+
+    优先读结构化字段 payload["fast_mode"]（前端 ⚡ 开关显式传入，权威来源）；
+    未携带该字段时回退到旧版关键词兼容检测，但**只扫短指令消息**
+    （长度 <= _MARKER_MSG_MAX_CHARS）——年报正文等不可信长文本即使包含
+    "快速模式"字样也不会触发快速模式（G1 控制流与不可信文本隔离）。
 
     兼容两种消息形态：前端 JSON 的 dict（{"role","content"}）与 LangChain 消息对象。
     """
+    if isinstance(payload, dict) and payload.get("fast_mode"):
+        return True
     for m in (payload or {}).get("messages", []):
         content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
-        if FAST_MODE_KEYWORD in str(content):
+        text = str(content)
+        if len(text) <= _MARKER_MSG_MAX_CHARS and FAST_MODE_KEYWORD in text:
             return True
     return False
 
@@ -448,6 +474,10 @@ class GraphService:
         key = f"{'flash' if fast else 'pro'}:{module or 'all'}"
         if key not in self._agents:
             build_kwargs = {"model_override": FAST_MODEL} if fast else {}
+            if fast:
+                # G1：快速模式经结构化字段一路传给 _AgentWrapper（self._fast），
+                # 后处理跳过辩论只认该标志，不从消息文本扫描关键词。
+                build_kwargs["fast"] = True
             if module:
                 build_kwargs["module"] = module
             self._agents[key] = graph_helper.get_agent_instance("agents.agent", ctx, **build_kwargs)

@@ -3102,16 +3102,20 @@ class _AgentWrapper:
     4. 将导出链接追加到 AI 回复末尾
     """
 
-    def __init__(self, agent, module=None):
+    def __init__(self, agent, module=None, fast=False):
         """初始化包装器。
 
         Args:
             agent: LangGraph create_react_agent 返回的原始 agent 实例
             module: 模块标识（financial/compliance/synthesis/outlook）。用于后处理
                 差异化：行业风向研判(outlook)跳过财务专用的评分/热力图/雷达图/PDF 兜底。
+            fast: 快速模式标志（由 GraphService._get_agent 按请求结构化字段传入）。
+                用于跳过辩论复核。不从消息文本推断——年报正文是不可信输入，
+                正文出现的"快速模式"字样不得改变控制流（G1 加固）。
         """
         self._agent = agent
         self._module = module
+        self._fast = bool(fast)
         self._last_c2_result = {
             "review_version": "C2-2026-09-v3",
             "status": "not_run",
@@ -3368,11 +3372,10 @@ class _AgentWrapper:
         # original_level 可追溯），因此必须先于兜底导出执行，使 PDF/Excel 反映仲裁后
         # 的最终等级，让辩论对结构化结论产生实质影响而非仅附录文本。
         # （若 LLM 已自行调用过导出工具，已落盘文件不受回写影响，仲裁意见仍随回复展示）
-        # Flash 快速模式：若用户消息中包含“快速模式”关键词则跳过辩论
-        skip_debate = any(
-            "快速模式" in str(m.content)
-            for m in messages if hasattr(m, 'content') and isinstance(m.content, str)
-        )
+        # Flash 快速模式：由请求载荷结构化字段 fast_mode 经 GraphService 传入
+        # （self._fast）。不从消息文本扫描关键词——年报正文是不可信输入，正文
+        # 出现"快速模式"字样绝不能关闭辩论复核（G1 控制流与不可信文本隔离）。
+        skip_debate = bool(getattr(self, "_fast", False))
 
         # ─── 综合评分兜底计算（前移至辩论之前）：PDF 综合评分解读章需要评分数据，
         # 辩论 prompt 也需要真实评分上下文（否则 LLM 会臆造评分数字——实测缺陷：
@@ -4689,7 +4692,7 @@ class _AgentWrapper:
         return getattr(self._agent, name)
 
 
-def build_agent(ctx=None, model_override=None, module=None):
+def build_agent(ctx=None, model_override=None, module=None, fast=False):
     """构建年报风险分析 Agent。
 
     完整流程：
@@ -4794,7 +4797,8 @@ def build_agent(ctx=None, model_override=None, module=None):
         post_model_hook=_accumulate_tool_ledger,  # 裁剪前累积工具链台账，与滑窗解耦
     )
 
-    # 包装为 _AgentWrapper 以提供兜底导出能力（透传 module 供后处理差异化）
-    return _AgentWrapper(agent, module=module)
+    # 包装为 _AgentWrapper 以提供兜底导出能力（透传 module 供后处理差异化；
+    # fast 为结构化快速模式标志，后处理跳过辩论只认它，不从消息文本推断）
+    return _AgentWrapper(agent, module=module, fast=fast)
 
 
