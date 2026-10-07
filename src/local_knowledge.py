@@ -23,6 +23,40 @@ class LocalKnowledgeBase:
         self._collection = None
         self._loaded = False
         self._load_lock = threading.Lock()
+        # E2 时间门控：语料施行日期元数据（来源文件名 → {effective, note}）
+        self._meta_by_source: Dict[str, Dict] = {}
+        self._load_corpus_meta()
+
+    def _load_corpus_meta(self) -> None:
+        """读取 knowledge_base/corpus_meta.json（语料施行日期侧车文件）。
+
+        文件缺失或损坏时降级为空映射——检索照常可用，只是不输出时点信息，
+        不因元数据问题阻断知识库加载。
+        """
+        meta_path = os.path.join(self.kb_dir, "corpus_meta.json")
+        try:
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict):
+                    self._meta_by_source = {
+                        str(k): v for k, v in raw.items() if isinstance(v, dict)
+                    }
+        except Exception as e:
+            logger.warning(f"语料施行日期元数据加载失败（不影响检索）: {e}")
+            self._meta_by_source = {}
+
+    def _meta_for(self, source: str) -> Dict:
+        """取某来源文件的时点元数据子集（无记录时返回空 dict）。"""
+        info = self._meta_by_source.get(str(source))
+        if not info:
+            return {}
+        entry = {}
+        if info.get("effective"):
+            entry["effective"] = str(info["effective"])
+        if info.get("note"):
+            entry["effective_note"] = str(info["note"])
+        return entry
 
     def _get_chroma_client(self):
         """获取 ChromaDB 持久化客户端（延迟导入，避免启动时阻塞）"""
@@ -211,11 +245,13 @@ class LocalKnowledgeBase:
         scored.sort(key=lambda x: x[0], reverse=True)
         results = []
         for sim, doc in scored[:top_k]:
-            results.append({
+            entry = {
                 "content": doc["content"],
                 "score": round(sim, 4),
                 "source": doc["source"],
-            })
+            }
+            entry.update(self._meta_for(doc["source"]))
+            results.append(entry)
         return results
 
     def _chroma_search(self, query: str, top_k: int, min_score: float) -> List[Dict]:
@@ -232,11 +268,16 @@ class LocalKnowledgeBase:
             for doc_text, dist, meta in zip(docs, dists, metas):
                 score = round(1.0 - dist, 4)
                 if score >= min_score:
-                    output.append({
+                    source = meta.get("source", "unknown")
+                    entry = {
                         "content": doc_text,
                         "score": score,
-                        "source": meta.get("source", "unknown"),
-                    })
+                        "source": source,
+                    }
+                    # E2 时间门控：施行日期来自 corpus_meta.json（按来源文件名查找，
+                    # 不依赖向量库 metadata，旧索引无需重建即可生效）
+                    entry.update(self._meta_for(source))
+                    output.append(entry)
         return output[:top_k]
 
     def search(self, query: str, top_k: int = 8, min_score: float = 0.05) -> List[Dict]:
