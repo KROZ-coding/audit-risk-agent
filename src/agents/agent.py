@@ -1540,6 +1540,40 @@ def _backfill_risk_evidence(risk_json: str, tool_results: dict,
     return risk_json
 
 
+def _trim_ledger_for_prompt(risk_json: str, budget_chars: int) -> str:
+    """G4 结构化裁剪：按字符预算裁剪台账，绝不产出非法 JSON。
+
+    旧的 risk_json[:N] 硬截断会在对象中间切断——辩论/仲裁收到非法 JSON，
+    仲裁人只见前几条就输出 verdict，覆盖全量台账。本函数：
+    1. 完整装得下时原样返回；
+    2. 超预算时按 risk_details 条目从最旧开始丢弃（最新发现保留），并把
+       丢弃情况记入 _trim_notice 字段（可见裁剪）；
+    3. 解析失败时回退裸截断（保持旧行为）。
+    """
+    raw = str(risk_json or "")
+    if len(raw) <= budget_chars:
+        return raw
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw[:budget_chars]
+    if not isinstance(obj, dict):
+        return raw[:budget_chars]
+    details = obj.get("risk_details")
+    if not isinstance(details, list) or not details:
+        return raw[:budget_chars]
+    dropped = 0
+    while details and len(json.dumps(obj, ensure_ascii=False)) > budget_chars:
+        details.pop(0)
+        dropped += 1
+    obj["_trim_notice"] = {
+        "dropped_entries": dropped,
+        "note": f"台账超预算 {budget_chars} 字符，已从最旧条目裁剪 {dropped} 条；完整台账保留于系统 tool_ledger",
+    }
+    trimmed = json.dumps(obj, ensure_ascii=False)
+    return trimmed if len(trimmed) <= budget_chars else trimmed[:budget_chars]
+
+
 # 仲裁回写允许的风险等级白名单（非法等级一律丢弃，防止 LLM 输出污染台账）
 _ARBITER_VALID_LEVELS = {"重大", "重要", "一般"}
 
@@ -3687,7 +3721,7 @@ class _AgentWrapper:
                                     f"上一次仲裁结论为「{_arb_verdict}」，不完整。请基于双方辩论意见"
                                     "与风险台账，输出补全后的【仲裁结论】与完整【裁定JSON】"
                                     "（adjustments 数组 + verdict 必须为'通过'或'需重新分析'之一）。\n\n"
-                                    f"风险台账（摘要）：\n{risk_json[:4000]}\n\n"
+                                    f"风险台账（摘要）：\n{_trim_ledger_for_prompt(risk_json, 4000)}\n\n"
                                     f"原仲裁文本：\n{debate_result[-2500:]}")),
                             ], label="仲裁·补全重试", budget=_budget)
                             _retry_text = str(getattr(_retry_resp, "content", "") or "")
@@ -4697,7 +4731,7 @@ class _AgentWrapper:
             "请按 C2 规则复核以下固定证据包。仅判断关键语义是否被证据支持，"
             "不要计算数字、不要引入外部事实；必须逐条覆盖 risk_details 中的 risk_id。\n\n"
             f"{_UNTRUSTED_LEDGER_NOTICE}\n\n"
-            f"固定证据包：\n{risk_json[:12000]}"
+            f"固定证据包：\n{_trim_ledger_for_prompt(risk_json, 12000)}"
         )
 
         def _one(label):
@@ -4792,7 +4826,7 @@ class _AgentWrapper:
                 HumanMessage(content=(
                     f"{_UNTRUSTED_LEDGER_NOTICE}\n\n"
                     f"请逐条提交风险主张、证据编号、原文上下文、本地计算结果及反证登记。\n\n"
-                    f"{score_context}\n\n风险台账数据：\n{risk_json[:7000]}\n\n"
+                    f"{score_context}\n\n风险台账数据：\n{_trim_ledger_for_prompt(risk_json, 7000)}\n\n"
                     f"C2 复核状态（仅作门禁提示，不得替代证据）：\n{json.dumps(c2_result, ensure_ascii=False)[:3000]}"
                 )),
             ], label="C1·风险关注方", budget=budget)
@@ -4811,7 +4845,7 @@ class _AgentWrapper:
                     f"{_UNTRUSTED_LEDGER_NOTICE}\n\n"
                     "正方已完成逐条举证。请针对正方的每一项主张检查口径、推断、遗漏反证"
                     "和规则适用性，并仅引用风险台账中已登记的证据；不能编造新事实。\n\n"
-                    f"{score_context}\n\n风险台账数据：\n{risk_json[:6000]}\n\n"
+                    f"{score_context}\n\n风险台账数据：\n{_trim_ledger_for_prompt(risk_json, 6000)}\n\n"
                     f"风险关注方举证：\n{advocate_text[:5000]}"
                 )),
             ], label="C1·风险否定方", budget=budget)
@@ -4830,7 +4864,7 @@ class _AgentWrapper:
                 HumanMessage(content=(
                     f"{_UNTRUSTED_LEDGER_NOTICE}\n\n"
                     f"请综合双方辩论意见，对争议风险进行逐条裁定。\n\n{score_context}\n\n"
-                    f"风险台账数据：\n{risk_json[:4000]}\n\n"
+                    f"风险台账数据：\n{_trim_ledger_for_prompt(risk_json, 4000)}\n\n"
                     f"风险关注方意见：\n{advocate_text[:2500]}\n\n"
                     f"风险否定方意见：\n{skeptic_text[:2500]}"
                 )),
