@@ -177,21 +177,38 @@ def _validate_balance_sheet(data: dict) -> dict:
     total = liabilities + equity
     diff = abs(assets - total)
     ratio = diff / max(abs(assets), abs(total), Decimal("1"))
-    passed = ratio <= Decimal("0.02")
+    # F2 容差分层：会计恒等式容差收紧为千分之一（0.1%，与 knowledge_base/
+    # 报表勾稽规则库 的舍入容差一致），超过即勾稽不平衡；0.1%~2% 区间为
+    # 「需人工复核」提示层级（可能是口径/舍入尾差），2% 以上为显著不平衡。
+    # 旧的 2% 一刀切"通过"会把亿元级报表 200 万差额判为平衡，掩盖必须追查的线索。
+    _IDENTITY_TOLERANCE = Decimal("0.001")   # 会计恒等式容差（千分之一）
+    _REVIEW_BAND = Decimal("0.02")           # 需复核提示上限（非通过线）
+    passed = ratio <= _IDENTITY_TOLERANCE
     exact_match = diff == 0
+    if exact_match:
+        message = "所提供资产负债表三项金额相等"
+    elif passed:
+        message = (f"资产负债表差额{_number(diff, 2)}（{_number(ratio * 100, 2)}%），"
+                   "在千分之一舍入容差内，视为勾稽平衡（允许舍入尾差）")
+    elif ratio <= _REVIEW_BAND:
+        message = (f"资产负债表差额{_number(diff, 2)}（{_number(ratio * 100, 2)}%），"
+                   "超出千分之一会计恒等式容差，勾稽不平衡；差额量级在 2% 复核提示线内，"
+                   "优先排查舍入与口径差异")
+    else:
+        message = (f"资产负债表差额{_number(diff, 2)}（{_number(ratio * 100, 2)}%），"
+                   "超过 2% 复核提示线，勾稽显著不平衡，必须核查数据来源")
     result = _base_result(
-        "资产负债表平衡", "总资产 = 总负债 + 净资产", "calculated" if exact_match else "limited_check", passed,
-        "所提供资产负债表三项金额相等" if exact_match else
-        f"资产负债表差额{_number(diff, 2)}（{_number(ratio * 100, 2)}%），"
-        + ("在内部2%筛查阈值内，不能据此认定严格平衡" if passed else "超过内部2%筛查阈值，需核查"),
-        data=data, inputs=inputs, difference=diff, threshold="2%",
-        reason="内部筛查阈值不等于会计恒等式容差；差额须核实来源、舍入和口径",
+        "资产负债表平衡", "总资产 = 总负债 + 净资产",
+        "calculated" if exact_match else "limited_check", passed, message,
+        data=data, inputs=inputs, difference=diff, threshold="0.1%（千分之一舍入容差）；2% 为需复核提示线",
+        reason="会计恒等式容差依据 knowledge_base/报表勾稽规则库；2% 仅是需人工复核的提示层级，不是通过线",
     )
     result.update({
         "total_assets": _number(assets), "total_liabilities": _number(liabilities),
         "net_assets": _number(equity), "liabilities_plus_equity": _number(total),
         "difference_pct": f"{_number(ratio * 100, 2):.2f}%",
         "exact_match": exact_match,
+        "needs_review": (not exact_match) and (not passed) and (ratio <= _REVIEW_BAND),
     })
     return result
 
