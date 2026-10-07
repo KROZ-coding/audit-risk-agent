@@ -887,12 +887,33 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
         alerts.append(f"存货较期初增长 {_format((inv_c / inv_p - 1) * _D_HUNDRED, 2, '%')}，存货激增需关注跌价风险")
 
     debt_ratio = _safe_div(tl_c, ta_c)
+    # F5 行业联动：告警线优先取行业基准的 debt_to_asset_ratio 高位值（房地产、
+    # 建筑等高杠杆行业 70% 属常态，固定线会系统性高估其风险——知识库行业基准库
+    # 明文要求分行业对标）；行业未匹配或基准缺失时回落 70% 通用线并注明口径。
+    _industry_text = str(data.get("industry") or _metadata(data).get("industry") or "")
+    _debt_line, _debt_line_source = Decimal("0.7"), "内部筛查规则：资产负债率超过70%提示偿债复核"
+    if _industry_text and debt_ratio is not None:
+        try:
+            import json as _json
+            from core.benchmark_contract import match_industry_entry
+            _workspace = os.getenv('COZE_WORKSPACE_PATH', os.path.join(os.path.dirname(__file__), '..', '..'))
+            with open(os.path.join(_workspace, 'assets', 'industry_benchmarks.json'), 'r', encoding='utf-8') as _bf:
+                _bm = _json.load(_bf)
+            _entry, _entry_name = match_industry_entry(_industry_text, _bm.get('industries', {}))
+            _high = (((_entry or {}).get('benchmarks') or {}).get('debt_to_asset_ratio') or {}).get('high')
+            if isinstance(_high, (int, float)):
+                _debt_line = Decimal(str(_high)) / Decimal("100")
+                _debt_line_source = (f"行业基准（{_entry_name}）资产负债率高位线 {_high}%"
+                                     f"（{_entry.get('source', '内部整理')}；统计年份未标注）")
+        except Exception as _bm_err:  # noqa: BLE001 — 基准读取失败回落通用线
+            logger.debug(f"行业资产负债率基准读取失败，回落 70% 通用线: {_bm_err}")
     add("debt_to_asset_ratio_pct", "资产负债率", "总负债/总资产×100%", ("total_liabilities_current", "total_assets_current"),
-        debt_ratio * _D_HUNDRED if debt_ratio is not None else None, unit="%", threshold=70,
-        threshold_source="内部筛查规则：资产负债率超过70%提示偿债复核",
+        debt_ratio * _D_HUNDRED if debt_ratio is not None else None, unit="%",
+        threshold=float(_debt_line * 100),
+        threshold_source=_debt_line_source,
         status="calculated" if debt_ratio is not None else "not_comparable", reason="总资产缺失或为零" if debt_ratio is None else "")
-    if debt_ratio is not None and debt_ratio > Decimal("0.7"):
-        alerts.append(f"资产负债率 = {_format(debt_ratio * _D_HUNDRED, 2, '%')}，超过 70%，财务杠杆较高")
+    if debt_ratio is not None and debt_ratio > _debt_line:
+        alerts.append(f"资产负债率 = {_format(debt_ratio * _D_HUNDRED, 2, '%')}，超过 {_format(_debt_line * _D_HUNDRED, 0, '%')}（{_debt_line_source}），财务杠杆较高")
 
     ca_c, cl_c = values.get("current_assets_current"), values.get("current_liabilities_current")
     current_ratio = _safe_div(ca_c, cl_c)

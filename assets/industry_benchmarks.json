@@ -1,5 +1,5 @@
 {
-  "_comment": "行业风险基准值表 - 用于年报审计风险识别中的行业对比分析。本文件被 visualizer.py（雷达图行业基准对比）和 agent 系统提示词中的行业基准阈值引用。结构说明：industries 下每个行业包含 benchmarks（8项财务指标的低/中/高基准值）和 risk_thresholds（5项风险预警阈值）。general_thresholds 为行业未知时的通用兜底阈值。",
+  "_comment": "行业风险基准值表 - 用于年报审计风险识别中的行业对比分析。本文件被 visualizer.py（雷达图行业基准对比）和 agent 系统提示词中的行业基准阈值引用。结构说明：industries 下每个行业包含 benchmarks（8项财务指标的低/中/高基准值）和 risk_thresholds（5项风险预警阈值）。general_thresholds 为行业未知时的通用兜底阈值。 F4：行业匹配改用 match_keywords+match_priority（特异性优先），禁用无优先级的子串互含匹配；各行业附 source/statistical_year 透明声明。",
   "description": "行业风险基准值表 - 用于年报审计风险识别中的行业对比分析",
   "version": "1.0",
   "_benchmarks_field_description": {
@@ -79,7 +79,24 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.5,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "制造业",
+        "机械",
+        "设备",
+        "汽车",
+        "电气",
+        "化工",
+        "橡胶",
+        "金属",
+        "纺织",
+        "食品制造",
+        "造纸"
+      ],
+      "match_priority": 1,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "房地产": {
       "_description": "房地产(K)：高杠杆行业，资产负债率普遍高(70%+)，存货周转极慢(预售制)，现金流波动大",
@@ -140,7 +157,16 @@
         "ar_growth_alert_ratio": 1.3,
         "inventory_growth_alert_ratio": 1.3,
         "cashflow_negative_years": 1
-      }
+      },
+      "match_keywords": [
+        "房地产",
+        "地产",
+        "物业"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "互联网科技": {
       "_description": "互联网科技(I)：轻资产高毛利行业，研发投入大，商誉占比高，应收账款周期较长",
@@ -201,7 +227,19 @@
         "ar_growth_alert_ratio": 1.8,
         "inventory_growth_alert_ratio": 2.0,
         "cashflow_negative_years": 3
-      }
+      },
+      "match_keywords": [
+        "互联网",
+        "软件",
+        "信息技术",
+        "计算机",
+        "电信",
+        "数字"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "医药生物": {
       "_description": "医药生物(C27)：高毛利高研发投入行业，应收账款因医院账期长而偏高，商誉因并购较多",
@@ -262,7 +300,18 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.5,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "医药",
+        "制药",
+        "生物",
+        "医疗器械",
+        "疫苗"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "金融": {
       "_description": "金融(J)：极高杠杆行业(92%+)，无存货概念(inventory_turnover=0)，应收占比极低，现金流波动受市场影响大",
@@ -324,7 +373,19 @@
         "inventory_growth_alert_ratio": 999,
         "_inventory_note": "金融行业无存货，设为999表示永不触发存货告警",
         "cashflow_negative_years": 1
-      }
+      },
+      "match_keywords": [
+        "银行",
+        "证券",
+        "保险",
+        "金融",
+        "基金",
+        "信托"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "零售贸易": {
       "_description": "零售贸易(F)：低毛利高周转行业，存货占比高但周转快，现金流通常较好，应收账款少",
@@ -385,7 +446,19 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.3,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "零售",
+        "批发",
+        "贸易",
+        "商业",
+        "超市",
+        "百货"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "能源": {
       "_description": "能源(D)：重资产强周期，高毛利率、中低杠杆、存货周转快",
@@ -449,7 +522,19 @@
       },
       "notes": {
         "gross_margin": "全产业链综合毛利率受低毛利贸易业务摊薄，需结合分部数据判断"
-      }
+      },
+      "match_keywords": [
+        "能源",
+        "电力",
+        "煤炭",
+        "石油",
+        "天然气",
+        "燃气"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "农业": {
       "_description": "农业(A)：低毛利、中杠杆、存货占比高",
@@ -510,7 +595,19 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.5,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "农业",
+        "林业",
+        "牧业",
+        "渔业",
+        "种植",
+        "养殖"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "军工": {
       "_description": "军工(C)：高毛利、低杠杆、应收占比高（军品结算周期长）",
@@ -571,7 +668,18 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.5,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "军工",
+        "国防",
+        "航天",
+        "兵器",
+        "船舶"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     },
     "传媒": {
       "_description": "传媒(R)：高毛利、低杠杆、轻资产",
@@ -632,7 +740,19 @@
         "ar_growth_alert_ratio": 1.5,
         "inventory_growth_alert_ratio": 1.5,
         "cashflow_negative_years": 2
-      }
+      },
+      "match_keywords": [
+        "传媒",
+        "文化",
+        "影视",
+        "出版",
+        "广告",
+        "游戏"
+      ],
+      "match_priority": 2,
+      "source": "内部整理：公开年报数据与行业统计资料（knowledge_base/行业基准库 同源）",
+      "statistical_year": null,
+      "provenance_note": "统计年份与样本量未标注，比较结论仅作筛查线索；补充来源后应更新本字段"
     }
   },
   "general_thresholds": {
