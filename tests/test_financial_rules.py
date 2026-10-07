@@ -209,8 +209,13 @@ class TestValidationRules:
         dv = out["data_validation"]
         assert dv["failed_checks"] == 0
         assert dv["validation_result"] == "部分完成"
+        # F1 后为四类校验：有效税率在 VD_JSON 缺税率字段 → insufficient_data
+        # （passed=None），其余三类必须判定通过
         for item in dv["all_checks"]:
-            assert item["passed"] is True
+            if item["check"] == "有效税率合理性":
+                assert item["passed"] is None
+            else:
+                assert item["passed"] is True
 
     def test_balance_sheet_facts_keep_page_locator(self):
         out = self._vd()
@@ -235,7 +240,7 @@ class TestValidationRules:
         assert dv["failed_checks"] == 1
         bs = next(r for r in out["results"] if r["check"] == "资产负债表平衡")
         assert bs["passed"] is False
-        assert "超过内部2%筛查阈值" in bs["message"]
+        assert "勾稽显著不平衡" in bs["message"]
 
     def test_missing_equity_not_backcalculated(self):
         data = dict(VD_JSON)

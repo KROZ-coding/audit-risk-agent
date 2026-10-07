@@ -283,4 +283,4 @@ class TestMagnitudeErrorGate:
         assert dv.get("validation_result") == "未通过"
         balance = next(c for c in dv.get("all_checks", []) if c.get("check") == "资产负债表平衡")
         assert balance["passed"] is False
-        assert "超过内部2%筛查阈值" in balance.get("message", "")
+        assert "勾稽显著不平衡" in balance.get("message", "")
