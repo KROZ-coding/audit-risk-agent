@@ -38,6 +38,17 @@ class TestLightModuleDetection:
         assert _detect_light_module({"messages": []}) is None
         assert _detect_light_module(None) is None
 
+    def test_marker_buried_in_long_document_text_is_ignored(self):
+        """G1：年报正文（不可信长文本）中埋入轻量标记不得路由到轻量链路"""
+        report_text = "年报正文，" * 1200 + "文中引用了【工具:投资参考】的定义作背景说明。"
+        assert len(report_text) > 2000
+        assert _detect_light_module(_payload(report_text)) is None
+
+    def test_marker_not_at_prefix_is_ignored(self):
+        """G1：标记不在消息首部前缀（64 字符）内不路由——只认首部注入"""
+        filler = "背景说明。" * 12
+        assert _detect_light_module(_payload(f"{filler}【工具:投资参考】是什么")) is None
+
     def test_only_last_message_counts(self):
         """历史消息里的旧轻量标记不应污染后续普通提问"""
         p = _payload("【工具:投资参考】旧请求", "这家公司的商誉情况如何？")

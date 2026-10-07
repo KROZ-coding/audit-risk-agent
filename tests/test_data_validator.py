@@ -46,6 +46,42 @@ class TestDataValidator:
         assert result["data_validation"]["validation_result"] == "未通过"
         assert result["data_validation"]["failed_checks"] >= 1
 
+    def test_balance_tolerance_rounding_band_passes(self):
+        """F2：差额在千分之一（0.1%）舍入容差内视为平衡（如 10000 差 5 = 0.05%）"""
+        result = self._invoke({
+            "total_assets": 10000,
+            "total_liabilities": 6005,
+            "net_assets": 4000,
+        })
+        balance = next(c for c in result["data_validation"]["all_checks"] if "资产负债表" in c["check"])
+        assert balance["passed"] is True
+        assert "舍入容差" in balance["message"]
+        assert balance["needs_review"] is False
+
+    def test_balance_review_band_fails_but_flags_needs_review(self):
+        """F2：差额在 0.1%~2% 区间 → 勾稽不平衡（不再放行），标记需人工复核"""
+        result = self._invoke({
+            "total_assets": 10000,
+            "total_liabilities": 6100,
+            "net_assets": 4000,
+        })
+        balance = next(c for c in result["data_validation"]["all_checks"] if "资产负债表" in c["check"])
+        assert balance["passed"] is False
+        assert balance["needs_review"] is True
+        assert "复核" in balance["message"]
+
+    def test_balance_beyond_review_band_fails_hard(self):
+        """F2：差额超过 2% → 显著不平衡，必须核查"""
+        result = self._invoke({
+            "total_assets": 10000,
+            "total_liabilities": 6000,
+            "net_assets": 3000,
+        })
+        balance = next(c for c in result["data_validation"]["all_checks"] if "资产负债表" in c["check"])
+        assert balance["passed"] is False
+        assert balance["needs_review"] is False
+        assert "显著不平衡" in balance["message"]
+
     def test_cashflow_reconciliation_pass(self):
         """Selected adjustments can pass screening without completing indirect reconciliation."""
         result = self._invoke({
@@ -114,7 +150,8 @@ class TestDataValidator:
         assert validation["passed_checks"] == 1
         assert validation["limited_checks"] == 2
         assert validation["failed_checks"] == 0
-        assert len(validation["pending_checks"]) == 2
+        # F1 后为四类校验：有效税率在本用例缺字段 → insufficient_data 进入 pending
+        assert len(validation["pending_checks"]) == 3
 
     def test_current_aliases_keep_original_source_fields_and_dates(self):
         result = self._invoke({
@@ -152,13 +189,19 @@ class TestDataValidator:
         assert result["results"][0]["status"] == "insufficient_data"
 
     def test_nonzero_balance_difference_is_not_announced_as_balanced(self):
+        """F2：约 1% 差额超出千分之一会计恒等式容差 → 勾稽不平衡（需人工复核层级）。
+
+        旧契约曾按 2% 筛查线放行（passed=True + 免责提示）；按修改方案书 F2，
+        2% 只是「需人工复核」提示线而非通过线，此处必须判定不平衡。
+        """
         result = self._invoke({"total_assets": 1000, "total_liabilities": 400, "net_assets": 610})
         balance = result["results"][0]
-        assert balance["passed"] is True
+        assert balance["passed"] is False
         assert balance["difference"] == 10
         assert balance["exact_match"] is False
         assert balance["status"] == "limited_check"
-        assert "不能据此认定严格平衡" in balance["message"]
+        assert balance["needs_review"] is True
+        assert "复核" in balance["message"]
 
     def test_zero_cashflow_has_no_directional_pass(self):
         result = self._invoke({"net_profit_current": 100, "operating_cashflow_current": 0})

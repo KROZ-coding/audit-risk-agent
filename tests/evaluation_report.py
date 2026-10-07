@@ -47,6 +47,24 @@ RISK_DIMENSIONS = [
 ]
 
 
+def _normalize_dimension(dim) -> str:
+    """T4 修复：把维度名归一到英文标识。
+
+    Agent 按系统提示词输出中文维度（"财务错报风险"等），而本脚本的
+    RISK_DIMENSIONS 是英文标识——旧实现直接用中文比对英文枚举，永远不匹配，
+    导致 agent 模式五维指标全 0（且从未被真实运行暴露）。此处做 CN→EN 归一：
+    已是英文标识的原样返回，未知维度原样返回（保守，不误归类）。
+    """
+    dim = str(dim or "").strip()
+    if not dim or dim in RISK_DIMENSIONS:
+        return dim
+    try:
+        from agents.agent import CN_TO_EN_DIM
+        return CN_TO_EN_DIM.get(dim, dim)
+    except Exception:
+        return dim
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 标准测试集：基于证监会公开处罚案例和审计准则阈值设计的 10 个标注样本
 # 每个样本包含：输入财务数据 + 期望触发的风险维度 + 期望关键词
@@ -606,29 +624,49 @@ def run_zero_shot_baseline(case: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# ⚠️ 评估方法学局限（T2 标注冻结 · 整改路线见 docs/修改方案书 §6）
+#
+# 本脚本的量化结果目前仅用于工程回归监控，不构成系统真实准确率的对外证据：
+# 1. 合成集由本系统阈值规则参与构造（"按本系统阈值正向构造"），标签与规则同源，
+#    Precision=1.0 具有构造性成分；
+# 2. 部分用例的 expected_alerts 在历史迭代中曾按系统实际输出补写（标签事后调校），
+#    引入乐观偏差；重新标注前不得用于对外宣传；
+# 3. 盲测集与规则设计参考了同一批公开案例（如经典存贷双高案例），"盲"仅对运行时成立；
+# 4. 分维度指标曾为同义反复（T4 已修复为真实比对，但样本量仍小）。
+# README 已按此口径删除具体数字、改用定性描述；待独立标注冻结与盲测扩容
+# （T3：≥30 个公开处罚案例 + ≥10 个配对对照，标注预注册）完成后方可重新发布量化结果。
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
 # Agent 级评估（Agent Mode）—— 端到端 LLM + RAG + 辩论 + 思维链
 # 速度较慢（每个用例约 30-60 秒），适合深度评估
 # ═══════════════════════════════════════════════════════════════════
 
-async def run_agent_single_case(case: dict, agent) -> dict:
+async def run_agent_single_case(case: dict, runner, case_index: int = 0) -> dict:
     """使用完整 Agent 管道评估单个测试用例（端到端）。
 
-    调用完整的 Agent（LLM + RAG + 多智能体辩论 + 思维链），
+    调用与生产一致的 GraphService 运行器（LLM + RAG + 多智能体辩论 + 思维链），
     从 AI 回复中提取 risk_details，按维度匹配预期结果。
 
     Args:
         case: 测试用例字典
-        agent: _AgentWrapper 实例
+        runner: 与生产一致的异步运行器（GraphService.run 包装）
+        case_index: 用例序号（用于日志与结果排序）
 
     Returns:
         评估结果字典，含 dimension_metrics、token_estimate、elapsed_sec 等
     """
     data_json = json.dumps(case["data"], ensure_ascii=False)
-    # 构建模拟用户消息，触发 agent 分析流程
+    # 构建模拟用户消息，触发 agent 分析流程。
+    # T4 复核：必须显式要求"先调用工具"——若首轮模型输出为纯推理空响应，
+    # langgraph 的 post_model_hook_router 会因状态中无 AIMessage 而崩溃
+    # （StopIteration，详见修改方案书 G11 新发现）；生产链路有预处理注入
+    # 工具轨迹，评估链路用提示词达到同样的"工具优先"形态。
     user_message = (
         f"以下是某公司简化财务数据（单位：万元），请进行审计风险分析。\n\n"
         f"```json\n{data_json}\n```\n\n"
-        f"请计算关键财务指标、检索相关法规案例，并输出完整的风险台账 JSON。"
+        f"请先调用 validate_financial_data 与 calculate_financial_indicators 工具完成"
+        f"校验与指标计算，再调用 search_regulations 检索法规，最后输出完整的风险台账 JSON。"
     )
     from langchain_core.messages import HumanMessage
 
@@ -637,7 +675,13 @@ async def run_agent_single_case(case: dict, agent) -> dict:
     # 计时开始
     start_time = time.time()
     try:
-        result = await agent.ainvoke(payload)
+        # T4 复核：评估必须走与生产完全一致的 GraphService.run 路径（含预处理
+        # 注入、顺序门禁、辩论复核、兜底导出）。旧实现绕过服务层直接
+        # agent.ainvoke：① 不传 thread_id 直接抛 Checkpointer 异常被吞；
+        # ② 即便传了也会踩中 langgraph 1.0.2 post_model_hook+Send 的并发写
+        # 竞态（空 AIMessage 状态 → post_model_hook_router StopIteration）。
+        # 生产路径有预处理注入的工具轨迹，不触发该竞态（见修改方案书 G11）。
+        result = await runner(payload)
         elapsed = time.time() - start_time
 
         # 从最后一条 AI 消息中提取风险 JSON
@@ -653,10 +697,15 @@ async def run_agent_single_case(case: dict, agent) -> dict:
 
         # 尝试提取 risk_details
         extracted_risks = _extract_risk_details(risk_text)
+        agent_error = ""
     except Exception as e:
         elapsed = time.time() - start_time
         extracted_risks = []
         risk_text = f"Agent 调用失败: {e}"
+        # T4 复核：失败必须显式暴露到结果里——旧实现只写进 risk_text 且
+        # 摘要打印只报"识别 0 条风险"，错误被静默吞掉，agent 模式从未
+        # 真正运行过也无人发现。
+        agent_error = f"{type(e).__name__}: {e}"
 
     # ── 分维度评估 ──
     dimension_metrics = _evaluate_dimensions(case, extracted_risks)
@@ -681,6 +730,7 @@ async def run_agent_single_case(case: dict, agent) -> dict:
         "token_estimate": token_estimate,
         "elapsed_sec": round(elapsed, 1),
         "risk_preview": risk_text[:500] if risk_text else "",
+        "agent_error": agent_error,
     }
 
 
@@ -697,34 +747,23 @@ def _extract_risk_details(text: str) -> list:
     """
     import re
     try:
-        # 尝试找完整的 JSON 对象
-        start = text.find('"company_info"')
-        if start < 0:
-            start = text.find('"risk_details"')
-        if start < 0:
+        # T4 复核：旧实现用朴素大括号深度计数，字符串字面量里的 { } 会把深度
+        # 带偏导致 json.loads 失败、永远返回 0 条风险（真实台账的摘录/推理链
+        # 字段里常含花括号）。改用 JSONDecoder.raw_decode（字符串感知）并取
+        # 「最后一个」含 risk_details 的根对象——与 agent 侧 G3 加固语义一致
+        # （正式台账按 sp 约定输出在文末）。
+        decoder = json.JSONDecoder()
+        best = None
+        for m in re.finditer(r'\{\s*"[^"\\]+"\s*:', text):
+            try:
+                parsed, _end = decoder.raw_decode(text[m.start():])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict) and isinstance(parsed.get("risk_details"), list):
+                best = parsed
+        if best is None:
             return []
-
-        # 向前找最外层 {
-        brace_start = text.rfind('{', 0, start)
-        if brace_start < 0:
-            return []
-
-        # 大括号深度计数找配对 }
-        depth, end = 0, -1
-        for i in range(brace_start, len(text)):
-            if text[i] == '{':
-                depth += 1
-            elif text[i] == '}':
-                depth -= 1
-                if depth == 0:
-                    end = i + 1
-                    break
-
-        if end < 0:
-            return []
-
-        parsed = json.loads(text[brace_start:end])
-        return parsed.get("risk_details", [])
+        return best.get("risk_details", [])
     except Exception:
         return []
 
@@ -741,10 +780,10 @@ def _evaluate_dimensions(case: dict, extracted_risks: list) -> dict:
     Returns:
         各维度指标字典 {dimension: {tp, fp, fn, precision, recall, f1}}
     """
-    # 收集系统输出的维度集合
+    # 收集系统输出的维度集合（T4：中文维度先归一到英文标识再比对）
     predicted_dims = set()
     for risk in extracted_risks:
-        dim = risk.get("dimension", "")
+        dim = _normalize_dimension(risk.get("dimension", ""))
         if dim in RISK_DIMENSIONS:
             predicted_dims.add(dim)
 
@@ -795,22 +834,30 @@ async def run_agent_evaluation():
         return None
 
     try:
-        from src.agents.agent import build_agent
-        from local_shims import new_context
+        from main import GraphService
 
-        ctx = new_context("evaluation")
-        print(f"\n  正在构建 Agent（LLM + RAG + 多智能体辩论机制）...")
-        agent = build_agent(ctx)
-        print("  Agent 构建完成\n")
+        # T4 复核：与生产同路径——GraphService 含预处理注入、顺序门禁、
+        # 辩论复核与兜底导出；直接 build_agent 绕过服务层会踩 langgraph
+        # 1.0.2 的 post_model_hook 并发写竞态（见修改方案书 G11）。
+        print(f"\n  正在构建 GraphService（LLM + RAG + 多智能体辩论机制）...")
+        service = GraphService()
+
+        async def _runner(payload):
+            return await service.run(payload)
+
+        print("  服务就绪\n")
 
         results = []
         total_time = 0
         for i, case in enumerate(AGENT_TEST_CASES, 1):
             print(f"  [{i}/{len(AGENT_TEST_CASES)}] 正在评估: {case['name']}...")
-            result = await run_agent_single_case(case, agent)
+            result = await run_agent_single_case(case, _runner, case_index=i)
             results.append(result)
             total_time += result["elapsed_sec"]
-            print(f"       完成，耗时 {result['elapsed_sec']}s，识别 {result['extracted_risks_count']} 条风险")
+            if result.get("agent_error"):
+                print(f"       ❌ 失败（耗时 {result['elapsed_sec']}s）：{result['agent_error'][:160]}")
+            else:
+                print(f"       完成，耗时 {result['elapsed_sec']}s，识别 {result['extracted_risks_count']} 条风险")
 
         # ── Agent 模式汇总 ──
         avg_time = total_time / len(results) if results else 0
@@ -1090,6 +1137,11 @@ def build_full_report(mode="tool", include_zero_shot: bool = False):
             "total_cases": len(TEST_CASES),
             "dimensions": RISK_DIMENSIONS,
         },
+        "methodology_limits": [
+            "合成集由被测阈值规则参与构造，存在标签同源的构造性成分",
+            "盲测集样本量小且与规则设计参考同一批公开案例，统计判别力有限",
+            "结果仅用于工程回归监控，不构成对外准确率承诺（见 docs/修改方案书 §6）",
+        ],
         "results": {},
     }
 
@@ -1108,11 +1160,31 @@ def build_full_report(mode="tool", include_zero_shot: bool = False):
     return full_report
 
 
+def _git_head():
+    """取当前 git 提交短哈希（T5 provenance）；不在 git 环境时返回 None。"""
+    try:
+        import subprocess
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        return None
+
+
 def run_evaluation(mode="tool", output_path=None, include_zero_shot: bool = False):
     """运行评估并写出结果；返回与 ``evaluation_results.json`` 相同的对象。"""
     output_path = output_path or os.path.join(
         os.path.dirname(__file__) or ".", "evaluation_results.json")
     full_report = build_full_report(mode, include_zero_shot=include_zero_shot)
+    # T5 provenance：结果必须可追溯到产生它的代码版本，否则不能作为对外证据
+    full_report["provenance"] = {
+        "git_head": _git_head(),
+        "mode": mode,
+        "generated_at": full_report.get("generated_at") or datetime.now().isoformat(),
+        "note": "评估结果与代码版本绑定；tests 不得在单测中覆写本文件（端点测试已改写 tmp_path）",
+    }
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(full_report, f, ensure_ascii=False, indent=2)
     print(f"\n  📄 评估结果已保存至: {output_path}")

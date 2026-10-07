@@ -9,6 +9,7 @@ import copy
 import json
 import os
 import re
+import threading
 import traceback
 import logging
 import uuid
@@ -99,12 +100,19 @@ def _detect_module(payload) -> Optional[str]:
     """检测请求载荷中的模块标记，返回模块标识或 None（与 _payload_wants_fast_mode 同构）。
 
     未命中任何标记时返回 None，走全量工具链路（兼容直接输入文字的传统用法）。
+
+    G1 加固：模块标记只认「前端在消息首部注入的短指令消息」——同时满足
+    消息长度 <= _MARKER_MSG_MAX_CHARS 且标记出现在前 _MARKER_PREFIX_CHARS
+    个字符内。年报正文等不可信长文本即使包含标记字样也不会被路由，
+    防止被分析对象借正文内容切换控制流。
     """
     for m in (payload or {}).get("messages", []):
         content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
         text = str(content)
+        if len(text) > _MARKER_MSG_MAX_CHARS:
+            continue
         for key, marker in MODULE_MARKERS.items():
-            if marker in text:
+            if marker in text[:_MARKER_PREFIX_CHARS]:
                 return key
     return None
 
@@ -164,6 +172,9 @@ def _detect_light_module(payload) -> Optional[str]:
     会话历史，若扫全部消息，历史里的旧轻量标记会把后续普通提问也误路由到
     轻量链路；反之历史里的模块标记也会压过用户刚点的轻量卡片。
     最后一条消息代表最新用户意图，以它为准。
+
+    G1 加固：与 _detect_module 同款「短指令消息 + 首部前缀」限定——轻量标记
+    只在短消息首部生效，正文埋标记的不可信长文本不改变路由。
     """
     msgs = (payload or {}).get("messages", [])
     if not msgs:
@@ -171,20 +182,36 @@ def _detect_light_module(payload) -> Optional[str]:
     m = msgs[-1]
     content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
     text = str(content)
+    if len(text) > _MARKER_MSG_MAX_CHARS:
+        return None
     for key, marker in LIGHT_MARKERS.items():
-        if marker in text:
+        if marker in text[:_MARKER_PREFIX_CHARS]:
             return key
     return None
 
 
+# G1 控制流与不可信文本隔离的扫描限定：标记消息必须是短指令（前端卡片按钮 /
+# 模块入口注入的文本均远小于该上限），且标记位于消息首部前缀内。
+_MARKER_MSG_MAX_CHARS = 2000
+_MARKER_PREFIX_CHARS = 64
+
+
 def _payload_wants_fast_mode(payload) -> bool:
-    """检测请求载荷是否启用快速模式（与 agent.py 跳过辩论的关键词保持一致）。
+    """检测请求载荷是否启用快速模式。
+
+    优先读结构化字段 payload["fast_mode"]（前端 ⚡ 开关显式传入，权威来源）；
+    未携带该字段时回退到旧版关键词兼容检测，但**只扫短指令消息**
+    （长度 <= _MARKER_MSG_MAX_CHARS）——年报正文等不可信长文本即使包含
+    "快速模式"字样也不会触发快速模式（G1 控制流与不可信文本隔离）。
 
     兼容两种消息形态：前端 JSON 的 dict（{"role","content"}）与 LangChain 消息对象。
     """
+    if isinstance(payload, dict) and payload.get("fast_mode"):
+        return True
     for m in (payload or {}).get("messages", []):
         content = m.get("content", "") if isinstance(m, dict) else getattr(m, "content", "")
-        if FAST_MODE_KEYWORD in str(content):
+        text = str(content)
+        if len(text) <= _MARKER_MSG_MAX_CHARS and FAST_MODE_KEYWORD in text:
             return True
     return False
 
@@ -448,6 +475,10 @@ class GraphService:
         key = f"{'flash' if fast else 'pro'}:{module or 'all'}"
         if key not in self._agents:
             build_kwargs = {"model_override": FAST_MODEL} if fast else {}
+            if fast:
+                # G1：快速模式经结构化字段一路传给 _AgentWrapper（self._fast），
+                # 后处理跳过辩论只认该标志，不从消息文本扫描关键词。
+                build_kwargs["fast"] = True
             if module:
                 build_kwargs["module"] = module
             self._agents[key] = graph_helper.get_agent_instance("agents.agent", ctx, **build_kwargs)
@@ -2049,8 +2080,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作接口强制校验 X-API-Key ──
+# ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作/敏感读接口强制校验 X-API-Key ──
 # 默认不配置即完全放行，保证本地演示零摩擦；对外暴露服务时在 .env 中设置。
+# S1 加固：/api/files（枚举全部分析产物）与 /api/reload_kb（重建知识库向量索引，
+# 可被外部语料投毒）纳入保护；比较改用 hmac.compare_digest 防时序侧信道。
 _PROTECTED_PREFIXES = (
     "/run",
     "/stream_run",
@@ -2059,6 +2092,8 @@ _PROTECTED_PREFIXES = (
     "/upload",
     "/api/upload_kb",
     "/api/evaluate/run",
+    "/api/files",
+    "/api/reload_kb",
 )
 
 
@@ -2067,7 +2102,8 @@ async def api_key_guard(request: Request, call_next):
     """写操作接口的 X-API-Key 校验中间件（APP_API_KEY 未配置时直接放行）。"""
     expected = os.getenv("APP_API_KEY", "")
     if expected and request.url.path.startswith(_PROTECTED_PREFIXES):
-        if request.headers.get("X-API-Key") != expected:
+        import hmac as _hmac
+        if not _hmac.compare_digest(request.headers.get("X-API-Key", ""), expected):
             return JSONResponse({"detail": "unauthorized: 缺少或错误的 X-API-Key"}, status_code=401)
     return await call_next(request)
 
@@ -2210,6 +2246,61 @@ async def get_system_status():
 
 
 # ══════════════════════════════════════════════════════
+# S3 登录防爆破限速器（内存滑动窗口，进程级；无新依赖）。
+# 按「IP + 用户名」双键计数：任一键在窗口内超限即 429。
+# 本地单机演示默认零摩擦；对外部署时可按需调严。
+# ══════════════════════════════════════════════════════
+_AUTH_RATE_WINDOW_SEC = 300        # 5 分钟窗口
+_AUTH_RATE_MAX_ATTEMPTS = 10       # 窗口内最多 10 次失败尝试
+_AUTH_RATE_MAX_PER_IP = 30         # 窗口内单 IP 总上限（防换用户名绕过）
+_auth_attempts: Dict[str, list] = {}
+_auth_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    """取客户端 IP（优先代理头，防直连伪造仅作尽力而为）。"""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _auth_rate_check(request: Request, username: str) -> str | None:
+    """检查登录/注册尝试是否超限；超限返回原因文本，未超限返回 None。"""
+    import time as _time
+    ip = _client_ip(request)
+    now = _time.time()
+    cutoff = now - _AUTH_RATE_WINDOW_SEC
+    with _auth_lock:
+        # 惰性清理过期记录
+        stale = [k for k, ts in _auth_attempts.items()
+                 if not ts or ts[-1] < cutoff]
+        for k in stale:
+            _auth_attempts.pop(k, None)
+        user_key = f"u:{ip}:{str(username or '')[:64]}"
+        ip_key = f"ip:{ip}"
+        user_ts = [t for t in _auth_attempts.get(user_key, []) if t >= cutoff]
+        ip_ts = [t for t in _auth_attempts.get(ip_key, []) if t >= cutoff]
+        if len(user_ts) >= _AUTH_RATE_MAX_ATTEMPTS:
+            return "登录尝试过于频繁，请 5 分钟后重试"
+        if len(ip_ts) >= _AUTH_RATE_MAX_PER_IP:
+            return "该地址请求过于频繁，请稍后重试"
+        _auth_attempts[user_key] = user_ts + [now]
+        _auth_attempts[ip_key] = ip_ts + [now]
+    return None
+
+
+# S5 分析并发上限（进程级信号量）：/run 与 /stream_run 共享，超限 429 排队拒绝。
+# 每个分析任务内部还有导出线程池/matplotlib/chroma/LLM 调用，无界并发会放大
+# 内存与 API 账单，默认 4 路（本地单机场景足够；可用 env 覆盖）。
+try:
+    _ANALYSIS_MAX_CONCURRENT = max(1, int(os.getenv("ANALYSIS_MAX_CONCURRENT", "4")))
+except (TypeError, ValueError):
+    _ANALYSIS_MAX_CONCURRENT = 4
+_analysis_semaphore = asyncio.Semaphore(_ANALYSIS_MAX_CONCURRENT)
+
+
+# ══════════════════════════════════════════════════════
 # 多用户认证与分析历史 API
 # 设计：未登录不影响分析（演示零摩擦），但历史仅在登录态记录/查询；
 # 历史接口强制按 token 对应的 user_id 隔离，无法跨用户读取。
@@ -2236,14 +2327,22 @@ async def auth_register(request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
-    """口令登录，签发会话令牌（用户名不存在与口令错误统一提示，防枚举）。"""
+    """口令登录，签发会话令牌（用户名不存在与口令错误统一提示，防枚举）。
+    S3：按 IP+用户名限速防在线爆破；PBKDF2 用 to_thread 下放，不阻塞事件循环。"""
     try:
         body = await request.json()
     except json.JSONDecodeError:
         return JSONResponse({"status": "error", "message": "请求体不是合法 JSON"}, status_code=400)
+    _username = str(body.get("username", ""))[:64]
+    limited = _auth_rate_check(request, _username)
+    if limited:
+        logger.warning(f"登录限速触发: ip={_client_ip(request)}, user={_username}")
+        return JSONResponse({"status": "error", "message": limited}, status_code=429)
     try:
         from storage.database.user_service import login_user
-        session_info = login_user(body.get("username", ""), body.get("password", ""))
+        # S3：PBKDF2 120k 迭代约 50-100ms，放事件循环内会阻塞所有并发请求
+        session_info = await asyncio.to_thread(
+            login_user, body.get("username", ""), body.get("password", ""))
     except Exception as e:  # noqa: BLE001
         logger.error(f"登录异常: {e}")
         return JSONResponse({"status": "error", "message": "登录服务异常，请稍后重试"}, status_code=500)
@@ -2324,13 +2423,20 @@ async def http_run(request: Request) -> Dict[str, Any]:
 
     try:
         payload = await request.json()
-        task = asyncio.create_task(service.run(payload, ctx))
-        service.running_tasks[run_id] = task
-        try:
-            result = await asyncio.wait_for(task, timeout=float(TIMEOUT_SECONDS))
-        except asyncio.TimeoutError:
-            task.cancel()
-            return {"status": "timeout", "run_id": run_id}
+        # S5 并发配额：超过上限直接 429（不排队，快速失败让前端提示重试），
+        # 防止无界并发放大内存与 LLM 账单
+        if _analysis_semaphore.locked():
+            return JSONResponse(
+                {"status": "busy", "message": f"当前已有 {_ANALYSIS_MAX_CONCURRENT} 个分析在执行，请稍后重试"},
+                status_code=429)
+        async with _analysis_semaphore:
+            task = asyncio.create_task(service.run(payload, ctx))
+            service.running_tasks[run_id] = task
+            try:
+                result = await asyncio.wait_for(task, timeout=float(TIMEOUT_SECONDS))
+            except asyncio.TimeoutError:
+                task.cancel()
+                return {"status": "timeout", "run_id": run_id}
 
         if not result:
             result = {}
@@ -2345,8 +2451,9 @@ async def http_run(request: Request) -> Dict[str, Any]:
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
     except Exception as e:
+        # S7：/run 内部错误不回显异常串（含内部路径/库细节），只给泛化文案
         logger.error(f"Error in /run: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail={"error": str(e)})
+        raise HTTPException(status_code=500, detail={"error": "服务内部错误，请稍后重试（详情见服务日志）"})
     finally:
         cozeloop.flush()
 
@@ -2370,8 +2477,19 @@ async def http_stream_run(request: Request):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
 
-    generator = service.stream_sse(payload, ctx, user=_current_user(request))
-    return StreamingResponse(generator, media_type="text/event-stream")
+    # S5 并发配额：与 /run 共享信号量，超限 429 快速失败
+    if _analysis_semaphore.locked():
+        return JSONResponse(
+            {"status": "busy", "message": f"当前已有 {_ANALYSIS_MAX_CONCURRENT} 个分析在执行，请稍后重试"},
+            status_code=429)
+
+    async def _guarded_stream():
+        async with _analysis_semaphore:
+            generator = service.stream_sse(payload, ctx, user=_current_user(request))
+            async for chunk in generator:
+                yield chunk
+
+    return StreamingResponse(_guarded_stream(), media_type="text/event-stream")
 
 
 @app.post("/v1/chat/completions")
@@ -2429,50 +2547,57 @@ async def maintenance_status():
     return {"status": "ok", "report": report}
 
 
-@app.post("/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
-    """接收上传文件，保存到临时目录并解析提取文本内容。
+def _process_uploads(files) -> list:
+    """S4：/upload 的同步处理主体（保存落盘 + 多格式解析）。
 
-    支持多种文件格式：PDF/Word/Excel/CSV/HTML/PPT/TXT/Markdown。
-    每种格式使用对应的解析器提取纯文本，供后续 AI 分析使用。
-    提取文本超过 20 万字符时自动截断，防止 LLM 上下文溢出。
+    100MB 扫描版 PDF 的解析可达数十秒，放在 async 路由内联执行会阻塞
+    事件循环、冻结全站；抽成同步函数由调用方 to_thread 下放。
+    Args:
+        files: [(filename, BytesIO) 元组]——async 层已预读的文件内容。
     """
     results = []
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    for f in files:
-        ext = os.path.splitext(f.filename or "")[1].lower()
+    for filename, bio in files:
+        ext = os.path.splitext(filename or "")[1].lower()
         if ext not in ALLOWED_EXTENSIONS:
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
                 "error": f"不支持的文件格式: {ext}，仅支持 {', '.join(ALLOWED_EXTENSIONS)}",
             })
             continue
 
-        if f.size and f.size > MAX_UPLOAD_SIZE:
+        bio.seek(0, os.SEEK_END)
+        f_size = bio.tell()
+        if f_size > MAX_UPLOAD_SIZE:
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
-                "error": f"文件大小 ({f.size} bytes) 超过限制 100MB",
+                "error": f"文件大小 ({f_size} bytes) 超过限制 100MB",
             })
             continue
 
         # 路径穿越防护：剥离路径成分并净化非法字符（与 /api/upload_kb 的净化逻辑对齐），
         # 防止构造 "../../../evil" 之类文件名逃逸出 UPLOAD_DIR
         import re as _re
-        safe_name = _re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(f.filename or "file"))
+        safe_name = _re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(filename or "file"))
         unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
         save_path = os.path.join(UPLOAD_DIR, unique_name)
 
         try:
             # 流式落盘：分块读取边写边计数，内存峰值仅一个 chunk（1MB）；
-            # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM
+            # 超限立即中断并删除半成品文件，避免全量读内存导致并发 OOM。
+            # S4：本函数已改为同步（to_thread 下放），UploadFile 的异步读
+            # 需在此先行读入内存分块再落盘——由调用方先按 1MB 分块读齐。
             size = 0
             oversize = False
             source_digest = hashlib.sha256()
             with open(save_path, "wb") as out:
-                while chunk := await f.read(1024 * 1024):
+                while True:
+                    chunk = bio.read(1024 * 1024)
+                    if not chunk:
+                        break
                     size += len(chunk)
                     if size > MAX_UPLOAD_SIZE:
                         oversize = True
@@ -2482,7 +2607,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
             if oversize:
                 os.remove(save_path)
                 results.append({
-                    "filename": f.filename,
+                    "filename": filename,
                     "status": "error",
                     "error": "文件大小超过限制 100MB（已中断接收并清理半成品文件）",
                 })
@@ -2588,7 +2713,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
                         extracted_text = rf.read().decode("utf-8", errors="ignore")
 
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "saved_path": save_path,
                 "status": "ok",
                 "file_size": size,
@@ -2596,25 +2721,52 @@ async def upload_files(files: List[UploadFile] = File(...)):
                 "page_count": page_count,
                 # 上传层计算的源文件指纹随结构化元数据传给前端和终局快照；
                 # 不把哈希埋在解析文本中，避免模型改写或截断来源信息。
-                "source_document": f.filename or "",
+                "source_document": filename or "",
                 "source_hash": source_digest.hexdigest(),
             })
-            logger.info(f"文件上传成功: {f.filename} → {save_path} ({size} bytes)")
+            logger.info(f"文件上传成功: {filename} → {save_path} ({size} bytes)")
 
         except Exception as e:
-            logger.error(f"文件上传失败: {f.filename}: {e}")
+            # S7：对外只回泛化文案——异常串可能含服务器内部绝对路径/库细节；
+            # 完整原因已入服务日志（logger.error）。
+            logger.error(f"文件上传失败: {filename}: {e}\n{traceback.format_exc()}")
             results.append({
-                "filename": f.filename,
+                "filename": filename,
                 "status": "error",
-                "error": str(e),
+                "error": "文件处理失败，请确认文件未损坏后重试（详情见服务日志）",
             })
 
+    return results
+
+
+@app.post("/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    """接收上传文件，保存到临时目录并解析提取文本内容。
+
+    支持多种文件格式：PDF/Word/Excel/CSV/HTML/PPT/TXT/Markdown。
+    每种格式使用对应的解析器提取纯文本，供后续 AI 分析使用。
+    提取文本超过 20 万字符时自动截断，防止 LLM 上下文溢出。
+    S4：async 层只做网络读取（UploadFile 必须在事件循环内读），
+    解析主体同步执行（_process_uploads）经 to_thread 下放，
+    100MB 级扫描件解析期间事件循环照常服务其他请求。
+    """
+    # 预读：UploadFile 是异步文件对象，只能在事件循环内读取；
+    # 按 1MB 分块读入 BytesIO（内存峰值 ~文件大小，100MB 上限可控）
+    import io as _io
+    preloaded = []
+    for f in files:
+        buf = _io.BytesIO()
+        while chunk := await f.read(1024 * 1024):
+            buf.write(chunk)
+        preloaded.append((f.filename, buf))
+    results = await asyncio.to_thread(_process_uploads, preloaded)
     return {"files": results}
 
 
-@app.get("/api/reload_kb")
+@app.post("/api/reload_kb")
 async def reload_knowledge_base():
-    """热重载知识库，无需重启服务。
+    """热重载知识库，无需重启服务（S1：改为 POST——重建索引是状态变更操作，
+    GET 形式可被预取/CSRF 触发；配合 APP_API_KEY 保护清单防检索投毒）。
 
     清空当前知识库缓存（文档列表 + ChromaDB collection），
     然后重新扫描 knowledge_base/ 目录并重建向量索引。
@@ -2622,18 +2774,27 @@ async def reload_knowledge_base():
     """
     try:
         from local_knowledge import get_knowledge_base
-        kb = get_knowledge_base()
-        kb.documents.clear()
-        kb._collection = None
-        kb._loaded = False
-        kb.load()
+
+        def _do_reload():
+            kb = get_knowledge_base()
+            kb.documents.clear()
+            kb._collection = None
+            kb._loaded = False
+            kb.load()
+            return kb
+
+        # S4：重建向量索引可达分钟级（嵌入式 ONNX 逐块 embedding），
+        # 必须下放线程池，否则期间全站（登录/历史/SSE）无响应
+        kb = await asyncio.to_thread(_do_reload)
         return {
             "status": "ok",
             "message": f"知识库重载完成，共 {len(kb.documents)} 个文档块",
             "file_count": len(kb.documents),
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        # S7：重载失败原因只进日志，不回显内部细节
+        logger.error(f"知识库重载失败: {e}\n{traceback.format_exc()}")
+        return {"status": "error", "message": "知识库重载失败，请查看服务日志后重试"}
 
 
 @app.post("/api/upload_kb")
@@ -2869,11 +3030,11 @@ async def get_evaluation_status():
         }
     except Exception as e:
         logger.warning(f"读取评估结果失败: {e}")
-        return {"status": "error", "message": str(e), "data": None}
+        return {"status": "error", "message": "读取评估结果失败，请稍后重试（详见服务日志）", "data": None}
 
 
 @app.post("/api/evaluate/run")
-async def run_evaluation(mode: str = "tool"):
+async def run_evaluation(mode: str = "tool", output_path: str | None = None):
     """运行效果评估（工具模式或全链路 Agent 模式）。
 
     工具模式：直接调用本地确定性评估逻辑计算 22 个测试用例，通常数秒内完成。
@@ -2881,9 +3042,8 @@ async def run_evaluation(mode: str = "tool"):
 
     Args:
         mode: 评估模式，"tool"=工具级（快速）, "agent"/"all"=全链路
-
-    Returns:
-        评估完成状态和结果数据（含 Precision/Recall/F1/基线对比）
+        output_path: 结果落盘路径；缺省写 tests/evaluation_results.json。
+            单元测试必须传 tmp_path（T5：禁止测试覆写版本库跟踪的评估结果）。
     """
     try:
         # 评估脚本与服务使用同一项目根目录，避免 COZE_WORKSPACE_PATH 指向父目录时
@@ -2903,8 +3063,8 @@ async def run_evaluation(mode: str = "tool"):
                     raise RuntimeError(f"无法加载评估模块: {script_path}")
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                output_path = project_root / "tests" / "evaluation_results.json"
-                return module.run_evaluation("tool", str(output_path))
+                output_path_final = output_path or str(project_root / "tests" / "evaluation_results.json")
+                return module.run_evaluation("tool", output_path_final)
 
             data = await asyncio.wait_for(asyncio.to_thread(_run_tool), timeout=30)
             return {"status": "ok", "mode": "tool", "data": data}
@@ -2926,7 +3086,7 @@ async def run_evaluation(mode: str = "tool"):
         return {"status": "error", "message": "评估超时（30秒），请检查系统状态"}
     except Exception as e:
         logger.error(f"运行评估失败: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": "评估执行失败，请查看服务日志后重试"}
 
 
 def parse_args():

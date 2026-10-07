@@ -23,6 +23,40 @@ class LocalKnowledgeBase:
         self._collection = None
         self._loaded = False
         self._load_lock = threading.Lock()
+        # E2 时间门控：语料施行日期元数据（来源文件名 → {effective, note}）
+        self._meta_by_source: Dict[str, Dict] = {}
+        self._load_corpus_meta()
+
+    def _load_corpus_meta(self) -> None:
+        """读取 knowledge_base/corpus_meta.json（语料施行日期侧车文件）。
+
+        文件缺失或损坏时降级为空映射——检索照常可用，只是不输出时点信息，
+        不因元数据问题阻断知识库加载。
+        """
+        meta_path = os.path.join(self.kb_dir, "corpus_meta.json")
+        try:
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict):
+                    self._meta_by_source = {
+                        str(k): v for k, v in raw.items() if isinstance(v, dict)
+                    }
+        except Exception as e:
+            logger.warning(f"语料施行日期元数据加载失败（不影响检索）: {e}")
+            self._meta_by_source = {}
+
+    def _meta_for(self, source: str) -> Dict:
+        """取某来源文件的时点元数据子集（无记录时返回空 dict）。"""
+        info = self._meta_by_source.get(str(source))
+        if not info:
+            return {}
+        entry = {}
+        if info.get("effective"):
+            entry["effective"] = str(info["effective"])
+        if info.get("note"):
+            entry["effective_note"] = str(info["note"])
+        return entry
 
     def _get_chroma_client(self):
         """获取 ChromaDB 持久化客户端（延迟导入，避免启动时阻塞）"""
@@ -163,9 +197,12 @@ class LocalKnowledgeBase:
         self._idf = {}
         self._tfidf_vectors = []
 
-        # 分词
+        # G7 分词加固：中文用 1~2 字 n-gram（unigram + bigram），替换旧的
+        # 「[\u4e00-\u9fff]{2,} 整串成词」——旧分词把"存贷双高货币资金"当作
+        # 一个 token，查询与文档几乎不可能整串命中，TF-IDF 回退路径近乎零召回，
+        # 与 ChromaDB 路径行为严重不一致。n-gram 后部分重叠即可得分。
         for doc in self.documents:
-            doc["tokens"] = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', doc["content"].lower())
+            doc["tokens"] = self._tokenize(str(doc.get("content", "")))
 
         # 构建 IDF
         n = len(self.documents)
@@ -176,6 +213,24 @@ class LocalKnowledgeBase:
             for t in set(doc["tokens"]):
                 df[t] += 1
         self._idf = {t: math.log((n + 1) / (c + 1)) + 1 for t, c in df.items()}
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        """中文 1~2 字 n-gram + 英文词 + 数字（G7）。"""
+        import re
+        from collections import Counter as _C
+        text = str(text or "").lower()
+        tokens: List[str] = []
+        # 英文词与数字保持整词
+        tokens.extend(re.findall(r"[a-zA-Z]{2,}|\d+", text))
+        # 中文段做 1~2 字 n-gram
+        for segment in re.findall(r"[\u4e00-\u9fff]+", text):
+            if len(segment) == 1:
+                tokens.append(segment)
+                continue
+            tokens.extend(segment)  # unigram
+            tokens.extend(segment[i:i + 2] for i in range(len(segment) - 1))  # bigram
+        return tokens
 
     def _tfidf_search_fallback(self, query: str, top_k: int, min_score: float) -> List[Dict]:
         """TF-IDF 回退检索"""
@@ -188,7 +243,8 @@ class LocalKnowledgeBase:
         if not getattr(self, "_idf", None):
             self._build_tfidf_fallback()
 
-        q_tokens = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{2,}|\d+', query.lower())
+        # G7：查询用与文档一致的 n-gram 分词
+        q_tokens = self._tokenize(query)
         tf = Counter(q_tokens)
         total = len(q_tokens) or 1
         q_vec = {t: (tf[t] / total) * self._idf.get(t, 1.0) for t in set(q_tokens)}
@@ -211,11 +267,13 @@ class LocalKnowledgeBase:
         scored.sort(key=lambda x: x[0], reverse=True)
         results = []
         for sim, doc in scored[:top_k]:
-            results.append({
+            entry = {
                 "content": doc["content"],
                 "score": round(sim, 4),
                 "source": doc["source"],
-            })
+            }
+            entry.update(self._meta_for(doc["source"]))
+            results.append(entry)
         return results
 
     def _chroma_search(self, query: str, top_k: int, min_score: float) -> List[Dict]:
@@ -232,11 +290,16 @@ class LocalKnowledgeBase:
             for doc_text, dist, meta in zip(docs, dists, metas):
                 score = round(1.0 - dist, 4)
                 if score >= min_score:
-                    output.append({
+                    source = meta.get("source", "unknown")
+                    entry = {
                         "content": doc_text,
                         "score": score,
-                        "source": meta.get("source", "unknown"),
-                    })
+                        "source": source,
+                    }
+                    # E2 时间门控：施行日期来自 corpus_meta.json（按来源文件名查找，
+                    # 不依赖向量库 metadata，旧索引无需重建即可生效）
+                    entry.update(self._meta_for(source))
+                    output.append(entry)
         return output[:top_k]
 
     def search(self, query: str, top_k: int = 8, min_score: float = 0.05) -> List[Dict]:

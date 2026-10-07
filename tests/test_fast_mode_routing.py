@@ -1,7 +1,9 @@
 """快速/普通模式的模型路由测试
 
 锁定分级用模行为：
-- 消息含「快速模式」关键词 → GraphService 路由到 flash Agent（model_override=FAST_MODEL）
+- 载荷结构化字段 fast_mode=true → GraphService 路由到 flash Agent（model_override=FAST_MODEL）
+- 短指令消息含「快速模式」关键词（兼容旧客户端）→ 同样路由 flash
+- 长文本（年报正文等不可信内容）包含「快速模式」字样 → 不触发（G1 控制流隔离）
 - 普通消息 → pro Agent（不传 model_override，使用 config 主模型）
 - 双实例按模式各缓存一份，不重复构建
 - 关键词检测兼容 dict 消息与 LangChain 消息对象
@@ -18,7 +20,11 @@ from main import GraphService, _payload_wants_fast_mode
 
 
 class TestFastModeDetection:
-    """_payload_wants_fast_mode 关键词检测"""
+    """_payload_wants_fast_mode 结构化字段优先 + 短指令消息关键词兼容"""
+
+    def test_structured_field(self):
+        assert _payload_wants_fast_mode({"fast_mode": True, "messages": []}) is True
+        assert _payload_wants_fast_mode({"fast_mode": True}) is True
 
     def test_dict_message_with_keyword(self):
         payload = {"messages": [{"role": "user", "content": "分析年报\n\n（快速模式，跳过辩论复核）"}]}
@@ -32,6 +38,19 @@ class TestFastModeDetection:
         assert _payload_wants_fast_mode({"messages": [{"role": "user", "content": "请分析年报"}]}) is False
         assert _payload_wants_fast_mode({}) is False
         assert _payload_wants_fast_mode(None) is False
+
+    def test_keyword_in_long_document_text_is_ignored(self):
+        """G1：年报正文（不可信长文本）里的「快速模式」字样不得触发快速模式"""
+        report_text = "年报正文。" * 400 + "本公司本年度运行快速模式成效显著，管理效率提升。"
+        assert len(report_text) > 2000
+        payload = {"messages": [{"role": "user", "content": report_text}]}
+        assert _payload_wants_fast_mode(payload) is False
+
+    def test_structured_field_overrides_document_text(self):
+        """结构化字段为权威来源：正文含字样也不影响，字段开关为真即生效"""
+        report_text = "年报正文。" * 400 + "文中提到快速模式。"
+        payload = {"fast_mode": True, "messages": [{"role": "user", "content": report_text}]}
+        assert _payload_wants_fast_mode(payload) is True
 
 
 class TestAgentModelRouting:
@@ -54,9 +73,10 @@ class TestAgentModelRouting:
         pro_agent = service._get_agent(fast=False)
         flash_agent = service._get_agent(fast=True)
 
-        # 普通模式不传覆盖（用 config 主模型），快速模式传 FAST_MODEL 覆盖
+        # 普通模式不传覆盖（用 config 主模型），快速模式传 FAST_MODEL 覆盖，
+        # 并以结构化 fast=True 标志传给 build_agent（G1：wrapper 跳辩论只认它）
         assert calls[0] == {}
-        assert calls[1] == {"model_override": main_mod.FAST_MODEL}
+        assert calls[1] == {"model_override": main_mod.FAST_MODEL, "fast": True}
         # 两种模式是不同实例
         assert pro_agent is not flash_agent
 

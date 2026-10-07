@@ -359,11 +359,13 @@ def _generate_radar_chart(risk_report_json: str, output_path: str) -> str:
         try:
             with open(bm_path, 'r', encoding='utf-8') as f:
                 raw = json.load(f)
-            # 在基准数据中查找匹配的行业
-            ind_data = raw.get('industries', raw)
-            for k, v in ind_data.items():
-                if not isinstance(v, dict) or (industry not in str(k) and str(k) not in str(industry)):
-                    continue
+            # F4 行业匹配加固：改用 match_keywords + match_priority（特异性优先、
+            # 关键词最长者胜），替换旧的「子串互含 + 首个命中即 break」——旧逻辑
+            # 会把"医药制造业"错配到通用"制造业"基准（毛利率 25% vs 医药约 70%），
+            # 方向性误导。无任何关键词命中时不做基准对比（宁缺毋错）。
+            from core.benchmark_contract import match_industry_entry
+            v, _matched_name = match_industry_entry(industry, raw.get('industries', raw))
+            if v is not None:
                 bms = v.get('benchmarks', v)
                 for key in ('gross_margin', 'debt_to_asset_ratio', 'ar_to_revenue_ratio',
                             'inventory_turnover', 'current_ratio'):
@@ -372,7 +374,6 @@ def _generate_radar_chart(risk_report_json: str, output_path: str) -> str:
                     value = sourced_benchmark_value(spec, v)
                     if value is not None:
                         industry_benchmark[key] = value
-                break
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             industry_benchmark = {}
 

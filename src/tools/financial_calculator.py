@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -887,12 +888,33 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
         alerts.append(f"存货较期初增长 {_format((inv_c / inv_p - 1) * _D_HUNDRED, 2, '%')}，存货激增需关注跌价风险")
 
     debt_ratio = _safe_div(tl_c, ta_c)
+    # F5 行业联动：告警线优先取行业基准的 debt_to_asset_ratio 高位值（房地产、
+    # 建筑等高杠杆行业 70% 属常态，固定线会系统性高估其风险——知识库行业基准库
+    # 明文要求分行业对标）；行业未匹配或基准缺失时回落 70% 通用线并注明口径。
+    _industry_text = str(data.get("industry") or _metadata(data).get("industry") or "")
+    _debt_line, _debt_line_source = Decimal("0.7"), "内部筛查规则：资产负债率超过70%提示偿债复核"
+    if _industry_text and debt_ratio is not None:
+        try:
+            import json as _json
+            from core.benchmark_contract import match_industry_entry
+            _workspace = os.getenv('COZE_WORKSPACE_PATH', os.path.join(os.path.dirname(__file__), '..', '..'))
+            with open(os.path.join(_workspace, 'assets', 'industry_benchmarks.json'), 'r', encoding='utf-8') as _bf:
+                _bm = _json.load(_bf)
+            _entry, _entry_name = match_industry_entry(_industry_text, _bm.get('industries', {}))
+            _high = (((_entry or {}).get('benchmarks') or {}).get('debt_to_asset_ratio') or {}).get('high')
+            if isinstance(_high, (int, float)):
+                _debt_line = Decimal(str(_high)) / Decimal("100")
+                _debt_line_source = (f"行业基准（{_entry_name}）资产负债率高位线 {_high}%"
+                                     f"（{_entry.get('source', '内部整理')}；统计年份未标注）")
+        except Exception as _bm_err:  # noqa: BLE001 — 基准读取失败回落通用线
+            logger.debug(f"行业资产负债率基准读取失败，回落 70% 通用线: {_bm_err}")
     add("debt_to_asset_ratio_pct", "资产负债率", "总负债/总资产×100%", ("total_liabilities_current", "total_assets_current"),
-        debt_ratio * _D_HUNDRED if debt_ratio is not None else None, unit="%", threshold=70,
-        threshold_source="内部筛查规则：资产负债率超过70%提示偿债复核",
+        debt_ratio * _D_HUNDRED if debt_ratio is not None else None, unit="%",
+        threshold=float(_debt_line * 100),
+        threshold_source=_debt_line_source,
         status="calculated" if debt_ratio is not None else "not_comparable", reason="总资产缺失或为零" if debt_ratio is None else "")
-    if debt_ratio is not None and debt_ratio > Decimal("0.7"):
-        alerts.append(f"资产负债率 = {_format(debt_ratio * _D_HUNDRED, 2, '%')}，超过 70%，财务杠杆较高")
+    if debt_ratio is not None and debt_ratio > _debt_line:
+        alerts.append(f"资产负债率 = {_format(debt_ratio * _D_HUNDRED, 2, '%')}，超过 {_format(_debt_line * _D_HUNDRED, 0, '%')}（{_debt_line_source}），财务杠杆较高")
 
     ca_c, cl_c = values.get("current_assets_current"), values.get("current_liabilities_current")
     current_ratio = _safe_div(ca_c, cl_c)
@@ -930,14 +952,20 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
 
     interest_expense_c = values.get("interest_expense_current")
     profit_before_tax_c = values.get("profit_before_tax_current")
-    ebit = operating_profit_c
-    ebit_keys = ("operating_profit_current", "interest_expense_current")
-    if ebit is None and profit_before_tax_c is not None and interest_expense_c is not None:
+    # F6 口径修复：主口径 = (利润总额+利息支出)/利息支出。EBIT 须加回利息支出
+    # （与 knowledge_base/风险评分模型库 的 EBIT 定义一致）；旧主口径直接用营业
+    # 利润——中国准则下营业利润已扣除财务费用（含利息支出）且混入投资收益等
+    # 非经常项，系统性低估利息保障倍数。营业利润口径仅在利润总额缺失时作
+    # 标注性 fallback。
+    if profit_before_tax_c is not None and interest_expense_c is not None:
         ebit = profit_before_tax_c + interest_expense_c
         ebit_keys = ("profit_before_tax_current", "interest_expense_current")
+        interest_formula = "(利润总额+利息支出)/利息支出"
+    else:
+        ebit = operating_profit_c
+        ebit_keys = ("operating_profit_current", "interest_expense_current")
+        interest_formula = "营业利润/利息支出（利润总额缺失，口径受限）"
     interest_coverage = _safe_div(ebit, interest_expense_c)
-    interest_formula = ("营业利润/利息支出" if operating_profit_c is not None
-                        else "(利润总额+利息支出)/利息支出")
     add("interest_coverage_ratio", "利息保障倍数（长期偿债）", interest_formula,
         ebit_keys, interest_coverage, unit="倍", threshold=1.5,
         threshold_source="内部筛查规则：利息保障倍数低于1.5倍提示偿债能力复核",
@@ -1084,8 +1112,30 @@ def calculate_financial_indicators(financial_data_json: str) -> str:
         _only_if_any_input=True)
 
     int_income, int_expense = values.get("interest_income_current"), values.get("interest_expense_current")
-    if all(v is not None for v in (cash, short_debt, int_income, int_expense)) and cash > short_debt and int_expense > int_income * 2:
-        alerts.append(f"现金及现金等价物({_format(cash)})高于短期借款({_format(short_debt)})，但利息支出({_format(int_expense)})远大于利息收入({_format(int_income)})，存在存贷双高异常")
+    # F7 存贷双高筛查加固：
+    # ① 双侧量级门槛——货币资金与短期借款需各自达到总资产的 5%，"双高"才是
+    #    有意义的异常信号；小额现金对照小额借款触发告警属常态噪声。
+    # ② 覆盖口径声明：短期借款并非有息负债全口径（缺长期借款/应付债券/一年内
+    #    到期非流动负债字段），「存长贷双高」形态本筛查覆盖不到，结果须结合
+    #    人工复核；字段扩展后应改用有息负债合计。
+    # ③ 输入不足时显式声明「未验证」，不再静默跳过（fail-loud）。
+    _dual_high_inputs = {"cash_and_equivalents": cash, "short_term_debt": short_debt,
+                         "interest_income": int_income, "interest_expense": int_expense}
+    _ta_for_dual_high = values.get("total_assets_current")
+    _missing_dual = [k for k, v in _dual_high_inputs.items() if v is None]
+    if _missing_dual:
+        indicators["deposit_loan_dual_high"] = (
+            f"未验证：缺少 {('、'.join(_missing_dual))}，存贷双高筛查未执行")
+    else:
+        _scale_ok = (_ta_for_dual_high is None or _ta_for_dual_high <= 0
+                     or (cash >= _ta_for_dual_high * Decimal("0.05")
+                         and short_debt >= _ta_for_dual_high * Decimal("0.05")))
+        indicators["deposit_loan_dual_high"] = (
+            f"已筛查（口径：货币资金 vs 短期借款，非有息负债全口径）；"
+            f"货币资金/总资产={_format(_safe_div(cash, _ta_for_dual_high) * _D_HUNDRED, 1, '%') if _ta_for_dual_high else 'N/A'}，"
+            f"短期借款/总资产={_format(_safe_div(short_debt, _ta_for_dual_high) * _D_HUNDRED, 1, '%') if _ta_for_dual_high else 'N/A'}")
+        if cash > short_debt and int_expense > int_income * 2 and _scale_ok:
+            alerts.append(f"现金及现金等价物({_format(cash)})高于短期借款({_format(short_debt)})，但利息支出({_format(int_expense)})远大于利息收入({_format(int_income)})，存在存贷双高异常（口径：短期借款，未覆盖长期有息负债）")
 
     if np_c is not None and np_p is not None:
         indicators["net_profit_current"] = _number(np_c)

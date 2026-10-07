@@ -136,7 +136,7 @@ uv run python tests/evaluation_report.py --mode agent
 projects/
 ├── src/
 │   ├── agents/agent.py            # Agent 构建 + 预处理预跑 + 报告身份兜底 + 三方辩论复核（仲裁回写）
-│   ├── tools/                     # 16 个核心分析工具
+│   ├── tools/                     # 17 个核心分析工具（含 E1 外部数据核验）
 │   │   ├── financial_calculator.py   # 16 项核心指标（+3 扩展 / +2 条件，单次最多 21 条）
 │   │   ├── data_validator.py         # 三大勾稽校验
 │   │   ├── knowledge_search.py       # 法规知识库检索（RAG）
@@ -181,20 +181,32 @@ projects/
 运行量化评估脚本查看系统性能指标：
 
 ```bash
-uv run python tests/evaluation_report.py
+# 工具级评估（快速，无需 API Key）
+uv run python tests/evaluation_report.py --mode tool
+
+# 全链路评估（完整 Multi-Agent 管道：LLM + RAG + 三方辩论复核，需在 .env 配置 API Key）
+uv run python tests/evaluation_report.py --mode agent
 ```
 
-评估结果摘要（数据来源 `tests/evaluation_results.json`，重跑评估后以该文件为准）：
+### 评估体系构成
 
-- 工具评估集（22 个合成用例）：Precision **1.000**，Recall **0.975**，F1 **0.983**；正常用例误报 **0/2**
-- 盲测集（5 个公开处罚案例/对照用例）：Precision **1.000**，Recall **0.875**，F1 **0.917**；正常对照正确 **1/1**
-- 相对简单规则基线的召回率提升：**+89.8 个百分点**
+- **工具级评估**：22 个合成用例 + 5 个公开案例盲测用例，输出 Precision/Recall/F1 与简单规则基线对比；
+- **全链路评估**：驱动完整 Agent 管道，输出五大风险维度的识别指标；
+- **结果可溯源**：`tests/evaluation_results.json` 内嵌 `provenance.git_head`，每份结果与产生它的代码版本绑定。
 
-> 以上是本地确定性工具评估，不代表真实公司的审计结论。零样本 LLM 基线默认不执行，
-> 只有命令行显式追加 `--include-zero-shot` 时才会发起外部模型请求。
+### 评估口径与已声明的局限
 
-> Precision 与 Recall 分别从误报/漏报两个方向独立统计（Precision 分母为系统实际告警数，
-> Recall 分母为标注风险数），盲测集与合成集分开报告，避免循环验证。
+本项目的量化指标目前仅用于**工程回归监控**，不构成系统真实准确率的对外承诺。已声明的局限包括：
+
+1. 合成用例由本系统阈值规则参与构造，标签与规则同源，存在构造性「自证」成分；
+2. 盲测集样本量尚小，统计判别力有限，部分案例与规则设计参考了同一批公开资料；
+3. 量化模型（Altman Z-Score / Beneish M-Score）系数未经 A 股样本本地重估，仅作交叉印证；
+4. 勾稽校验仅覆盖知识库跨表勾稽规则的一部分，覆盖清单在每次校验输出中逐条声明。
+
+> 上述局限的完整清单与整改路线见 [docs/修改方案书.md](docs/修改方案书.md)。
+> 零样本 LLM 基线默认不执行，只有命令行显式追加 `--include-zero-shot` 时才会发起外部模型请求。
+> 具体量化数字以 `tests/evaluation_results.json` 为准（重跑评估后更新），本 README 不再固定展示，
+> 待独立标注冻结与盲测扩容完成后重新发布。
 
 运行单元测试：
 
