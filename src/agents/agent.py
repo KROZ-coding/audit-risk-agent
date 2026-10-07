@@ -4220,6 +4220,34 @@ class _AgentWrapper:
         if arb_incomplete:
             logger.warning("仲裁未完成：已关闭真阻断，改为强可见警告 + 继续导出完整产物")
 
+        # G8 fail-closed 导出门禁：解析与核心计算全部失败时，拒绝导出结构完整的
+        # 「正常」报告——读者拿到零数据依据的 PDF/Excel 比拿到错误卡更危险。
+        # 判定：校验/指标/披露三类核心工具结果全空 且 台账无可导出的风险明细。
+        _core_tools_all_empty = not any(
+            str(tool_results.get(k, "") or "").strip()
+            for k in ("validate_financial_data", "calculate_financial_indicators",
+                      "check_disclosure_compliance"))
+        _has_exportable_risks = False
+        try:
+            _final_obj = json.loads(risk_json)
+            _details = (_final_obj or {}).get("risk_details")
+            _snapshot = (_final_obj or {}).get("report_snapshot") or {}
+            _snapshot_details = (_snapshot or {}).get("risk_details")
+            _has_exportable_risks = (
+                (isinstance(_details, list) and len(_details) > 0)
+                or (isinstance(_snapshot_details, list) and len(_snapshot_details) > 0))
+        except Exception:
+            pass
+        if _core_tools_all_empty and not _has_exportable_risks:
+            logger.warning("G8 导出门禁触发：核心工具结果全空且台账无风险明细，拒绝导出，只返回错误卡")
+            if isinstance(last_ai.content, str):
+                last_ai.content += (
+                    "\n\n⛔ **分析未完成，报告未生成**：财务数据校验、指标计算与披露检查"
+                    "均未成功执行（可能是文件解析失败或数据格式不支持），系统已拒绝生成"
+                    "审计报告以避免误导。请检查上传的文件后重试，或人工核查原始数据。")
+            result["export_blocked"] = "no_tool_results_and_no_risks"
+            return result
+
         _chart_updates = {}
 
         def _backfill_chart(tool_obj, label, tool_name):

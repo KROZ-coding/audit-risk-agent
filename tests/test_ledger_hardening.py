@@ -85,3 +85,42 @@ class TestGateLedgerSuspicion:
         assert report["accepted_risk_details"] == []
         assert len(report["pending_items"]) == 1
         assert report["ledger_suspicious"]["reasons"]
+
+
+class TestG8ExportGate:
+    """G8 fail-closed 导出门禁：核心工具全空且台账无风险 → 拒绝导出"""
+
+    def test_export_blocked_when_no_tools_no_risks(self, monkeypatch):
+        import agents.agent as agent_mod
+        from agents.agent import _AgentWrapper
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", False)
+        msgs = [HumanMessage(content="分析这份年报"), AIMessage(content="分析完成，未发现重大风险。")]
+        wrapper = _AgentWrapper(object())
+        result = {"messages": msgs}
+        out = wrapper._post_process(result)
+        # 拒绝导出：消息带错误卡，产物未生成
+        assert out.get("export_blocked") == "no_tool_results_and_no_risks"
+        last_ai = next(m for m in reversed(out["messages"]) if isinstance(m, AIMessage))
+        assert "分析未完成，报告未生成" in str(last_ai.content)
+
+    def test_export_allowed_with_risks_even_if_tools_sparse(self, monkeypatch):
+        """台账有风险明细（即使核心工具稀疏）→ 照常走导出（不误杀）"""
+        import json as _json
+        import agents.agent as agent_mod
+        from agents.agent import _AgentWrapper
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        monkeypatch.setattr(agent_mod, "REVIEW_ENABLED", False)
+        from unittest.mock import MagicMock
+        for name in ("export_pdf_report", "export_excel_report", "generate_risk_heatmap",
+                     "generate_radar_chart", "generate_trend_chart"):
+            monkeypatch.setattr(agent_mod, name, MagicMock(invoke=MagicMock(return_value="ok")))
+        ledger = _json.dumps({"company_info": {"company_name": "测试"},
+                              "risk_details": [{"risk_id": "R001", "level": "一般"}]}, ensure_ascii=False)
+        msgs = [HumanMessage(content="分析"), AIMessage(content=ledger)]
+        wrapper = _AgentWrapper(object())
+        result = {"messages": msgs}
+        out = wrapper._post_process(result)
+        assert "export_blocked" not in out
