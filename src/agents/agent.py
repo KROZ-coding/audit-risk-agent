@@ -1256,9 +1256,33 @@ def _source_report_evidence_records(tool_results: dict, source_text: str = "",
                     "page": str(page),
                     "locator": f"物理页{page}：{locator}",
                     "excerpt": excerpt[:1600],
-                    "verified": True,
-                    "status": "verified",
+                    # G6 加固：谓词命中只说明「该页包含相关关键词」，不等于
+                    # 「证据支持具体风险主张」。verified 降为关键字命中级，
+                    # 由二次定向回查（下方 keyword 命中）确认后才置 verified。
+                    "verified": False,
+                    "status": "keyword_matched",
                 }
+                # G6 二次定向回查：从 locator 提取核心关键词（冒号前主词的
+                # 前 4 字 + 后段各短词），命中页摘录须包含其中至少一个核心词
+                # 且谓词本身已含结构化特征（如"减：坏账准备"），防止「任意页
+                # 出现一个泛词即制造已核验证据」。谓词本身是多条件与组合，
+                # 谓词命中 + 关键词确认构成两层过滤。
+                _kw_candidates = []
+                _parts = re.split(r"[：:，,]", locator)
+                for _p in _parts:
+                    _p = _p.strip()
+                    if len(_p) >= 4:
+                        _kw_candidates.append(_p[:6])
+                    elif len(_p) >= 2:
+                        _kw_candidates.append(_p)
+                _core_kw = next((kw for kw in _kw_candidates if kw and kw in compact), None)
+                if _core_kw:
+                    record["verified"] = True
+                    record["status"] = "verified"
+                    record["verified_by"] = f"二次定向回查命中「{_core_kw}」"
+                else:
+                    record["status"] = "keyword_matched"
+                    record["pending_reason"] = "谓词命中但定向回查未确认，需人工核对原文"
                 ratio_match = None
                 if risk_id == "R003" and "担保" in compact:
                     # 年报把担保比例写成“占本集团净资产”等口径，但这不是系统总权益
@@ -1386,7 +1410,10 @@ def _match_evidence_record_for_dimension(r: dict, dim: str, records: dict) -> di
         excerpt = str(item.get("excerpt", "") or item.get("description", "")).lower()
         if excerpt and any(word in excerpt for word in keywords):
             return item
-    return candidates[0]
+    # G6 加固：取消「无匹配则取第一条」兜底——把同维度第一条无关告警的证据
+    # 挂到风险条目上，证据栏会呈现与主张无关的内容（张冠李戴面）。宁可让
+    # 条目走 evidence_pending 待补证路径（人工复核），也不强配无关证据。
+    return None
 
 
 def _backfill_risk_evidence(risk_json: str, tool_results: dict,
