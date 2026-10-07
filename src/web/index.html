@@ -3363,7 +3363,8 @@ async function reloadKB(btn) {
   btn.innerHTML = `${icon('clock')} 重载中…`;
   btn.disabled = true;
   try {
-    const resp = await fetch(`${API_BASE}/api/reload_kb`);
+    // S1：reload_kb 为状态变更操作，改为 POST（旧 GET 可被预取/CSRF 触发）
+    const resp = await fetch(`${API_BASE}/api/reload_kb`, { method: 'POST' });
     const data = await resp.json();
     if (data.status === 'ok') {
       btn.innerHTML = `✓ ${escapeHtml(data.message)}`;

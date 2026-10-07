@@ -2079,8 +2079,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作接口强制校验 X-API-Key ──
+# ── 最小鉴权（可选）：配置 APP_API_KEY 后对写操作/敏感读接口强制校验 X-API-Key ──
 # 默认不配置即完全放行，保证本地演示零摩擦；对外暴露服务时在 .env 中设置。
+# S1 加固：/api/files（枚举全部分析产物）与 /api/reload_kb（重建知识库向量索引，
+# 可被外部语料投毒）纳入保护；比较改用 hmac.compare_digest 防时序侧信道。
 _PROTECTED_PREFIXES = (
     "/run",
     "/stream_run",
@@ -2089,6 +2091,8 @@ _PROTECTED_PREFIXES = (
     "/upload",
     "/api/upload_kb",
     "/api/evaluate/run",
+    "/api/files",
+    "/api/reload_kb",
 )
 
 
@@ -2097,7 +2101,8 @@ async def api_key_guard(request: Request, call_next):
     """写操作接口的 X-API-Key 校验中间件（APP_API_KEY 未配置时直接放行）。"""
     expected = os.getenv("APP_API_KEY", "")
     if expected and request.url.path.startswith(_PROTECTED_PREFIXES):
-        if request.headers.get("X-API-Key") != expected:
+        import hmac as _hmac
+        if not _hmac.compare_digest(request.headers.get("X-API-Key", ""), expected):
             return JSONResponse({"detail": "unauthorized: 缺少或错误的 X-API-Key"}, status_code=401)
     return await call_next(request)
 
@@ -2642,9 +2647,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
     return {"files": results}
 
 
-@app.get("/api/reload_kb")
+@app.post("/api/reload_kb")
 async def reload_knowledge_base():
-    """热重载知识库，无需重启服务。
+    """热重载知识库，无需重启服务（S1：改为 POST——重建索引是状态变更操作，
+    GET 形式可被预取/CSRF 触发；配合 APP_API_KEY 保护清单防检索投毒）。
 
     清空当前知识库缓存（文档列表 + ChromaDB collection），
     然后重新扫描 knowledge_base/ 目录并重建向量索引。
